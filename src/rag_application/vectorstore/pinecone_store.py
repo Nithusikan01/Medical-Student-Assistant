@@ -1,0 +1,88 @@
+import logging
+from typing import List, Dict
+from pinecone import Pinecone, ServerlessSpec
+
+from rag_application.config.settings import Settings
+from rag_application.vectorstore.base import VectorStoreInterface
+from rag_application.utils.exceptions import VectorStoreError
+
+logger = logging.getLogger(__name__)
+
+
+class PineconeVectorStore(VectorStoreInterface):
+    def __init__(
+        self,
+        settings: Settings,
+        dimension: int
+    ):
+        self.pc = Pinecone(api_key=settings.pinecone_api_key)
+        self.index_name = settings.pinecone_index_name
+
+        if not self.pc.has_index(self.index_name):
+            self.pc.create_index(
+                name=self.index_name,
+                dimension=dimension,
+                metric="cosine",
+                spec=ServerlessSpec(
+                    cloud="aws",
+                    region="us-east-1"
+                )
+            )
+            logger.info("Created Pinecone index: %s", self.index_name)
+
+        self.index = self.pc.Index(self.index_name)
+
+    def store_vectors(self, vector_data: List[Dict]) -> None:
+        try:
+            vectors = [
+                {
+                    "id": item["id"],
+                    "values": item["vector"],
+                    "metadata": item["metadata"]
+                }
+                for item in vector_data
+            ]
+
+            self.index.upsert(vectors=vectors)
+
+            logger.info("Stored %d vectors", len(vectors))
+
+        except Exception as e:
+            logger.exception("Failed to store vectors")
+            raise VectorStoreError(str(e)) from e
+
+    def retrieve_vectors(self, query_vector, top_k: int = 5):
+        try:
+            result = self.index.query(
+                vector=query_vector,
+                top_k=top_k,
+                include_metadata=True
+            )
+
+            logger.info(
+                "Retrieved %d matches",
+                len(result["matches"])
+            )
+
+            return result["matches"]
+
+        except Exception as e:
+            logger.exception("Query failed")
+            raise VectorStoreError(str(e)) from e
+        
+    def similarity_search(
+            self, 
+            query_vector, 
+            top_k: int = 5
+    ):
+        result = self.index.query(
+            vector=query_vector,
+            top_k=top_k,
+            include_metadata=True
+        )
+
+        if "matches" not in result:
+            logger.error("No matches found in the query result")
+            raise VectorStoreError("No matches found in the query result")
+        
+        return result["matches"]

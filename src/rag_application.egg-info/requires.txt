@@ -1,0 +1,16 @@
+pypdf
+python-dotenv
+google-genai
+sentence-transformers
+torch
+pinecone
+langchain-text-splitters
+fastapi
+uvicorn
+
+[dev]
+pytest
+pytest-mock
+pytest-cov
+black
+ruff
