@@ -24,3 +24,10 @@ rag_app_env/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Test files temporarily ignored
+tests/
+scripts/
+
+# Test data temporarily ignored
+data/*
