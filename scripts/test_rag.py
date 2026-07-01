@@ -1,7 +1,7 @@
-import os
 from dotenv import load_dotenv
 
-from rag_application.vectorstore.pinecone_store import VectorStore
+from rag_application.config.settings import load_settings
+from rag_application.vectorstore.pinecone_store import PineconeVectorStore
 from rag_application.retrieval.retriever import Retriever
 from rag_application.llm.generator import GeminiGenerator
 from rag_application.services.rag_service import RAGService
@@ -11,6 +11,7 @@ from sentence_transformers import SentenceTransformer
 def main():
 
     load_dotenv()
+    settings = load_settings()
 
     # Models
     embedding_model = SentenceTransformer(
@@ -19,9 +20,8 @@ def main():
     dimension = len(embedding_model.encode("test"))
 
     # Vector store
-    vector_store = VectorStore(
-        api_key=os.getenv("PINECONE_API_KEY"),
-        index_name=os.getenv("PINECONE_INDEX_NAME"),
+    vector_store = PineconeVectorStore(
+        settings=settings,
         dimension=dimension
     )
 

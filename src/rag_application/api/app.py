@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 
 from rag_application.api.routers.health import router as health_router
+from rag_application.api.routers.ingest import router as ingest_router
 from rag_application.api.routers.query import router as query_router
 
 load_dotenv(
@@ -23,6 +24,12 @@ def create_app() -> FastAPI:
         health_router,
         prefix="/health",
         tags=["Health"]
+    )
+
+    app.include_router(
+        ingest_router,
+        prefix="/api",
+        tags=["Ingestion"]
     )
 
     app.include_router(

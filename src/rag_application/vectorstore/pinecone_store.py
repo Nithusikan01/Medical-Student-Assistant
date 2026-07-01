@@ -86,3 +86,6 @@ class PineconeVectorStore(VectorStoreInterface):
             raise VectorStoreError("No matches found in the query result")
         
         return result["matches"]
+
+
+VectorStore = PineconeVectorStore

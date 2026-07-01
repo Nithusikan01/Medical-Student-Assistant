@@ -27,9 +27,14 @@ def test_retrieval_pipeline():
 
     document_loader = DocumentLoader()
 
-    chunker = TextChunker()
+    
+    chunker = TextChunker(
+        config=settings.chunking_config()
+    )
 
-    embedder = Embedder(settings.embedding_model_name)
+    embedder = Embedder(
+        config=settings.embedding_config()
+    )
     dimension = len(embedder.model.encode("test"))
 
     vector_data_processor = VectorDataProcessor()

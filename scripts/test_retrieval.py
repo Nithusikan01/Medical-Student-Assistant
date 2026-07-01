@@ -2,10 +2,11 @@ from dotenv import load_dotenv
 import logging
 
 from rag_application.config.settings import load_settings
+from rag_application.config.component_configs import EmbeddingConfig
 from rag_application.ingestion.embedder import Embedder
 from rag_application.retrieval.query_service import QueryService
 from rag_application.retrieval.retriever import Retriever
-from rag_application.vectorstore.pinecone_store import VectorStore
+from rag_application.vectorstore.pinecone_store import PineconeVectorStore
 
 
 def main():
@@ -13,18 +14,23 @@ def main():
 
     settings = load_settings()
 
-    embedder = Embedder(settings.embedding_model_name)
+    embedder = Embedder(
+        config=EmbeddingConfig(
+            model_name=settings.embedding_model_name,
+            chunk_size=settings.chunk_size,
+            chunk_overlap=settings.chunk_overlap
+        )
+    )
     dimension = len(embedder.model.encode("test"))
 
-    vector_store = VectorStore(
-        api_key=settings.pinecone_api_key,
-        index_name=settings.pinecone_index_name,
+    vector_store = PineconeVectorStore(
+        settings=settings,
         dimension=dimension
     )
 
     retriever = Retriever(
         vector_store=vector_store,
-        embedding_model=embedder
+        embedding_model=embedder.model
     )
     query_service = QueryService(retriever)
 

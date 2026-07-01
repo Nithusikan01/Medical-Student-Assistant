@@ -3,6 +3,7 @@ from pathlib import Path
 import logging
 
 from rag_application.config.settings import load_settings
+from rag_application.config.component_configs import ChunkingConfig, EmbeddingConfig
 from rag_application.utils.logger import setup_logging
 
 from rag_application.ingestion.document_loader import DocumentLoader
@@ -43,13 +44,24 @@ def main():
     # 3. Initialize components
     # -------------------------------------------------
     document_loader = DocumentLoader()
-    chunker = TextChunker()
+    chunker = TextChunker(
+        config=ChunkingConfig(
+            chunk_size=settings.chunk_size,
+            chunk_overlap=settings.chunk_overlap
+        )
+    )
     vector_data_processor = VectorDataProcessor()
 
     # --------------------------------------------------
     # 4. Initialize embedder
     # --------------------------------------------------
-    embedder = Embedder(settings.embedding_model_name)
+    embedder = Embedder(
+        config=EmbeddingConfig(
+            model_name=settings.embedding_model_name,
+            chunk_size=settings.chunk_size,
+            chunk_overlap=settings.chunk_overlap
+        )
+    )
 
     # --------------------------------------------------
     # 5. Vector store (dimension derived safely from embedder)

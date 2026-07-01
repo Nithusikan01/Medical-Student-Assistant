@@ -1,5 +1,6 @@
-from typing import List
 import logging
+from os import PathLike
+from typing import List
 
 from pypdf import PdfReader
 
@@ -10,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 class DocumentLoader:
 
-    def load(self, file_path: str) -> List[str]:
+    def load(self, file_path: str | PathLike[str]) -> List[str]:
 
         try:
             reader = PdfReader(file_path)

@@ -20,3 +20,10 @@ class GenerationConfig:
 class ChunkingConfig:
     chunk_size: int
     chunk_overlap: int
+
+@dataclass(frozen=True)
+class RetrievalConfig:
+    initial_retrieval_k: int = 20
+    reranking_k: int = 8
+    final_context_k: int = 5
+    similarity_threshold: float = 0.7

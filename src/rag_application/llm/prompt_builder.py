@@ -1,13 +1,15 @@
-from typing import List
+from typing import List, Optional
+from rag_application.conversation.schemas import ChatMessage
 from rag_application.retrieval.schemas import RetrievedChunk
-
 
 class PromptBuilder:
 
     @staticmethod
     def build_prompt(
         question: str,
-        chunks: List[RetrievedChunk]
+        chunks: List[RetrievedChunk],
+        summary: Optional[str] = None,
+        recent_messages: Optional[List[ChatMessage]] = None
     ) -> str:
 
         context = "\n\n".join(
@@ -16,6 +18,11 @@ class PromptBuilder:
                 for c in chunks
             ]
         )
+
+        recent_messages_str = "\n".join(
+            f"{msg.role}: {msg.content}"
+            for msg in recent_messages
+        ) if recent_messages else "No recent messages available."
 
 
         prompt = f"""
@@ -28,6 +35,12 @@ RULES:
 
 CONTEXT:
 {context}
+
+SUMMARY:
+{summary if summary else "No summary available."}
+
+RECENT MESSAGES:
+{recent_messages_str}
 
 QUESTION:
 {question}
