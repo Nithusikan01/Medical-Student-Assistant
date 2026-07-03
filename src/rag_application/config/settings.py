@@ -14,11 +14,11 @@ class Settings:
     pinecone_index_name: str
     gemini_api_key: str 
 
-    chunk_size: int = 500
-    chunk_overlap: int = 50
+    chunk_size: int = 1000
+    chunk_overlap: int = 100
 
-    retrieval_top_k: int = 5
-    initial_retrieval_k: int = 20
+    candidate_k: int = 20
+    dense_top_k: int = 20
     reranking_k: int = 8
     final_context_k: int = 5
     similarity_threshold: float = 0.7
@@ -53,7 +53,8 @@ class Settings:
 
     def retrieval_config(self) -> RetrievalConfig:
         return RetrievalConfig(
-            initial_retrieval_k=self.initial_retrieval_k,
+            candidate_k=self.candidate_k,
+            dense_top_k=self.dense_top_k,
             reranking_k=self.reranking_k,
             final_context_k=self.final_context_k,
             similarity_threshold=self.similarity_threshold
@@ -85,8 +86,8 @@ def load_settings() -> Settings:
         gemini_api_key=gemini_api_key,
         chunk_size=int(os.getenv("CHUNK_SIZE", "500")),
         chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "50")),
-        retrieval_top_k=int(os.getenv("RETRIEVAL_TOP_K", "5")),
-        initial_retrieval_k=int(os.getenv("INITIAL_RETRIEVAL_K", "20")),
+        candidate_k=int(os.getenv("CANDIDATE_K", "20")),
+        dense_top_k=int(os.getenv("DENSE_TOP_K", "20")),
         reranking_k=int(os.getenv("RERANKING_K", "8")),
         final_context_k=int(os.getenv("FINAL_CONTEXT_K", "5")),
         similarity_threshold=float(os.getenv("SIMILARITY_THRESHOLD", "0.7")),

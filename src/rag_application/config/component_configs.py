@@ -23,7 +23,8 @@ class ChunkingConfig:
 
 @dataclass(frozen=True)
 class RetrievalConfig:
-    initial_retrieval_k: int = 20
+    candidate_k: int = 20
+    dense_top_k: int = 20
     reranking_k: int = 8
     final_context_k: int = 5
     similarity_threshold: float = 0.7
