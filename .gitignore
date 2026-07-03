@@ -27,7 +27,7 @@ Thumbs.db
 
 # Test files temporarily ignored
 tests/
-scripts/
+scripts/*
 
 # Test data temporarily ignored
 data/*
