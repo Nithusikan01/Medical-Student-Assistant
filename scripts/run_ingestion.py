@@ -1,68 +1,84 @@
-from dotenv import load_dotenv
-from pathlib import Path
+from __future__ import annotations
+
+import argparse
 import logging
+import sys
+from pathlib import Path
 
-from rag_application.config.settings import load_settings
-from rag_application.config.component_configs import ChunkingConfig, EmbeddingConfig
-from rag_application.utils.logger import setup_logging
+from dotenv import load_dotenv
 
-from rag_application.ingestion.document_loader import DocumentLoader
-from rag_application.ingestion.chunker import TextChunker
-from rag_application.ingestion.embedder import Embedder
-from rag_application.ingestion.processor import VectorDataProcessor
-from rag_application.ingestion.pipeline import IngestionPipeline
-from rag_application.vectorstore.pinecone_store import PineconeVectorStore
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 
-def main():
-    load_dotenv()
-    setup_logging()
+DEFAULT_PDF_PATH = Path(__file__).resolve().parents[1] / "data" / "raw" / "cv.pdf"
 
-    logger = logging.getLogger(__name__)
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Ingest a local PDF into Pinecone and refresh the BM25 corpus file."
+    )
+    parser.add_argument(
+        "file_path",
+        nargs="?",
+        default=str(DEFAULT_PDF_PATH),
+        help="Path to a local PDF file. Defaults to data/raw/cv.pdf.",
+    )
+    return parser.parse_args()
+
+
+def build_ingestion_pipeline() -> IngestionPipeline:
+    from rag_application.config.settings import load_settings
+    from rag_application.ingestion.chunker import TextChunker
+    from rag_application.ingestion.document_loader import DocumentLoader
+    from rag_application.ingestion.embedder import Embedder
+    from rag_application.ingestion.pipeline import IngestionPipeline
+    from rag_application.ingestion.processor import VectorDataProcessor
+    from rag_application.vectorstore.pinecone_store import PineconeVectorStore
 
     settings = load_settings()
 
-    file_path = Path(__file__).resolve().parents[1] / "data" / "raw" / "cv.pdf"
+    embedder = Embedder(settings.embedding_config())
+    dimension = len(embedder.model.encode("dimension_check"))
 
-    document_loader = DocumentLoader()
-
-    chunker = TextChunker(
-        config=ChunkingConfig(
-        chunk_size=settings.chunk_size,
-        chunk_overlap=settings.chunk_overlap
-        )
-    )
-
-    embedder = Embedder(
-        config=EmbeddingConfig(
-            model_name=settings.embedding_model_name,
-            chunk_size=settings.chunk_size,
-            chunk_overlap=settings.chunk_overlap
-        )
-    )
-
-    # temporary embedder init to get dimension
-    dim = len(embedder.model.encode("test"))
-
-    vector_data_processor = VectorDataProcessor()
-
-    vector_store = PineconeVectorStore(
-        settings=settings,
-        dimension=dim
-    )
-
-    pipeline = IngestionPipeline(
-        document_loader=document_loader,  # Initialize properly in main.py
-        chunker=chunker,          # Initialize properly in main.py
+    return IngestionPipeline(
+        document_loader=DocumentLoader(),
+        chunker=TextChunker(settings.chunking_config()),
         embedder=embedder,
-        vector_data_processor=vector_data_processor,  # Initialize properly in main.py
-        vector_store=vector_store
+        vector_data_processor=VectorDataProcessor(),
+        vector_store=PineconeVectorStore(
+            settings=settings,
+            dimension=dimension,
+        ),
     )
 
-    pipeline.run(str(file_path))
+
+def main() -> int:
+    args = parse_args()
+    load_dotenv()
+
+    from rag_application.utils.logger import setup_logging
+
+    setup_logging()
+
+    logger = logging.getLogger(__name__)
+    file_path = Path(args.file_path).expanduser().resolve()
+
+    if not file_path.exists():
+        print(f"File not found: {file_path}")
+        return 1
+
+    if file_path.suffix.lower() != ".pdf":
+        print(f"Only PDF ingestion is supported: {file_path}")
+        return 1
+
+    pipeline = build_ingestion_pipeline()
+    pipeline.run(file_path)
 
     logger.info("Pipeline execution finished")
+    print(f"Ingested PDF: {file_path}")
+    print("Updated Pinecone vectors and storage/bm25_corpus.json")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

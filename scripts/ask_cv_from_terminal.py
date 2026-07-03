@@ -1,58 +1,88 @@
 from __future__ import annotations
 
+import argparse
 import sys
 import uuid
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
-from sentence_transformers import SentenceTransformer
 
-from rag_application.config.component_configs import GenerationConfig
-from rag_application.config.settings import load_settings
-from rag_application.conversation.query_rewriter import QueryRewriter
-from rag_application.conversation.summarizer import ConversationSummarizer
-from rag_application.conversation.session_manager import SessionManager
-from rag_application.llm.generator import GeminiGenerator
-from rag_application.retrieval.retriever import Retriever
-from rag_application.services.history_aware_rag_service import HistoryAwareRAGService
-from rag_application.vectorstore.pinecone_store import PineconeVectorStore as VectorStore
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+if TYPE_CHECKING:
+    from rag_application.retrieval.schemas import RetrievedChunk
+    from rag_application.services.history_aware_rag_service import HistoryAwareRAGService
 
 
 DEFAULT_QUESTION = "Who is the person in the CV?"
+EXIT_COMMANDS = {"exit", "quit"}
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Start a history-aware RAG chat session in the terminal."
+    )
+    parser.add_argument(
+        "question",
+        nargs="*",
+        help="Optional first question. If omitted, a default CV question is used.",
+    )
+    parser.add_argument(
+        "--conversation-id",
+        default=None,
+        help="Reuse a conversation id for follow-up context. Defaults to a new UUID.",
+    )
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=5,
+        help="Number of source chunks to use for each answer.",
+    )
+    parser.add_argument(
+        "--hide-memory",
+        action="store_true",
+        help="Do not print memory debug information after each answer.",
+    )
+    parser.add_argument(
+        "--hide-sources",
+        action="store_true",
+        help="Do not print retrieved source chunks after each answer.",
+    )
+    return parser.parse_args()
 
 
 def build_history_aware_rag() -> HistoryAwareRAGService:
-    settings = load_settings()
+    from rag_application.wiring.rag_factory import build_history_aware_rag_service
 
-    embedding_model = SentenceTransformer(settings.embedding_model_name)
-    dimension = len(embedding_model.encode("dimension_check"))
+    return build_history_aware_rag_service()
 
-    vector_store = VectorStore(settings=settings, dimension=dimension)
-    retriever = Retriever(vector_store=vector_store, embedding_model=embedding_model)
 
-    generator = GeminiGenerator(
-        config=GenerationConfig(
-            model_name=settings.generation_model_name,
-            api_key=settings.gemini_api_key,
+def print_sources(chunks: list[RetrievedChunk]) -> None:
+    if not chunks:
+        print("\nSources: [none]\n")
+        return
+
+    print("\nSources:")
+    for index, chunk in enumerate(chunks, start=1):
+        source = chunk.metadata.get("source", "unknown")
+        method = chunk.retrieval_method or "unknown"
+        preview = " ".join(chunk.text.split())
+        if len(preview) > 220:
+            preview = f"{preview[:217]}..."
+
+        print(
+            f"  {index}. {chunk.id} | score={chunk.score:.4f} "
+            f"| method={method} | source={source}"
         )
-    )
-
-    session_manager = SessionManager()
-    query_rewriter = QueryRewriter(generator=generator)
-    summarizer = ConversationSummarizer(generator=generator)
-
-    return HistoryAwareRAGService(
-        retriever=retriever,
-        generator=generator,
-        session_manager=session_manager,
-        query_rewriter=query_rewriter,
-        summarizer=summarizer,
-    )
+        print(f"     {preview}")
+    print()
 
 
 def print_memory_debug(rag: HistoryAwareRAGService, conversation_id: str) -> None:
     memory = rag.session_manager.get_memory(conversation_id)
 
-    print("\n--- Memory Debug ---")
+    print("--- Memory Debug ---")
     print(f"Summary: {memory.get_summary() or '[empty]'}")
 
     recent_messages = memory.get_recent_messages()
@@ -65,18 +95,26 @@ def print_memory_debug(rag: HistoryAwareRAGService, conversation_id: str) -> Non
     print("--------------------\n")
 
 
+def read_next_question() -> str:
+    try:
+        return input("You: ").strip()
+    except EOFError:
+        return "exit"
+
+
 def main() -> int:
+    args = parse_args()
     load_dotenv()
 
     rag = build_history_aware_rag()
-    conversation_id = str(uuid.uuid4())
+    conversation_id = args.conversation_id or str(uuid.uuid4())
 
-    print("Conversational CV RAG terminal")
+    print("Conversational RAG terminal")
     print("Type your question and press Enter.")
     print("Type 'exit' or 'quit' to stop.\n")
     print(f"Conversation ID: {conversation_id}\n")
 
-    first_question = " ".join(sys.argv[1:]).strip()
+    first_question = " ".join(args.question).strip()
     pending_question = first_question or DEFAULT_QUESTION
 
     while True:
@@ -84,25 +122,32 @@ def main() -> int:
         pending_question = ""
 
         if not question:
-            question = input("You: ").strip()
+            question = read_next_question()
 
-        if question.lower() in {"exit", "quit"}:
+        if question.lower() in EXIT_COMMANDS:
             break
 
         if not question:
             continue
 
         try:
-            answer = rag.answer(conversation_id=conversation_id, question=question)
-            print(f"\nAssistant: {answer}")
-            print_memory_debug(rag, conversation_id)
+            answer, chunks = rag.answer_with_sources(
+                conversation_id=conversation_id,
+                question=question,
+                top_k=args.top_k,
+            )
+            print(f"\nAssistant: {answer}\n")
+
+            if not args.hide_sources:
+                print_sources(chunks)
+
+            if not args.hide_memory:
+                print_memory_debug(rag, conversation_id)
+
         except Exception as exc:
             print(f"\nError: {exc}\n")
 
-        next_question = input("You: ").strip()
-        if next_question.lower() in {"exit", "quit"}:
-            break
-        pending_question = next_question
+        pending_question = read_next_question()
 
     return 0
 
