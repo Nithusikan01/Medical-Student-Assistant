@@ -16,8 +16,9 @@ router = APIRouter()
 
 
 @lru_cache()
-def get_ingestion_pipeline() -> IngestionPipeline:
+def get_ingestion_pipeline():
     settings = load_settings()
+
     embedder = Embedder(settings.embedding_config())
     dimension = len(embedder.model.encode("dimension_check"))
 
@@ -35,27 +36,24 @@ def get_ingestion_pipeline() -> IngestionPipeline:
 
 @router.post("/ingest", response_model=IngestResponse)
 def ingest_document(request: IngestRequest) -> IngestResponse:
+
     file_path = Path(request.file_path).expanduser()
 
     if not file_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"File not found: {file_path}",
-        )
+        raise HTTPException(404, f"File not found: {file_path}")
 
     if file_path.suffix.lower() != ".pdf":
-        raise HTTPException(
-            status_code=400,
-            detail="Only PDF ingestion is currently supported.",
-        )
+        raise HTTPException(400, "Only PDF ingestion supported.")
 
     try:
-        get_ingestion_pipeline().run(file_path)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        pipeline = get_ingestion_pipeline()
+        pipeline.run(file_path)
 
-    return IngestResponse(
-        file_path=str(file_path),
-        status="success",
-        message="Document ingested successfully.",
-    )
+        return IngestResponse(
+            file_path=str(file_path),
+            status="success",
+            message="Document ingested successfully."
+        )
+
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
