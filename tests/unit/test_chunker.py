@@ -1,6 +1,7 @@
-from rag_application.ingestion.chunker import TextChunker
 from rag_application.config.component_configs import ChunkingConfig
-import pytest
+from rag_application.ingestion.chunker import TextChunker
+from rag_application.ingestion.schemas import DocumentChunk
+
 
 def test_chunk_pages():
     pages = [
@@ -13,17 +14,20 @@ def test_chunk_pages():
             chunk_overlap=20
         )
     )
-    chunks = chunker.chunk(pages)
+    chunks = chunker.chunk(pages, source="unit-test.txt")
 
     assert len(chunks) > 1
+    assert all(isinstance(chunk, DocumentChunk) for chunk in chunks)
+    assert chunks[0].id == "unit-test.txt_chunk_0"
+    assert chunks[0].source == "unit-test.txt"
 
 
 def test_empty_pages():
-    with pytest.raises(ValueError):
-        chunker = TextChunker(
-            ChunkingConfig(
-                chunk_size=100,
-                chunk_overlap=20
-            )
+    chunker = TextChunker(
+        ChunkingConfig(
+            chunk_size=100,
+            chunk_overlap=20
         )
-        chunker.chunk([])
+    )
+
+    assert chunker.chunk([], source="empty.txt") == []
