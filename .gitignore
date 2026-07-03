@@ -31,3 +31,4 @@ scripts/
 
 # Test data temporarily ignored
 data/*
+storage/*

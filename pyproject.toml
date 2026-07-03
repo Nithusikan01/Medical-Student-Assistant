@@ -20,6 +20,7 @@ dependencies = [
 "sentence-transformers",
 "torch",
 "pinecone",
+"rank-bm25",
 "langchain-text-splitters",
 "fastapi",
 "uvicorn"
