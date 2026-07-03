@@ -3,8 +3,10 @@ import logging
 
 from sentence_transformers import SentenceTransformer
 
+from rag_application.ingestion.schemas import DocumentChunk
 from rag_application.utils.exceptions import EmbeddingError
 from rag_application.config.component_configs import EmbeddingConfig
+    
 
 
 logger = logging.getLogger(__name__)
@@ -16,9 +18,10 @@ class Embedder:
     ):
         self.model = SentenceTransformer(config.model_name)
 
-    def embed(self, chunks: List[str]) -> List[List[float]]:
+    def embed(self, chunks: List[DocumentChunk]) -> List[List[float]]:
         try:
-            embeddings = self.model.encode(chunks).tolist()
+            texts = [chunk.text for chunk in chunks]
+            embeddings = self.model.encode(texts).tolist()
 
             if not embeddings:
                 raise EmbeddingError("Failed to generate embeddings.")

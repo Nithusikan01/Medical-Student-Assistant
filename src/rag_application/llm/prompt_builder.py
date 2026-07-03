@@ -2,6 +2,7 @@ from typing import List, Optional
 from rag_application.conversation.schemas import ChatMessage
 from rag_application.retrieval.schemas import RetrievedChunk
 
+
 class PromptBuilder:
 
     @staticmethod
@@ -12,40 +13,78 @@ class PromptBuilder:
         recent_messages: Optional[List[ChatMessage]] = None
     ) -> str:
 
-        context = "\n\n".join(
-            [
-                f"[Score: {c.score:.2f}]\n{c.text}"
-                for c in chunks
-            ]
-        )
+        # -------------------------
+        # 1. Structured context blocks
+        # -------------------------
+        context_blocks = []
 
-        recent_messages_str = "\n".join(
-            f"{msg.role}: {msg.content}"
-            for msg in recent_messages
-        ) if recent_messages else "No recent messages available."
+        for i, c in enumerate(chunks, start=1):
 
+            context_blocks.append(
+                f"""
+[Context {i}]
+Source ID: {c.id}
+Content:
+{c.text}
+"""
+            )
 
+        context = "\n".join(context_blocks)
+
+        # -------------------------
+        # 2. Recent messages formatting
+        # -------------------------
+        if recent_messages:
+            recent_messages_str = "\n".join(
+                f"{m.role}: {m.content}"
+                for m in recent_messages
+            )
+        else:
+            recent_messages_str = "No recent messages available."
+
+        # -------------------------
+        # 3. Build prompt
+        # -------------------------
         prompt = f"""
-You are an intelligent assistant. Use the context below to answer the question.
+You are a highly accurate retrieval-based assistant.
 
-RULES:
-- If the answer is not in the context, say "I don't know based on the provided document."
-- Be concise and accurate.
-- Do not hallucinate.
+You MUST follow these rules:
 
-CONTEXT:
-{context}
+- Answer ONLY using the provided context
+- If the answer is not in the context, say:
+  "I don't know based on the provided document."
+- Do NOT guess or hallucinate
+- Prefer exact names, titles, and entities from context
+- Be concise and precise
 
-SUMMARY:
+========================
+CONVERSATION SUMMARY
+========================
 {summary if summary else "No summary available."}
 
-RECENT MESSAGES:
+========================
+RECENT MESSAGES
+========================
 {recent_messages_str}
 
-QUESTION:
+========================
+CONTEXT
+========================
+{context}
+
+========================
+QUESTION
+========================
 {question}
 
-ANSWER:
+========================
+ANSWER
+Answer:
+Evidence:
+- Context 1
+- Context 3
+Final Answer:
+========================
 """
 
         return prompt.strip()

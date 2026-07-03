@@ -51,7 +51,11 @@ class PineconeVectorStore(VectorStoreInterface):
             logger.exception("Failed to store vectors")
             raise VectorStoreError(str(e)) from e
 
-    def retrieve_vectors(self, query_vector, top_k: int = 5):
+    def retrieve_vectors(
+            self, 
+            query_vector, 
+            top_k: int = 5
+    ):
         try:
             result = self.index.query(
                 vector=query_vector,
@@ -70,22 +74,14 @@ class PineconeVectorStore(VectorStoreInterface):
             logger.exception("Query failed")
             raise VectorStoreError(str(e)) from e
         
-    def similarity_search(
-            self, 
-            query_vector, 
-            top_k: int = 5
-    ):
-        result = self.index.query(
-            vector=query_vector,
-            top_k=top_k,
-            include_metadata=True
-        )
-
-        if "matches" not in result:
-            logger.error("No matches found in the query result")
-            raise VectorStoreError("No matches found in the query result")
-        
-        return result["matches"]
+    def delete_vectors(self, vector_ids: List[str]) -> None:
+        try:
+            self.index.delete(ids=vector_ids)
+            logger.info("Deleted %d vectors", len(vector_ids))
+        except Exception as e:
+            logger.exception("Failed to delete vectors")
+            raise VectorStoreError(str(e)) from e
+    
 
 
 VectorStore = PineconeVectorStore

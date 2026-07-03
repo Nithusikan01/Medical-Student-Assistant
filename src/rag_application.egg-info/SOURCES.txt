@@ -31,7 +31,7 @@ src/rag_application/retrieval/__init__.py
 src/rag_application/retrieval/hybrid_search.py
 src/rag_application/retrieval/query_service.py
 src/rag_application/retrieval/reranker.py
-src/rag_application/retrieval/retriever.py
+src/rag_application/retrieval/dense_retriever.py
 src/rag_application/retrieval/schemas.py
 src/rag_application/services/__init__.py
 src/rag_application/services/rag_service.py

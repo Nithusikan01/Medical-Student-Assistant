@@ -3,34 +3,37 @@ from rag_application.conversation.memory import ConversationMemory
 
 
 class ConversationSummarizer:
-    def __init__(
-            self, 
-            generator: GeminiGenerator
-        ):
+
+    def __init__(self, generator: GeminiGenerator):
         self.generator = generator
 
-    def summarize(
-            self, 
-            conversation_memory: ConversationMemory
-    ) -> str:
-        
-        messages = conversation_memory.get_recent_messages()
+    def summarize(self, memory: ConversationMemory) -> str:
+
+        messages = memory.get_recent_messages()
 
         conversation_text = "\n".join(
-            f"{message.role}: {message.content}"
-            for message in messages
+            f"{m.role}: {m.content}"
+            for m in messages
         )
 
         prompt = f"""
-    Summarize the following conversation.
+You are a conversation summarizer.
 
-    Current summary:
-    {conversation_memory.summary}
+Your job is to maintain a compact memory of the conversation.
 
-    Recent messages:
-    {conversation_text}
+Existing summary:
+{memory.summary}
 
-    Return the updated summary of the conversation only.
+Recent conversation:
+{conversation_text}
+
+Rules:
+- Preserve important entities (names, projects, facts)
+- Remove repetition
+- Keep it concise but informative
+
+Return ONLY the updated summary.
 """
+
         response = self.generator.generate(prompt)
         return response.text.strip()

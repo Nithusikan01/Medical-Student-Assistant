@@ -9,10 +9,18 @@ class VectorStoreInterface(ABC):
         Store vectors in the vector database.
         """
         pass
+
     
     @abstractmethod
-    def similarity_search(self, query_vector, top_k: int = 5)-> List[Dict]:
+    def retrieve_vectors(self, query_vector, top_k: int = 5)-> List[Dict]:
         """
         Retrieve similar vectors from the vector database based on a query vector.
+        """
+        pass
+
+    @abstractmethod
+    def delete_vectors(self, vector_ids: List[str]) -> None:
+        """
+        Delete vectors from the vector database based on their IDs.
         """
         pass

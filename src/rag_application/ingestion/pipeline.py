@@ -1,3 +1,4 @@
+import json
 import logging
 from os import PathLike
 from pathlib import Path
@@ -26,21 +27,43 @@ class IngestionPipeline:
         self.vector_data_processor = vector_data_processor
         self.vector_store = vector_store
 
+    def _store_bm25_corpus(self, chunks):
+
+        corpus = [
+            {
+                "id": c.id,
+                "text": c.text
+            }
+            for c in chunks
+        ]
+
+        Path("storage").mkdir(exist_ok=True)
+
+        with open("storage/bm25_corpus.json", "w") as f:
+            json.dump(corpus, f)
+
     def run(self, file_path: str | PathLike[str]):
         logger.info("Starting ingestion pipeline for %s", file_path)
 
+        source = Path(file_path).name
+
         pages = self.document_loader.load(file_path)
 
-        chunks = self.chunker.chunk(pages)
+        chunks = self.chunker.chunk(
+            pages=pages,
+            source=source
+        )
 
         vectors = self.embedder.embed(chunks)
 
         vector_data = self.vector_data_processor.prepare(
             vectors=vectors,
-            chunks=chunks,
-            source=Path(file_path).name
+            chunks=chunks
         )
 
         self.vector_store.store_vectors(vector_data)
+
+        # Important Addition for BM25
+        self._store_bm25_corpus(chunks)
 
         logger.info("Completed ingestion pipeline for %s", file_path)
