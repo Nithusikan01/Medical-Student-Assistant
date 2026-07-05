@@ -1,8 +1,11 @@
+import json
 import logging
+from pathlib import Path
 
 from rag_application.config.settings import load_settings
 
 from rag_application.ingestion.embedder import Embedder
+from rag_application.ingestion.schemas import DocumentChunk
 from rag_application.vectorstore.pinecone_store import PineconeVectorStore
 from rag_application.indexes.bm25_index import BM25Index
 
@@ -22,6 +25,67 @@ from rag_application.conversation.summarizer import ConversationSummarizer
 from rag_application.services.history_aware_rag_service import HistoryAwareRAGService
 
 logger = logging.getLogger(__name__)
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_BM25_CORPUS_PATH = PROJECT_ROOT / "storage" / "bm25_corpus.json"
+
+
+def _parse_chunk_index(chunk_id: str, fallback: int) -> int:
+    marker = "_chunk_"
+    if marker not in chunk_id:
+        return fallback
+
+    try:
+        return int(chunk_id.rsplit(marker, 1)[1])
+    except ValueError:
+        return fallback
+
+
+def _parse_source(chunk_id: str) -> str:
+    marker = "_chunk_"
+    if marker not in chunk_id:
+        return "bm25_corpus"
+
+    return chunk_id.split(marker, 1)[0]
+
+
+def load_bm25_documents(
+    corpus_path: Path = DEFAULT_BM25_CORPUS_PATH,
+) -> list[DocumentChunk]:
+    if not corpus_path.exists():
+        logger.warning(
+            "BM25 corpus not found at %s. BM25 retrieval will be empty.",
+            corpus_path,
+        )
+        return []
+
+    with corpus_path.open("r", encoding="utf-8") as file:
+        rows = json.load(file)
+
+    documents = []
+    for index, row in enumerate(rows):
+        chunk_id = row["id"]
+        documents.append(
+            DocumentChunk(
+                id=chunk_id,
+                text=row["text"],
+                source=row.get("source", _parse_source(chunk_id)),
+                chunk_index=row.get(
+                    "chunk_index",
+                    _parse_chunk_index(chunk_id, index),
+                ),
+                page_number=row.get("page_number"),
+                timestamp=row.get("timestamp", 0),
+            )
+        )
+
+    logger.info(
+        "Loaded %d BM25 documents from %s",
+        len(documents),
+        corpus_path,
+    )
+    return documents
 
 
 def build_history_aware_rag_service() -> HistoryAwareRAGService:
@@ -56,12 +120,10 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
     )
 
     # -----------------------------
-    # 5. BBM25 Index + Retriever
+    # 5. BM25 Index + Retriever
     # -----------------------------
-    # NOTE:
-    # You MUST populate this from ingestion pipeline later.
-    # For now, we initialize empty index safely.
-    bm25_index = BM25Index(documents=[])    # placeholder corpus
+    bm25_documents = load_bm25_documents()
+    bm25_index = BM25Index(documents=bm25_documents)
 
     bm25_retriever = BM25Retriever(
         bm25_index=bm25_index

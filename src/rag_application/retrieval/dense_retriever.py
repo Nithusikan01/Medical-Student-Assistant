@@ -9,6 +9,13 @@ from rag_application.vectorstore.base import VectorStoreInterface
 
 logger = logging.getLogger(__name__)
 
+TEXT_METADATA_KEYS = {
+    "original_text",
+    "text",
+    "content",
+    "page_content",
+}
+
 
 class DenseRetriever(BaseRetriever):
     """
@@ -85,12 +92,18 @@ class DenseRetriever(BaseRetriever):
                 )
                 continue
 
+            response_metadata = {
+                key: value
+                for key, value in metadata.items()
+                if key not in TEXT_METADATA_KEYS
+            }
+
             retrieved_chunks.append(
                 RetrievedChunk(
                     id=match["id"],
                     score=float(match["score"]),
                     text=text,
-                    metadata=metadata,
+                    metadata=response_metadata,
                     retrieval_method="dense"
                 )
             )

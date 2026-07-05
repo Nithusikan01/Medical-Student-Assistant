@@ -52,7 +52,6 @@ class BM25Retriever(BaseRetriever):
                 "chunk_index": chunk.chunk_index,
                 "page_number": chunk.page_number,
                 "timestamp": chunk.timestamp,
-                "original_text": chunk.text,
             }
 
             retrieved_chunks.append(

@@ -30,7 +30,7 @@ def test_prepare_basic_output():
 
         assert item["id"] == f"chunk_{i}"
         assert item["vector"] == vectors[i]
-        assert item["metadata"]["original_text"] == chunks[i].text
+        assert item["metadata"]["text"] == chunks[i].text
         assert item["metadata"]["chunk_id"] == i
         assert item["metadata"]["source"] == "test_source"
         assert "timestamp" in item["metadata"]

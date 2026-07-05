@@ -21,7 +21,7 @@ class VectorDataProcessor:
         for vector, chunk in zip(vectors, chunks):
 
             metadata = {
-                "original_text": chunk.text,
+                "text": chunk.text,
                 "chunk_id": chunk.chunk_index,
                 "source": chunk.source,
                 "timestamp": timestamp,

@@ -21,6 +21,7 @@ def test_retrieve_returns_retrieved_chunks():
             "score": 0.95,
             "metadata": {
                 "original_text": "First chunk",
+                "source": "cv.pdf",
             },
         }
     ]
@@ -45,6 +46,7 @@ def test_retrieve_returns_retrieved_chunks():
     assert results[0].id == "chunk_1"
     assert results[0].score == 0.95
     assert results[0].text == "First chunk"
+    assert results[0].metadata == {"source": "cv.pdf"}
     assert results[0].retrieval_method == "dense"
 
 
@@ -130,6 +132,7 @@ def test_retrieve_uses_text_when_original_text_missing():
     results = retriever.retrieve("query")
 
     assert results[0].text == "Fallback text"
+    assert "text" not in results[0].metadata
 
 def test_retrieve_returns_empty_list():
 
