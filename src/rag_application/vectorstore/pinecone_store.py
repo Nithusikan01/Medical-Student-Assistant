@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import List, Dict
 from pinecone import Pinecone, ServerlessSpec
 
@@ -7,6 +8,18 @@ from rag_application.vectorstore.base import VectorStoreInterface
 from rag_application.utils.exceptions import VectorStoreError
 
 logger = logging.getLogger(__name__)
+
+
+def _is_transient_query_error(error: Exception) -> bool:
+    text = str(error).lower()
+    transient_markers = (
+        "getaddrinfo failed",
+        "connection",
+        "timed out",
+        "timeout",
+        "temporarily unavailable",
+    )
+    return any(marker in text for marker in transient_markers)
 
 
 class PineconeVectorStore(VectorStoreInterface):
@@ -56,23 +69,42 @@ class PineconeVectorStore(VectorStoreInterface):
             query_vector, 
             top_k: int = 5
     ):
-        try:
-            result = self.index.query(
-                vector=query_vector,
-                top_k=top_k,
-                include_metadata=True
-            )
+        max_attempts = 3
+        base_backoff_seconds = 1.5
 
-            logger.info(
-                "Retrieved %d matches",
-                len(result["matches"])
-            )
+        for attempt in range(1, max_attempts + 1):
+            try:
+                result = self.index.query(
+                    vector=query_vector,
+                    top_k=top_k,
+                    include_metadata=True
+                )
 
-            return result["matches"]
+                logger.info(
+                    "Retrieved %d matches",
+                    len(result["matches"])
+                )
 
-        except Exception as e:
-            logger.exception("Query failed")
-            raise VectorStoreError(str(e)) from e
+                return result["matches"]
+
+            except Exception as e:
+                if (
+                    attempt < max_attempts
+                    and _is_transient_query_error(e)
+                ):
+                    wait_seconds = base_backoff_seconds * attempt
+                    logger.warning(
+                        "Query attempt %d/%d failed with transient error: %s. Retrying in %.1fs",
+                        attempt,
+                        max_attempts,
+                        e,
+                        wait_seconds,
+                    )
+                    time.sleep(wait_seconds)
+                    continue
+
+                logger.exception("Query failed")
+                raise VectorStoreError(str(e)) from e
         
     def delete_vectors(self, vector_ids: List[str]) -> None:
         try:

@@ -29,6 +29,17 @@ class EvaluationSample:
 
 
 @dataclass
+class RetrievalTestSample:
+    """
+    Retrieval-only evaluation sample.
+    """
+
+    id: int
+    question: str
+    expected_chunk_ids: List[str] = field(default_factory=list)
+
+
+@dataclass
 class RetrievedChunkResult:
     id: str
     score: float
@@ -59,6 +70,7 @@ class GenerationEvaluationResult:
     generated_answer: str
 
     exact_match: float
+    f1: float
     rouge_l: float
     bleu: float
     semantic_similarity: float
@@ -91,3 +103,12 @@ class EvaluationReport:
     failed_questions: List[int] = field(default_factory=list)
 
     raw_results: List[RAGEvaluationResult] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class LLMJudgeResult:
+    faithfulness: float
+    correctness: float
+    completeness: float
+    groundedness: float
+    reason: str

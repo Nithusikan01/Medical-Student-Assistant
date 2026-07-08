@@ -1,3 +1,4 @@
+from textwrap import dedent
 from typing import List, Optional
 from rag_application.conversation.schemas import ChatMessage
 from rag_application.retrieval.schemas import RetrievedChunk
@@ -45,46 +46,38 @@ Content:
         # -------------------------
         # 3. Build prompt
         # -------------------------
-        prompt = f"""
-You are a highly accurate retrieval-based assistant.
+        prompt = dedent(
+            f"""
+            You are a retrieval-grounded answer generator.
 
-You MUST follow these rules:
+            Rules:
+            - Use only the provided context.
+            - Return the shortest answer that fully answers the question.
+            - For names, titles, roles, dates, numbers, certifications, and list items, prefer the exact wording from the context.
+            - Normalize obvious punctuation differences when it keeps the meaning identical, such as using "and" instead of "&" in titles.
+            - Do not paraphrase if the context already contains a precise phrase.
+            - If the answer is not explicitly supported by the context, return exactly: I don't know based on the provided document.
+            - Do not guess, expand, summarize, or add extra explanation.
+            - Output only the final answer text.
+            - Do not include labels such as Answer:, Evidence:, Final Answer:, bullets, or markdown.
 
-- Answer ONLY using the provided context
-- If the answer is not in the context, say:
-  "I don't know based on the provided document."
-- Do NOT guess or hallucinate
-- Prefer exact names, titles, and entities from context
-- Be concise and precise
+            If the question asks for a role/title/organization label, copy that phrase as a short noun phrase and do not add surrounding words.
+            If the context says "Research Manager & Team Lead of the DAP Team", respond with the short title phrase "Research Manager and Team Lead of the DAP Team".
 
-========================
-CONVERSATION SUMMARY
-========================
-{summary if summary else "No summary available."}
+            Conversation summary:
+            {summary if summary else "No summary available."}
 
-========================
-RECENT MESSAGES
-========================
-{recent_messages_str}
+            Recent messages:
+            {recent_messages_str}
 
-========================
-CONTEXT
-========================
-{context}
+            Context:
+            {context}
 
-========================
-QUESTION
-========================
-{question}
+            Question:
+            {question}
 
-========================
-ANSWER
-Answer:
-Evidence:
-- Context 1
-- Context 3
-Final Answer:
-========================
-"""
+            Answer:
+            """
+        )
 
         return prompt.strip()
