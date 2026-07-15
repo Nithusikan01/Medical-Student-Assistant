@@ -19,6 +19,7 @@ rag_app_env/
 .pytest_cache/
 
 # Logs
+logs/*
 *.log
 
 # OS files

@@ -1,6 +1,5 @@
 import json
 import logging
-from os import PathLike
 from pathlib import Path
 
 from rag_application.ingestion.document_loader import DocumentLoader
@@ -42,7 +41,7 @@ class IngestionPipeline:
         with open("storage/bm25_corpus.json", "w") as f:
             json.dump(corpus, f)
 
-    def run(self, file_path: str | PathLike[str]):
+    def run(self, file_path: str | Path):
         logger.info("Starting ingestion pipeline for %s", file_path)
 
         source = Path(file_path).name
