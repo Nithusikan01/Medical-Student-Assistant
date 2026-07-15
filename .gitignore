@@ -20,6 +20,7 @@ rag_app_env/
 
 # Logs
 logs/*
+
 *.log
 
 # OS files
@@ -27,7 +28,7 @@ logs/*
 Thumbs.db
 
 # Test files temporarily ignored
-tests/
+tests/*
 scripts/*
 
 # Test data temporarily ignored
