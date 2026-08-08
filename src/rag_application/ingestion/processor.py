@@ -1,36 +1,42 @@
-from typing import Dict, List
-import time
-from rag_application.ingestion.schemas import DocumentChunk
+import logging
+from typing import List
 
+from rag_application.ingestion.schemas import EmbeddedChunk
+from rag_application.vectorstore.schemas import (
+    VectorRecord,
+    VectorRecordMetadata,
+)
+
+logger = logging.getLogger(__name__)
 
 class VectorDataProcessor:
 
     def prepare(
         self,
-        vectors: List[List[float]],
-        chunks: List[DocumentChunk]
-    ) -> List[Dict]:
+        embedded_chunks: List[EmbeddedChunk],
+    ) -> List[VectorRecord]:
 
-        if len(vectors) != len(chunks):
-            raise ValueError("Mismatch between vectors and chunks")
+        records = []
 
-        timestamp = int(time.time())
+        for chunk in embedded_chunks:
 
-        vector_data = []
-
-        for vector, chunk in zip(vectors, chunks):
-
-            metadata = {
-                "text": chunk.text,
-                "chunk_id": chunk.chunk_index,
-                "source": chunk.source,
-                "timestamp": timestamp,
-            }
-
-            vector_data.append({
-                "id": chunk.id,
-                "vector": vector,
-                "metadata": metadata
-            })
-
-        return vector_data
+            records.append(
+                VectorRecord(
+                    id=chunk.id,
+                    values=chunk.embedding,
+                    metadata=VectorRecordMetadata(
+                        document_id=chunk.metadata.document_id,
+                        filename=chunk.metadata.filename,
+                        source_path=chunk.metadata.source_path,
+                        text=chunk.text,
+                        page_number=chunk.metadata.page_number,
+                        section_title=chunk.metadata.section_title,
+                        heading_level=chunk.metadata.heading_level,
+                        chunk_index=chunk.chunk_index,
+                        language=chunk.metadata.language,
+                    ),
+                )
+            )
+    
+        logger.info("Prepared %d vector records.", len(records))
+        return records

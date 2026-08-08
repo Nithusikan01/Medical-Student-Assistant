@@ -1,39 +1,135 @@
-from typing import List
 import logging
 
 from sentence_transformers import SentenceTransformer
 
-from rag_application.ingestion.schemas import DocumentChunk
-from rag_application.utils.exceptions import EmbeddingError
 from rag_application.config.component_configs import EmbeddingConfig
-    
-
+from rag_application.ingestion.schemas import (
+    DocumentChunk,
+    EmbeddedChunk,
+)
+from rag_application.utils.exceptions import EmbeddingError
 
 logger = logging.getLogger(__name__)
 
+
 class Embedder:
-    def __init__(
-            self, 
-            config: EmbeddingConfig
-    ):
-        self.model = SentenceTransformer(config.model_name)
+    """
+    Generates vector embeddings for document chunks.
+    """
+    @property
+    def dimension(self) -> int:
+        return self.model.encode("dimension_check").shape[0]
 
-    def embed(self, chunks: List[DocumentChunk]) -> List[List[float]]:
+    def __init__(self, config: EmbeddingConfig) -> None:
+        self.model_name = config.model_name
+        self.batch_size = config.batch_size
+
+        self.model = SentenceTransformer(self.model_name)
+
+    def embed(
+        self,
+        chunk: DocumentChunk,
+    ) -> EmbeddedChunk:
+        """
+        Generate an embedding for a single document chunk.
+        """
+
         try:
-            texts = [chunk.text for chunk in chunks]
-            embeddings = self.model.encode(texts).tolist()
 
-            if not embeddings:
-                raise EmbeddingError("Failed to generate embeddings.")
-            
-            logger.info(
-                "Embeded %d chunks (dim=%d)",
-                len(chunks),
-                len(embeddings[0]) 
+            embedding = self.model.encode(
+                chunk.text,
+                show_progress_bar=False,
+                convert_to_numpy=True,
+            ).tolist()
+
+            embedded_chunk = EmbeddedChunk(
+                id=chunk.id,
+                chunk_index=chunk.chunk_index,
+                text=chunk.text,
+                metadata=chunk.metadata,
+                embedding=embedding,
             )
 
-            return embeddings
-        
-        except Exception as e:
-            logger.exception("Error during embedding: %s", str(e))
-            raise EmbeddingError(f"Embedding failed: {str(e)}") from e
+            logger.debug(
+                "Generated embedding for chunk '%s' (dimension=%d)",
+                chunk.id,
+                self.dimension,
+            )
+
+            return embedded_chunk
+
+        except Exception as exc:
+
+            logger.exception(
+                "Failed to generate embedding for chunk '%s'.",
+                chunk.id,
+            )
+
+            raise EmbeddingError(
+                f"Failed to generate embedding for chunk '{chunk.id}'."
+            ) from exc
+
+    def embed_batch(
+        self,
+        chunks: list[DocumentChunk],
+    ) -> list[EmbeddedChunk]:
+        """
+        Generate embeddings for a batch of document chunks.
+        """
+
+        if not chunks:
+            logger.warning("No chunks provided for embedding.")
+            return []
+
+        try:
+
+            texts = [chunk.text for chunk in chunks]
+
+            vectors = self.model.encode(
+                texts,
+                batch_size=self.batch_size,
+                show_progress_bar=False,
+                convert_to_numpy=True,
+            )
+
+            embedded_chunks = [
+                self._to_embedded_chunk(chunk, vector.tolist())
+                for chunk, vector in zip(chunks, vectors)
+            ]
+
+            logger.info(
+                (
+                    "Generated %d embeddings "
+                    "(dimension=%d, model='%s', batch_size=%d)"
+                ),
+                len(embedded_chunks),
+                self.dimension, 
+                self.model_name,
+                self.batch_size,
+            )
+
+            return embedded_chunks
+
+        except Exception as exc:
+
+            logger.exception(
+                "Failed to generate embeddings using model '%s'.",
+                self.model_name,
+            )
+
+            raise EmbeddingError(
+                f"Embedding generation failed using model '{self.model_name}'."
+            ) from exc
+
+    def _to_embedded_chunk(
+        self,
+        chunk: DocumentChunk,
+        embedding: list[float],
+    ) -> EmbeddedChunk:
+        return EmbeddedChunk(
+            id=chunk.id,
+            text=chunk.text,
+            chunk_index=chunk.chunk_index,
+            metadata=chunk.metadata,
+            embedding=embedding,
+        )

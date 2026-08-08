@@ -14,30 +14,30 @@ class QueryRewriter:
         )
 
         prompt = f"""
-You are a query rewriting system for a RAG application.
+        You are a query rewriting system for a RAG application.
 
-Task:
-Rewrite the user query into a standalone search query.
+        Task:
+        Rewrite the user query into a standalone search query.
 
-Use the conversation context to resolve:
-- pronouns (he, she, they)
-- references (this project, that person)
-- missing entities
+        Use the conversation context to resolve:
+        - pronouns (he, she, they etc.)
+        - references (this project, that person)
+        - missing entities
 
-Conversation summary:
-{summary}
+        Conversation summary:
+        {summary}
 
-Recent messages:
-{recent_text}
+        Recent messages:
+        {recent_text}
 
-User query:
-{query}
+        User query:
+        {query}
 
-Rules:
-- Output ONLY the rewritten query
-- Do NOT answer the question
-- Do NOT explain
-"""
+        Rules:
+        - Output ONLY the rewritten query
+        - Do NOT answer the question
+        - Do NOT explain
+        """
 
         response = self.generator.generate(prompt)
         return response.text.strip()

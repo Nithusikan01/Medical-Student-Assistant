@@ -1,68 +1,149 @@
-import json
 import logging
 from pathlib import Path
 
-from rag_application.ingestion.document_loader import DocumentLoader
 from rag_application.ingestion.chunker import TextChunker
+from rag_application.ingestion.document_loader import DocumentLoader
 from rag_application.ingestion.embedder import Embedder
 from rag_application.ingestion.processor import VectorDataProcessor
-from rag_application.vectorstore.pinecone_store import PineconeVectorStore
+from rag_application.vectorstore.base import VectorStoreInterface
 
 logger = logging.getLogger(__name__)
 
 
 class IngestionPipeline:
+    """
+    Coordinates the complete document ingestion workflow.
+
+        File
+          │
+          ▼
+    DocumentLoader
+          │
+          ▼
+    LoadedDocument
+          │
+          ▼
+    TextChunker
+          │
+          ▼
+    DocumentChunk
+          │
+          ▼
+    Embedder
+          │
+          ▼
+    EmbeddedChunk
+          │
+          ▼
+    VectorDataProcessor
+          │
+          ▼
+    VectorRecord
+          │
+          ▼
+    VectorStore
+    """
+
     def __init__(
-            self, 
-            document_loader: DocumentLoader,
-            chunker: TextChunker,
-            embedder: Embedder, 
-            vector_data_processor: VectorDataProcessor,
-            vector_store: PineconeVectorStore
-    ):
-        self.document_loader = document_loader
+        self,
+        loader: DocumentLoader,
+        chunker: TextChunker,
+        embedder: Embedder,
+        processor: VectorDataProcessor,
+        vector_store: VectorStoreInterface,
+        batch_size: int,
+    ) -> None:
+        self.loader = loader
         self.chunker = chunker
         self.embedder = embedder
-        self.vector_data_processor = vector_data_processor
+        self.processor = processor
         self.vector_store = vector_store
+        self.batch_size = batch_size
 
-    def _store_bm25_corpus(self, chunks):
+    def ingest(
+        self,
+        file_path: str | Path,
+    ) -> None:
+        """
+        Ingest a document into the vector store.
+        """
 
-        corpus = [
-            {
-                "id": c.id,
-                "text": c.text
-            }
-            for c in chunks
-        ]
+        file_path = Path(file_path)
+        filename = file_path.name
 
-        Path("storage").mkdir(exist_ok=True)
-
-        with open("storage/bm25_corpus.json", "w") as f:
-            json.dump(corpus, f)
-
-    def run(self, file_path: str | Path):
-        logger.info("Starting ingestion pipeline for %s", file_path)
-
-        source = Path(file_path).name
-
-        pages = self.document_loader.load(file_path)
-
-        chunks = self.chunker.chunk(
-            pages=pages,
-            source=source
+        logger.info(
+            "Starting ingestion of '%s'.",
+            filename,
         )
 
-        vectors = self.embedder.embed(chunks)
+        try:
+            # ---------------------------------------------------------
+            # Load document
+            # ---------------------------------------------------------
+            document = self.loader.load(str(file_path))
 
-        vector_data = self.vector_data_processor.prepare(
-            vectors=vectors,
-            chunks=chunks
-        )
+            logger.info(
+                "Loaded '%s' (%d pages).",
+                document.filename,
+                len(document.pages),
+            )
 
-        self.vector_store.store_vectors(vector_data)
+            total_chunks = 0
+            total_vectors = 0
 
-        # Important Addition for BM25
-        self._store_bm25_corpus(chunks)
+            # ---------------------------------------------------------
+            # Process document in batches
+            # ---------------------------------------------------------
+            for batch_number, chunk_batch in enumerate(
+                self.chunker.chunk_batches(
+                    document=document,
+                    batch_size=self.batch_size,
+                ),
+                start=1,
+            ):
 
-        logger.info("Completed ingestion pipeline for %s", file_path)
+                logger.info(
+                    "Processing batch %d (%d chunks).",
+                    batch_number,
+                    len(chunk_batch),
+                )
+
+                # Generate embeddings
+                embedded_chunks = self.embedder.embed_batch(
+                    chunk_batch
+                )
+
+                # Convert to vector records
+                vector_records = self.processor.prepare(
+                    embedded_chunks
+                )
+
+                # Store vectors
+                self.vector_store.upsert(
+                    vector_records
+                )
+
+                total_chunks += len(chunk_batch)
+                total_vectors += len(vector_records)
+
+                logger.info(
+                    "Finished batch %d.",
+                    batch_number,
+                )
+
+            logger.info(
+                (
+                    "Successfully ingested '%s'. "
+                    "(chunks=%d, vectors=%d)"
+                ),
+                document.filename,
+                total_chunks,
+                total_vectors,
+            )
+
+        except Exception:
+            logger.exception(
+                "Failed to ingest document '%s'.",
+                filename,
+            )
+            raise
