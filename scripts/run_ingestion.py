@@ -1,84 +1,86 @@
 from __future__ import annotations
 
-import argparse
-import logging
-import sys
+import json
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from rag_application.config.settings import load_settings
+from rag_application.ingestion.bm25 import BM25CorpusBuilder
+from rag_application.ingestion.chunker import TextChunker
+from rag_application.ingestion.document_loader import DocumentLoader
+
+load_dotenv()
+
+PDF = Path("data/raw/cv.pdf")
+OUTPUT = Path("storage/test_bm25.json")
 
 
-DEFAULT_PDF_PATH = Path(__file__).resolve().parents[1] / "data" / "raw" / "cv.pdf"
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Ingest a local PDF into Pinecone and refresh the BM25 corpus file."
-    )
-    parser.add_argument(
-        "file_path",
-        nargs="?",
-        default=str(DEFAULT_PDF_PATH),
-        help="Path to a local PDF file. Defaults to data/raw/cv.pdf.",
-    )
-    return parser.parse_args()
-
-
-def build_ingestion_pipeline() -> IngestionPipeline:
-    from rag_application.config.settings import load_settings
-    from rag_application.ingestion.chunker import TextChunker
-    from rag_application.ingestion.document_loader import DocumentLoader
-    from rag_application.ingestion.embedder import Embedder
-    from rag_application.ingestion.pipeline import IngestionPipeline
-    from rag_application.ingestion.processor import VectorDataProcessor
-    from rag_application.vectorstore.pinecone_store import PineconeVectorStore
+def main():
 
     settings = load_settings()
 
-    embedder = Embedder(settings.embedding_config())
-    dimension = len(embedder.model.encode("dimension_check"))
+    loader = DocumentLoader()
+    chunker = TextChunker(settings.chunking_config())
 
-    return IngestionPipeline(
-        document_loader=DocumentLoader(),
-        chunker=TextChunker(settings.chunking_config()),
-        embedder=embedder,
-        vector_data_processor=VectorDataProcessor(),
-        vector_store=PineconeVectorStore(
-            settings=settings,
-            dimension=dimension,
-        ),
+    pages = loader.load(PDF)
+
+    chunks = chunker.chunk(
+        pages=pages,
+        source=PDF.name,
     )
 
+    with BM25CorpusBuilder(OUTPUT) as builder:
 
-def main() -> int:
-    args = parse_args()
-    load_dotenv()
+        for batch in chunker.chunk_batches(
+            pages=pages,
+            source=PDF.name,
+            batch_size=5,
+            
+        ):
+            builder.add_batch(batch)
 
-    from rag_application.utils.logger import setup_logging
+    corpus = json.loads(
+        OUTPUT.read_text(
+            encoding="utf-8"
+        )
+    )
 
-    setup_logging()
+    print()
 
-    logger = logging.getLogger(__name__)
-    file_path = Path(args.file_path).expanduser().resolve()
+    print("=" * 60)
+    print("BM25 Builder Verification")
+    print("=" * 60)
 
-    if not file_path.exists():
-        print(f"File not found: {file_path}")
-        return 1
+    print(f"Chunks      : {len(chunks)}")
+    print(f"BM25 Records: {len(corpus)}")
 
-    if file_path.suffix.lower() != ".pdf":
-        print(f"Only PDF ingestion is supported: {file_path}")
-        return 1
+    assert len(chunks) == len(corpus)
 
-    pipeline = build_ingestion_pipeline()
-    pipeline.run(file_path)
+    for chunk, record in zip(chunks, corpus):
 
-    logger.info("Pipeline execution finished")
-    print(f"Ingested PDF: {file_path}")
-    print("Updated Pinecone vectors and storage/bm25_corpus.json")
-    return 0
+        assert chunk.id == record["id"]
+        assert chunk.text == record["text"]
+
+        assert (
+            chunk.source
+            == record["metadata"]["source"]
+        )
+
+        assert (
+            chunk.chunk_index
+            == record["metadata"]["chunk_index"]
+        )
+
+        assert (
+            chunk.timestamp
+            == record["metadata"]["timestamp"]
+        )
+
+    print()
+    print("✅ BM25 corpus verified.")
+    print()
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()
