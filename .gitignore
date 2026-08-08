@@ -34,3 +34,5 @@ scripts/*
 # Test data temporarily ignored
 data/*
 storage/*
+storage/uploads/*
+!storage/uploads/.gitkeep

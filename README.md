@@ -390,3 +390,137 @@ python -m pytest tests\unit
 6. Move reranker model name and retrieval defaults fully into settings.
 7. Add `.env.example`, Docker, and CI.
 8. Add structured API errors for missing credentials, empty indexes, and model failures.
+
+
+## Current Plan
+
+```Ingestion Pipeline
+
+                                   ┌────────────────────┐
+                                   │   PDF Document     │
+                                   │ (Medical Textbook) │
+                                   └─────────┬──────────┘
+                                             │
+                                             ▼
+                             ┌────────────────────────────────┐
+                             │        1. Parser               │
+                             │--------------------------------│
+                             │ • Extract text                 │
+                             │ • Extract headings             │
+                             │ • Extract lists                │
+                             │ • Extract tables               │
+                             │ • Extract figures              │
+                             │ • Preserve reading order       │
+                             │ • Preserve parent IDs          │
+                             │ • Preserve page numbers        │
+                             └──────────────┬─────────────────┘
+                                            │
+                                            ▼
+                                  ParsedDocument
+                                            │
+                                            ▼
+                     ┌────────────────────────────────────────┐
+                     │      2. Structure Resolver             │
+                     │----------------------------------------│
+                     │ Build semantic document hierarchy      │
+                     │                                        │
+                     │ Chapter                               │
+                     │   └── Section                         │
+                     │         └── Subsection                │
+                     │               └── Elements            │
+                     │                                        │
+                     │ Generate heading paths                │
+                     │ Resolve parent references             │
+                     └──────────────┬─────────────────────────┘
+                                    │
+                                    ▼
+                             StructuredDocument
+                                    │
+                                    ▼
+                 ┌────────────────────────────────────────────┐
+                 │        3. Semantic Chunk Builder           │
+                 │--------------------------------------------│
+                 │ Build logical blocks instead of            │
+                 │ fixed-size chunks                          │
+                 │                                            │
+                 │ • Heading + paragraphs                     │
+                 │ • Entire lists                             │
+                 │ • Entire tables                            │
+                 │ • Figure + caption                         │
+                 │ • Algorithm + steps                        │
+                 └──────────────┬─────────────────────────────┘
+                                │
+                                ▼
+                        Semantic Blocks
+                                │
+                                ▼
+        ┌──────────────────────────────────────────────────────────┐
+        │          4. Parent-Child Chunk Generator                 │
+        │----------------------------------------------------------│
+        │ If block is small                                        │
+        │      → one chunk                                          │
+        │                                                          │
+        │ If block is large                                         │
+        │      → Parent chunk                                       │
+        │      → Child chunks                                       │
+        │                                                          │
+        │ Every child inherits                                      │
+        │ Chapter                                                   │
+        │ Section                                                   │
+        │ Heading Path                                              │
+        └──────────────┬───────────────────────────────────────────┘
+                       │
+                       ▼
+               Context-aware Chunks
+                       │
+                       ▼
+        ┌──────────────────────────────────────────────────────────┐
+        │          5. Chunk Enrichment                             │
+        │----------------------------------------------------------│
+        │ Add retrieval metadata                                   │
+        │                                                          │
+        │ • chunk_id                                               │
+        │ • parent_chunk_id                                        │
+        │ • document_id                                            │
+        │ • heading_path                                           │
+        │ • page_start/end                                         │
+        │ • element_ids                                            │
+        │ • parser                                                 │
+        │ • source_ids                                             │
+        └──────────────┬───────────────────────────────────────────┘
+                       │
+                       ▼
+                Enriched Chunks
+                       │
+                       ▼
+        ┌──────────────────────────────────────────────────────────┐
+        │           6. Embedding Generator                         │
+        │----------------------------------------------------------│
+        │ Embed ONLY                                               │
+        │                                                          │
+        │ chunk.text                                               │
+        │                                                          │
+        │ Metadata is NOT embedded                                 │
+        └──────────────┬───────────────────────────────────────────┘
+                       │
+                       ▼
+                  Embedding Vector
+                       │
+                       ▼
+        ┌──────────────────────────────────────────────────────────┐
+        │           7. Vector Store Builder                        │
+        │----------------------------------------------------------│
+        │ Build final vector record                                │
+        │                                                          │
+        │ {                                                        │
+        │   id                                                     │
+        │   embedding                                              │
+        │   text                                                   │
+        │   metadata                                               │
+        │ }                                                        │
+        └──────────────┬───────────────────────────────────────────┘
+                       │
+                       ▼
+              Chroma / Pinecone / Qdrant / Weaviate
+
+```
