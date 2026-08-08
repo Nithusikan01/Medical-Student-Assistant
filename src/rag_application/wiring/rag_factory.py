@@ -1,19 +1,24 @@
 import json
 import logging
+from functools import lru_cache
 from pathlib import Path
 
 from rag_application.config.settings import load_settings
 
 from rag_application.ingestion.embedder import Embedder
-from rag_application.ingestion.schemas import DocumentChunk
+from rag_application.ingestion.schemas import (
+    ChunkMetadata,
+    DocumentChunk,
+)
+
 from rag_application.vectorstore.pinecone_store import PineconeVectorStore
+
 from rag_application.indexes.bm25_index import BM25Index
 
 from rag_application.retrieval.dense_retriever import DenseRetriever
 from rag_application.retrieval.bm25_retriever import BM25Retriever
 from rag_application.retrieval.hybrid_retriever import HybridRetriever
 from rag_application.retrieval.reranker import Reranker
-
 from rag_application.retrieval.query_service import QueryService
 
 from rag_application.llm.generator import GeminiGenerator
@@ -22,17 +27,22 @@ from rag_application.conversation.query_rewriter import QueryRewriter
 from rag_application.conversation.session_manager import SessionManager
 from rag_application.conversation.summarizer import ConversationSummarizer
 
-from rag_application.services.history_aware_rag_service import HistoryAwareRAGService
+from rag_application.services.history_aware_rag_service import (
+    HistoryAwareRAGService,
+)
 
 logger = logging.getLogger(__name__)
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_BM25_CORPUS_PATH = PROJECT_ROOT / "storage" / "bm25_corpus.json"
+DEFAULT_RERANKER_MODEL = "BAAI/bge-reranker-base"
 
 
-def _parse_chunk_index(chunk_id: str, fallback: int) -> int:
+def _parse_chunk_index(
+    chunk_id: str,
+    fallback: int,
+) -> int:
+
     marker = "_chunk_"
+
     if marker not in chunk_id:
         return fallback
 
@@ -42,141 +52,189 @@ def _parse_chunk_index(chunk_id: str, fallback: int) -> int:
         return fallback
 
 
-def _parse_source(chunk_id: str) -> str:
+def _parse_document_id(
+    chunk_id: str,
+) -> str:
+
     marker = "_chunk_"
+
     if marker not in chunk_id:
-        return "bm25_corpus"
+        return chunk_id
 
     return chunk_id.split(marker, 1)[0]
 
 
-def load_bm25_documents(
-    corpus_path: Path = DEFAULT_BM25_CORPUS_PATH,
+def load_bm25_corpus(
+    corpus_path: Path,
 ) -> list[DocumentChunk]:
+
     if not corpus_path.exists():
+
         logger.warning(
-            "BM25 corpus not found at %s. BM25 retrieval will be empty.",
+            "BM25 corpus not found at %s.",
             corpus_path,
         )
+
         return []
 
-    with corpus_path.open("r", encoding="utf-8") as file:
+    with corpus_path.open(
+        "r",
+        encoding="utf-8",
+    ) as file:
+
         rows = json.load(file)
 
-    documents = []
+    chunks: list[DocumentChunk] = []
+
     for index, row in enumerate(rows):
+
         chunk_id = row["id"]
-        documents.append(
+
+        metadata = ChunkMetadata(
+            document_id=row.get(
+                "document_id",
+                _parse_document_id(chunk_id),
+            ),
+            filename=row.get(
+                "filename",
+                _parse_document_id(chunk_id),
+            ),
+            source_path=row.get(
+                "source_path",
+                "",
+            ),
+            page_number=row.get("page_number"),
+            section_title=row.get("section_title"),
+            heading_level=row.get("heading_level"),
+            start_char=row.get("start_char"),
+            end_char=row.get("end_char"),
+            chunk_size=row.get("chunk_size", 0),
+            overlap_size=row.get("overlap_size", 0),
+            element_id=row.get("element_id"),
+            element_type=row.get("element_type"),
+            language=row.get("language", "en"),
+            tags=row.get("tags", []),
+        )
+
+        chunks.append(
             DocumentChunk(
                 id=chunk_id,
-                text=row["text"],
-                source=row.get("source", _parse_source(chunk_id)),
                 chunk_index=row.get(
                     "chunk_index",
-                    _parse_chunk_index(chunk_id, index),
+                    _parse_chunk_index(
+                        chunk_id,
+                        index,
+                    ),
                 ),
-                page_number=row.get("page_number"),
-                timestamp=row.get("timestamp", 0),
+                text=row["text"],
+                metadata=metadata,
             )
         )
 
     logger.info(
-        "Loaded %d BM25 documents from %s",
-        len(documents),
+        "Loaded %d BM25 chunks from %s",
+        len(chunks),
         corpus_path,
     )
-    return documents
+
+    return chunks
 
 
+@lru_cache()
 def build_history_aware_rag_service() -> HistoryAwareRAGService:
 
-    # -----------------------------
-    # 1. Settings
-    # -----------------------------
     settings = load_settings()
 
-    # -----------------------------
-    # 2. Embedding model
-    # -----------------------------
-    embedder = Embedder(settings.embedding_config())
+    #
+    # Embedding Model
+    #
+    embedder = Embedder(
+        settings.embedding_config()
+    )
 
-    sample_embedding = embedder.model.encode("dimension_check")
-    dimension = len(sample_embedding)
-
-    # -----------------------------
-    # 3. Vector store
-    # -----------------------------
+    #
+    # Vector Store
+    #
     vector_store = PineconeVectorStore(
         settings=settings,
-        dimension=dimension
+        dimension=embedder.dimension
     )
 
-    # -----------------------------
-    # 4. Dense retriever
-    # -----------------------------
+    #
+    # Dense Retriever
+    #
     dense_retriever = DenseRetriever(
         vector_store=vector_store,
-        embedding_model=embedder.model
+        embedding_model=embedder.model,
     )
 
-    # -----------------------------
-    # 5. BM25 Index + Retriever
-    # -----------------------------
-    bm25_documents = load_bm25_documents()
-    bm25_index = BM25Index(documents=bm25_documents)
+    #
+    # BM25 Retriever
+    #
+    bm25_documents = load_bm25_corpus(
+        corpus_path=settings.bm25_corpus_path
+    )
+
+    bm25_index = BM25Index(
+        documents=bm25_documents,
+    )
 
     bm25_retriever = BM25Retriever(
-        bm25_index=bm25_index
+        bm25_index=bm25_index,
     )
 
-    # -----------------------------
-    # 6. Hybrid retriever
-    # -----------------------------
+    #
+    # Hybrid Retriever
+    #
     hybrid_retriever = HybridRetriever(
         dense_retriever=dense_retriever,
-        bm25_retriever=bm25_retriever
+        bm25_retriever=bm25_retriever,
     )
 
-    # -----------------------------
-    # 7. Reranker Integration
-    # -----------------------------
+    #
+    # Reranker
+    #
     reranker = Reranker(
-        model_name="BAAI/bge-reranker-base"
+        model_name=DEFAULT_RERANKER_MODEL,
     )
 
-
+    #
+    # Query Service
+    #
     query_service = QueryService(
         retriever=hybrid_retriever,
-        reranker=reranker
+        reranker=reranker,
     )
 
+    #
+    # LLM
+    #
+    llm = GeminiGenerator(
+        settings.generation_config(),
+    )
 
-
-
-    # -----------------------------
-    # 8. LLM (SINGLE INSTANCE)
-    # -----------------------------
-    llm = GeminiGenerator(settings.generation_config())
-
-    # -----------------------------
-    # 9. Conversation layer
-    # -----------------------------
+    #
+    # Conversation Components
+    #
     session_manager = SessionManager()
 
     query_rewriter = QueryRewriter(llm)
+
     summarizer = ConversationSummarizer(llm)
 
-    # -----------------------------
-    # 10. RAG Service
-    # -----------------------------
+    #
+    # RAG Service
+    #
     rag_service = HistoryAwareRAGService(
         query_service=query_service,
         generator=llm,
         session_manager=session_manager,
         query_rewriter=query_rewriter,
-        summarizer=summarizer
+        summarizer=summarizer,
     )
 
-    logger.info("RAG system successfully initialized")
+    logger.info(
+        "History-aware RAG system initialized successfully."
+    )
 
     return rag_service
