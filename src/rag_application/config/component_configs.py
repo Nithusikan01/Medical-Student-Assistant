@@ -8,8 +8,7 @@ class PineconeConfig:
 @dataclass(frozen=True)
 class EmbeddingConfig:
     model_name: str
-    chunk_size: int
-    chunk_overlap: int
+    batch_size: int = 32
 
 @dataclass(frozen=True)
 class GenerationConfig:
