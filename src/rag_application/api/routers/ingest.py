@@ -1,9 +1,9 @@
 from functools import lru_cache
-from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from rag_application.api.schemas import IngestRequest, IngestResponse
+from rag_application.api.schemas import IngestResponse
+from rag_application.api.services.upload_service import UploadService
 from rag_application.config.settings import load_settings
 from rag_application.ingestion.chunker import TextChunker
 from rag_application.ingestion.document_loader import DocumentLoader
@@ -16,44 +16,72 @@ router = APIRouter()
 
 
 @lru_cache()
-def get_ingestion_pipeline():
+def get_ingestion_pipeline() -> IngestionPipeline:
     settings = load_settings()
 
-    embedder = Embedder(settings.embedding_config())
-    dimension = len(embedder.model.encode("dimension_check"))
+    embedder = Embedder(
+        settings.embedding_config()
+    )
+
+    vector_store = PineconeVectorStore(
+        settings=settings,
+        dimension=embedder.dimension,
+    )
 
     return IngestionPipeline(
-        document_loader=DocumentLoader(),
-        chunker=TextChunker(settings.chunking_config()),
-        embedder=embedder,
-        vector_data_processor=VectorDataProcessor(),
-        vector_store=PineconeVectorStore(
-            settings=settings,
-            dimension=dimension,
+        loader=DocumentLoader(),
+        chunker=TextChunker(
+            settings.chunking_config()
         ),
+        embedder=embedder,
+        processor=VectorDataProcessor(),
+        vector_store=vector_store,
+        batch_size=settings.embedding_batch_size,
     )
 
 
-@router.post("/ingest", response_model=IngestResponse)
-def ingest_document(request: IngestRequest) -> IngestResponse:
+@lru_cache()
+def get_upload_service() -> UploadService:
+    return UploadService()
 
-    file_path = Path(request.file_path).expanduser()
 
-    if not file_path.exists():
-        raise HTTPException(404, f"File not found: {file_path}")
+@router.post(
+    "/ingest",
+    response_model=IngestResponse,
+)
+async def ingest_document(
+    file: UploadFile = File(...),
+) -> IngestResponse:
 
-    if file_path.suffix.lower() != ".pdf":
-        raise HTTPException(400, "Only PDF ingestion supported.")
+    if (
+        file.content_type != "application/pdf"
+        and not (file.filename or "").lower().endswith(".pdf")
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Only PDF files are supported.",
+        )
+
+    upload_service = get_upload_service()
+
+    saved_file = upload_service.save(file)
 
     try:
         pipeline = get_ingestion_pipeline()
-        pipeline.run(file_path)
+
+        pipeline.ingest(saved_file)
 
         return IngestResponse(
-            file_path=str(file_path),
+            filename=file.filename or saved_file.name,
             status="success",
-            message="Document ingested successfully."
+            message="Document ingested successfully.",
         )
 
     except Exception as exc:
-        raise HTTPException(500, str(exc)) from exc
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        ) from exc
+
+    finally:
+        upload_service.delete(saved_file)
