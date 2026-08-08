@@ -9,18 +9,22 @@ logger = logging.getLogger(__name__)
 
 class QueryService:
     """
-    Orchestrates the full retrieval pipeline:
+    Orchestrates the retrieval pipeline.
 
-        Hybrid Retrieval → Reranking → Final Context
+        Retriever
+            ↓
+        Optional Reranker
+            ↓
+        Final Retrieved Chunks
 
-    This is the ONLY class the LLM layer should interact with.
+    This is the entry point used by the RAG pipeline.
     """
 
     def __init__(
         self,
         retriever: BaseRetriever,
-        reranker: Reranker | None = None
-    ):
+        reranker: Reranker | None = None,
+    ) -> None:
         self.retriever = retriever
         self.reranker = reranker
 
@@ -29,55 +33,78 @@ class QueryService:
         query: str,
         top_k: int = 5,
         candidate_k: int = 20,
-        use_reranker: bool = True
+        use_reranker: bool = True,
     ) -> list[RetrievedChunk]:
+        """
+        Retrieve the most relevant chunks for a query.
 
-        logger.info("QueryService received query: %s", query)
+        Args:
+            query:
+                User query.
 
-        # -----------------------------
-        # 1. Candidate Retrieval
-        # -----------------------------
+            top_k:
+                Number of chunks returned to the generator.
+
+            candidate_k:
+                Number of chunks retrieved before reranking.
+
+            use_reranker:
+                Whether to apply the cross-encoder reranker.
+
+        Returns:
+            Ranked list of RetrievedChunk objects.
+        """
+
+        logger.info(
+            "Retrieving candidates for query: %s",
+            query,
+        )
+
+        #
+        # Candidate retrieval
+        #
         candidates = self.retriever.retrieve(
             query=query,
-            top_k=candidate_k
+            top_k=candidate_k,
         )
 
         if not candidates:
-            logger.warning("No candidates found for query: %s", query)
+            logger.warning(
+                "No retrieval results found."
+            )
             return []
 
         logger.debug(
-            "Retrieved %d candidate chunks",
-            len(candidates)
+            "Retrieved %d candidate chunks.",
+            len(candidates),
         )
 
-        # -----------------------------
-        # 2. Reranking (optional)
-        # -----------------------------
-        if use_reranker and self.reranker:
+        #
+        # Optional reranking
+        #
+        if use_reranker and self.reranker is not None:
 
-            logger.debug("Applying reranker...")
+            logger.debug(
+                "Applying cross-encoder reranker."
+            )
 
-            final_results = self.reranker.rerank(
+            results = self.reranker.rerank(
                 query=query,
                 candidates=candidates,
-                top_k=top_k
+                top_k=top_k,
             )
 
         else:
-            # fallback: no reranking
-            final_results = candidates[:top_k]
 
-            logger.warning(
-                "Reranker not used. Returning raw retrieval results."
+            logger.debug(
+                "Skipping reranker."
             )
 
-        # -----------------------------
-        # 3. Return final context
-        # -----------------------------
+            results = candidates[:top_k]
+
         logger.info(
-            "QueryService returning %d final chunks",
-            len(final_results)
+            "Returning %d retrieved chunks.",
+            len(results),
         )
 
-        return final_results
+        return results

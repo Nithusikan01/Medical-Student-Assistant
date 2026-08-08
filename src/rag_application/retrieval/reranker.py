@@ -1,5 +1,4 @@
 import logging
-from typing import List
 
 from sentence_transformers import CrossEncoder
 
@@ -10,75 +9,99 @@ logger = logging.getLogger(__name__)
 
 class Reranker:
     """
-    Cross-encoder based reranker for improving retrieval quality.
+    Cross-encoder based reranker.
 
-    Takes a list of candidate chunks and reranks them using
-    a query-aware deep relevance model.
+    Takes candidate chunks from a retriever and reranks them using
+    a query-document relevance model.
     """
 
     def __init__(
         self,
-        model_name: str = "BAAI/bge-reranker-base"
-    ):
-        logger.info("Loading reranker model: %s", model_name)
+        model_name: str = "BAAI/bge-reranker-base",
+    ) -> None:
+        logger.info(
+            "Loading reranker model: %s",
+            model_name,
+        )
 
         self.model = CrossEncoder(model_name)
 
-        logger.info("Reranker model loaded successfully.")
+        logger.info(
+            "Reranker model loaded successfully."
+        )
 
     def rerank(
         self,
         query: str,
-        candidates: List[RetrievedChunk],
-        top_k: int = 5
-    ) -> List[RetrievedChunk]:
+        candidates: list[RetrievedChunk],
+        top_k: int = 5,
+    ) -> list[RetrievedChunk]:
 
         if not candidates:
-            logger.warning("No candidates provided to reranker.")
+            logger.warning(
+                "No candidates provided to reranker."
+            )
             return []
 
         logger.debug(
-            "Reranking %d candidates for query: %s",
+            "Reranking %d candidates.",
             len(candidates),
-            query
         )
 
-        # 1. Prepare (query, document) pairs
+        #
+        # Prepare (query, document) pairs.
+        #
         pairs = [
             (query, chunk.text)
             for chunk in candidates
         ]
 
-        # 2. Predict relevance scores
+        #
+        # CrossEncoder scores.
+        #
         scores = self.model.predict(pairs)
 
-        # 3. Attach scores to chunks
-        reranked = []
-        for chunk, score in zip(candidates, scores):
-
-            reranked.append(
-                RetrievedChunk(
-                    id=chunk.id,
-                    score=float(score),
-                    text=chunk.text,
-                    metadata=chunk.metadata,
-                    retrieval_method=f"rerank({chunk.retrieval_method})"
-                )
+        #
+        # Update each chunk with its rerank score.
+        #
+        reranked = [
+            chunk.with_rerank_score(
+                score=float(score)
             )
+            for chunk, score in zip(
+                candidates,
+                scores,
+            )
+        ]
 
-        # 4. Sort by reranker score
+        #
+        # Sort by reranker score.
+        #
         reranked.sort(
-            key=lambda x: x.score,
-            reverse=True
+            key=lambda chunk: chunk.score,
+            reverse=True,
         )
 
-        # 5. Return top_k
+        #
+        # Update final ranks.
+        #
+        reranked = [
+            chunk.with_rerank_score(
+                score=chunk.score,
+                rank=rank,
+            )
+            for rank, chunk in enumerate(
+                reranked,
+                start=1,
+            )
+        ]
+
         final_results = reranked[:top_k]
 
         logger.debug(
-            "Reranker reduced %d → %d chunks",
+            "Reranker reduced %d candidates to %d.",
             len(candidates),
-            len(final_results)
+            len(final_results),
         )
 
         return final_results
