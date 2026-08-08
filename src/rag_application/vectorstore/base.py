@@ -1,26 +1,90 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict
+
+from rag_application.vectorstore.schemas import (
+    SearchResult,
+    VectorRecord,
+)
 
 
 class VectorStoreInterface(ABC):
-    @abstractmethod
-    def store_vectors(self, vector_data: List[Dict]) -> str:
-        """
-        Store vectors in the vector database.
-        """
-        pass
+    """
+    Abstract interface for vector database implementations.
 
-    
-    @abstractmethod
-    def retrieve_vectors(self, query_vector, top_k: int = 5)-> List[Dict]:
-        """
-        Retrieve similar vectors from the vector database based on a query vector.
-        """
-        pass
+    Concrete implementations (e.g. Pinecone, Chroma, Qdrant)
+    are responsible for translating these domain models into
+    the format expected by the underlying vector database.
+    """
 
     @abstractmethod
-    def delete_vectors(self, vector_ids: List[str]) -> None:
+    def upsert(
+        self,
+        records: list[VectorRecord],
+    ) -> int:
         """
-        Delete vectors from the vector database based on their IDs.
+        Insert new vectors or update existing ones.
+
+        Args:
+            records:
+                Vector records to store.
+
+        Returns:
+            Number of vectors successfully upserted.
         """
-        pass
+        raise NotImplementedError
+
+    @abstractmethod
+    def query(
+        self,
+        embedding: list[float],
+        top_k: int = 5,
+        filters: dict | None = None,
+    ) -> list[SearchResult]:
+        """
+        Perform a similarity search.
+
+        Args:
+            embedding:
+                Query embedding.
+
+            top_k:
+                Maximum number of similar vectors to return.
+
+            filters:
+                Optional metadata filters supported by the
+                underlying vector database.
+
+        Returns:
+            Search results ordered by similarity score.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete(
+        self,
+        ids: list[str],
+    ) -> int:
+        """
+        Delete vectors by their IDs.
+
+        Args:
+            ids:
+                IDs of vectors to remove.
+
+        Returns:
+            Number of vectors deleted.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_all(self) -> None:
+        """
+        Delete every vector stored in the index.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def count(self) -> int:
+        """
+        Return the total number of stored vectors.
+        """
+        raise NotImplementedError
