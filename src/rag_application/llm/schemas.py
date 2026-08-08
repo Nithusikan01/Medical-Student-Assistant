@@ -1,10 +1,17 @@
 from dataclasses import dataclass, field
-from typing import Optional, Dict
+from typing import Any
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class LLMResponse:
+    """
+    Response returned by an LLM.
+    """
+
     text: str
-    model: Optional[str] = None
-    latency: Optional[float] = None
-    metadata: Dict = field(default_factory=dict)
+
+    model: str | None = None
+
+    latency: float | None = None
+
+    metadata: dict[str, Any] = field(default_factory=dict)

@@ -1,104 +1,128 @@
-import time
 import logging
-from typing import Optional
+import time
 
 from google import genai
 
-from rag_application.llm.schemas import LLMResponse
 from rag_application.config.component_configs import GenerationConfig
+from rag_application.llm.schemas import LLMResponse
 
 logger = logging.getLogger(__name__)
 
 
 class GeminiGenerator:
     """
-    Production-ready Gemini LLM wrapper.
+    Wrapper around the Gemini API.
 
     Features:
-    - Retry mechanism
-    - Latency tracking
-    - Safe response parsing
-    - Future-ready metadata support
+        - retry mechanism
+        - latency measurement
+        - structured response
+        - dependency injection for testing
     """
 
     def __init__(
         self,
-        config: Optional[GenerationConfig] = None,
+        config: GenerationConfig,
         *,
-        settings=None,
-        client: Optional[genai.Client] = None,
+        client: genai.Client | None = None,
         max_retries: int = 2,
         retry_delay: float = 1.0,
-    ):
+    ) -> None:
 
-        config = config or settings
+        if not config.api_key:
+            raise ValueError("Gemini API key is missing.")
 
-        if config is None:
-            raise ValueError("Generation configuration is required")
+        if not config.model_name:
+            raise ValueError("Gemini model name is missing.")
 
-        api_key = getattr(config, "api_key", None) or getattr(config, "gemini_api_key", None)
-        model_name = getattr(config, "model_name", None) or getattr(config, "generation_model_name", None)
+        self.client = (
+            client
+            if client is not None
+            else genai.Client(api_key=config.api_key)
+        )
 
-        if not api_key:
-            raise ValueError("API key is required")
-
-        if not model_name:
-            raise ValueError("Model name is required")
-
-        self.client = client or genai.Client(api_key=api_key)
-        self.model_name = model_name
+        self.model_name = config.model_name
 
         self.max_retries = max_retries
         self.retry_delay = retry_delay
 
-    def generate(self, prompt: str) -> LLMResponse:
+    def generate(
+        self,
+        prompt: str,
+    ) -> LLMResponse:
         """
-        Generate response from Gemini with retries and telemetry.
+        Generate a response from Gemini.
         """
 
-        last_error = None
-        start_time = time.time()
+        logger.debug(
+            "Generating response with Gemini."
+        )
 
-        for attempt in range(self.max_retries + 1):
+        start_time = time.perf_counter()
+
+        last_error: Exception | None = None
+
+        for attempt in range(
+            1,
+            self.max_retries + 2,
+        ):
 
             try:
-                response = self.client.models.generate_content(
-                    model=self.model_name,
-                    contents=prompt,
+
+                response = (
+                    self.client.models.generate_content(
+                        model=self.model_name,
+                        contents=prompt,
+                    )
                 )
 
-                text = getattr(response, "text", None)
+                text = getattr(
+                    response,
+                    "text",
+                    None,
+                )
 
                 if not text:
-                    raise RuntimeError("Gemini returned empty response")
+                    raise RuntimeError(
+                        "Gemini returned an empty response."
+                    )
 
-                latency = time.time() - start_time
+                latency = (
+                    time.perf_counter()
+                    - start_time
+                )
+
+                logger.debug(
+                    "Generation completed in %.3f seconds.",
+                    latency,
+                )
 
                 return LLMResponse(
                     text=text.strip(),
                     model=self.model_name,
                     latency=latency,
                     metadata={
-                        "attempt": attempt + 1,
-                        "success": True
-                    }
+                        "attempt": attempt,
+                        "provider": "gemini",
+                    },
                 )
 
-            except Exception as e:
-                last_error = e
+            except Exception as exc:
+
+                last_error = exc
 
                 logger.warning(
-                    "Gemini attempt %d failed: %s",
-                    attempt + 1,
-                    str(e)
+                    "Generation attempt %d/%d failed: %s",
+                    attempt,
+                    self.max_retries + 1,
+                    exc,
                 )
 
-                if attempt < self.max_retries:
-                    time.sleep(self.retry_delay)
-                    continue
-
-                break
+                if attempt <= self.max_retries:
+                    time.sleep(
+                        self.retry_delay
+                    )
 
         raise RuntimeError(
-            f"Gemini generation failed after {self.max_retries + 1} attempts: {last_error}"
-        )
+            "Gemini generation failed."
+        ) from last_error
