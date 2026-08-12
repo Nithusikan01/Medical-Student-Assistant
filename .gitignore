@@ -36,3 +36,7 @@ data/*
 storage/*
 storage/uploads/*
 !storage/uploads/.gitkeep
+
+
+# Temporary files
+tmp/*
