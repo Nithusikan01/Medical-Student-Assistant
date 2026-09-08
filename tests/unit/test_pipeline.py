@@ -1,85 +1,77 @@
+import json
 from unittest.mock import Mock
 
 from rag_application.ingestion.pipeline import IngestionPipeline
-from rag_application.ingestion.schemas import DocumentChunk
+
+from tests.unit.helpers import (
+    make_chunk,
+    make_embedded_chunk,
+    make_loaded_document,
+    make_vector_record,
+)
 
 
-def test_ingestion_pipeline_runs_all_steps(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
+def test_ingestion_pipeline_runs_all_steps(tmp_path):
+    document = make_loaded_document()
+    chunks = [make_chunk(0, "chunk text")]
+    embedded_chunks = [make_embedded_chunk(0, "chunk text")]
+    vector_records = [make_vector_record()]
 
-    document_loader = Mock()
+    loader = Mock()
     chunker = Mock()
     embedder = Mock()
-    vector_data_processor = Mock()
+    processor = Mock()
     vector_store = Mock()
 
-    chunks = [
-        DocumentChunk(
-            id="cv.pdf_chunk_0",
-            text="chunk text",
-            source="cv.pdf",
-            chunk_index=0,
-        )
-    ]
-    vectors = [[0.1, 0.2]]
-    vector_data = [
-        {
-            "id": "cv.pdf_chunk_0",
-            "vector": [0.1, 0.2],
-            "metadata": {"original_text": "chunk text"},
-        }
-    ]
-
-    document_loader.load.return_value = ["page text"]
-    chunker.chunk.return_value = chunks
-    embedder.embed.return_value = vectors
-    vector_data_processor.prepare.return_value = vector_data
+    loader.load.return_value = document
+    chunker.chunk_batches.return_value = [chunks]
+    embedder.embed_batch.return_value = embedded_chunks
+    processor.prepare.return_value = vector_records
 
     pipeline = IngestionPipeline(
-        document_loader=document_loader,
+        loader=loader,
         chunker=chunker,
         embedder=embedder,
-        vector_data_processor=vector_data_processor,
+        processor=processor,
         vector_store=vector_store,
+        batch_size=32,
+        bm25_corpus_path=tmp_path / "bm25_corpus.json",
     )
 
-    pipeline.run("cv.pdf")
+    summary = pipeline.ingest("cv.pdf")
 
-    document_loader.load.assert_called_once_with("cv.pdf")
-    chunker.chunk.assert_called_once_with(
-        pages=["page text"],
-        source="cv.pdf",
+    loader.load.assert_called_once_with("cv.pdf")
+    chunker.chunk_batches.assert_called_once_with(
+        document=document,
+        batch_size=32,
     )
-    embedder.embed.assert_called_once_with(chunks)
-    vector_data_processor.prepare.assert_called_once_with(
-        vectors=vectors,
-        chunks=chunks,
-    )
-    vector_store.store_vectors.assert_called_once_with(vector_data)
+    embedder.embed_batch.assert_called_once_with(chunks)
+    processor.prepare.assert_called_once_with(embedded_chunks)
+    vector_store.upsert.assert_called_once_with(vector_records)
+    assert summary == {
+        "filename": "doc.pdf",
+        "chunks": 1,
+        "vectors": 1,
+    }
 
 
-def test_ingestion_pipeline_writes_bm25_corpus(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-
+def test_ingestion_pipeline_writes_bm25_corpus(tmp_path):
     chunks = [
-        DocumentChunk(
-            id="doc_chunk_0",
-            text="lexical search corpus text",
-            source="doc.pdf",
-            chunk_index=0,
-        )
+        make_chunk(0, "lexical search corpus text"),
     ]
-
     pipeline = IngestionPipeline(
-        document_loader=Mock(load=Mock(return_value=["page"])),
-        chunker=Mock(chunk=Mock(return_value=chunks)),
-        embedder=Mock(embed=Mock(return_value=[[0.1]])),
-        vector_data_processor=Mock(prepare=Mock(return_value=[])),
-        vector_store=Mock(),
+        loader=Mock(load=Mock(return_value=make_loaded_document())),
+        chunker=Mock(chunk_batches=Mock(return_value=[chunks])),
+        embedder=Mock(embed_batch=Mock(return_value=[])),
+        processor=Mock(prepare=Mock(return_value=[])),
+        vector_store=Mock(upsert=Mock(return_value=0)),
+        batch_size=5,
+        bm25_corpus_path=tmp_path / "storage" / "bm25_corpus.json",
     )
 
-    pipeline.run("doc.pdf")
+    pipeline.ingest("doc.pdf")
 
     corpus_path = tmp_path / "storage" / "bm25_corpus.json"
-    assert corpus_path.exists()
-    assert "lexical search corpus text" in corpus_path.read_text()
+    rows = json.loads(corpus_path.read_text(encoding="utf-8"))
+    assert rows[0]["text"] == "lexical search corpus text"
+    assert rows[0]["metadata"]["filename"] == "doc.pdf"

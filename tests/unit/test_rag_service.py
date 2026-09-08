@@ -1,8 +1,9 @@
 from unittest.mock import Mock
 
 from rag_application.llm.schemas import LLMResponse
-from rag_application.retrieval.schemas import RetrievedChunk
 from rag_application.services.history_aware_rag_service import HistoryAwareRAGService
+
+from tests.unit.helpers import make_retrieved_chunk
 
 
 def build_service(
@@ -20,14 +21,13 @@ def build_service(
     mock_memory.get_summary.return_value = "summary"
     mock_memory.get_recent_messages.return_value = []
     mock_memory.messages = []
-
     mock_session_manager.get_memory.return_value = mock_memory
     mock_query_rewriter.rewrite.return_value = "rewritten question"
+
     if chunks is None:
         chunks = [
-            RetrievedChunk(
-                id="1",
-                score=0.9,
+            make_retrieved_chunk(
+                chunk_id="1",
                 text="Nithusikan is a student.",
             )
         ]
@@ -74,10 +74,7 @@ def test_answer_returns_fallback_when_no_chunks():
         question="Unknown question",
     )
 
-    assert (
-        answer
-        == "I couldn't find relevant information in the documents."
-    )
+    assert answer == "I couldn't find relevant information in the documents."
     assert sources == []
     mock_generator.generate.assert_not_called()
 
@@ -110,8 +107,14 @@ def test_answer_calls_query_service_with_rewritten_query():
         candidate_k=30,
         use_reranker=True,
     )
-    mock_memory.add_message.assert_any_call("user", "question")
-    mock_memory.add_message.assert_any_call("assistant", "Answer")
+    mock_memory.add_message.assert_any_call(
+        role="user",
+        content="question",
+    )
+    mock_memory.add_message.assert_any_call(
+        role="assistant",
+        content="Answer",
+    )
 
 
 def test_answer_calls_generator():
@@ -122,15 +125,17 @@ def test_answer_calls_generator():
         question="question",
     )
 
-    assert (
-        mock_generator.generate.call_count
-        == 1
-    )
+    assert mock_generator.generate.call_count == 1
 
 
 def test_answer_updates_summary_after_trigger():
-    service, *_, mock_summarizer, mock_memory = build_service(generated_text="Answer")
-    mock_memory.messages = [Mock() for _ in range(service.SUMMARY_TRIGGER)]
+    service, *_, mock_summarizer, mock_memory = build_service(
+        generated_text="Answer",
+    )
+    mock_memory.messages = [
+        Mock()
+        for _ in range(service.SUMMARY_TRIGGER)
+    ]
 
     service.answer(
         conversation_id="conversation_1",

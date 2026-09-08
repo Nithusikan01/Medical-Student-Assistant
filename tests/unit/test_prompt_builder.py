@@ -1,38 +1,25 @@
 from rag_application.llm.prompt_builder import PromptBuilder
-from rag_application.retrieval.schemas import RetrievedChunk
+
+from tests.unit.helpers import make_retrieved_chunk
 
 
 def test_build_prompt_contains_question():
-
-    chunks = [
-        RetrievedChunk(
-            id="1",
-            score=0.9,
-            text="Nithusikan is a student."
-        )
-    ]
-
     prompt = PromptBuilder.build_prompt(
         question="Who is Nithusikan?",
-        chunks=chunks
+        chunks=[
+            make_retrieved_chunk(text="Nithusikan is a student."),
+        ],
     )
 
     assert "Who is Nithusikan?" in prompt
 
 
 def test_build_prompt_contains_context():
-
-    chunks = [
-        RetrievedChunk(
-            id="1",
-            score=0.9,
-            text="Nithusikan is a student."
-        )
-    ]
-
     prompt = PromptBuilder.build_prompt(
         question="Who is Nithusikan?",
-        chunks=chunks
+        chunks=[
+            make_retrieved_chunk(text="Nithusikan is a student."),
+        ],
     )
 
     assert "Nithusikan is a student." in prompt

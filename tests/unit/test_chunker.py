@@ -1,33 +1,49 @@
+from unittest.mock import Mock, patch
+
 from rag_application.config.component_configs import ChunkingConfig
 from rag_application.ingestion.chunker import TextChunker
-from rag_application.ingestion.schemas import DocumentChunk
+from rag_application.ingestion.schemas import DocumentChunk, LoadedDocument
+
+from tests.unit.helpers import make_loaded_document
 
 
-def test_chunk_pages():
-    pages = [
-        "Hello world " * 100
+@patch("rag_application.ingestion.chunker._build_splitter")
+def test_chunk_document(mock_build_splitter):
+    splitter = Mock()
+    splitter.split_text.return_value = [
+        "Hello world",
+        "second chunk",
     ]
-
+    mock_build_splitter.return_value = splitter
+    document = make_loaded_document("Hello world " * 100)
     chunker = TextChunker(
         ChunkingConfig(
             chunk_size=100,
-            chunk_overlap=20
+            chunk_overlap=20,
         )
     )
-    chunks = chunker.chunk(pages, source="unit-test.txt")
+
+    chunks = chunker.chunk(document)
 
     assert len(chunks) > 1
     assert all(isinstance(chunk, DocumentChunk) for chunk in chunks)
-    assert chunks[0].id == "unit-test.txt_chunk_0"
-    assert chunks[0].source == "unit-test.txt"
+    assert chunks[0].id == "doc_chunk_0"
+    assert chunks[0].metadata.filename == "doc.pdf"
 
 
-def test_empty_pages():
+@patch("rag_application.ingestion.chunker._build_splitter")
+def test_empty_document_pages(mock_build_splitter):
+    document = LoadedDocument(
+        document_id="empty",
+        filename="empty.pdf",
+        source_path="/tmp/empty.pdf",
+        pages=[],
+    )
     chunker = TextChunker(
         ChunkingConfig(
             chunk_size=100,
-            chunk_overlap=20
+            chunk_overlap=20,
         )
     )
 
-    assert chunker.chunk([], source="empty.txt") == []
+    assert chunker.chunk(document) == []

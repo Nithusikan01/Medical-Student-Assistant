@@ -1,20 +1,15 @@
 from unittest.mock import Mock
 
 from rag_application.retrieval.query_service import QueryService
-from rag_application.retrieval.schemas import RetrievedChunk
+
+from tests.unit.helpers import make_retrieved_chunk
 
 
 def test_search_calls_retriever():
     mock_retriever = Mock()
-
     expected_chunks = [
-        RetrievedChunk(
-            id="chunk_1",
-            score=0.90,
-            text="Test text"
-        )
+        make_retrieved_chunk("chunk_1", "Test text", 0.90),
     ]
-
     mock_retriever.retrieve.return_value = expected_chunks
 
     service = QueryService(mock_retriever)
@@ -29,20 +24,17 @@ def test_search_calls_retriever():
         query="Who is Nithusikan?",
         top_k=9,
     )
-
     assert result == expected_chunks[:3]
 
 
 def test_search_uses_reranker_when_available():
     mock_retriever = Mock()
     mock_reranker = Mock()
-
     candidates = [
-        RetrievedChunk(id="chunk_1", score=0.2, text="Weak"),
-        RetrievedChunk(id="chunk_2", score=0.9, text="Strong"),
+        make_retrieved_chunk("chunk_1", "Weak", 0.2),
+        make_retrieved_chunk("chunk_2", "Strong", 0.9),
     ]
     reranked = [candidates[1]]
-
     mock_retriever.retrieve.return_value = candidates
     mock_reranker.rerank.return_value = reranked
 

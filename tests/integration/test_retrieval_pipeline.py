@@ -32,22 +32,21 @@ def test_retrieval_pipeline():
         pytest.skip("CV PDF is not available.")
 
     settings = load_settings()
-
-    document_loader = DocumentLoader()
-    chunker = TextChunker(config=settings.chunking_config())
     embedder = Embedder(config=settings.embedding_config())
-    dimension = len(embedder.model.encode("test"))
-    vector_data_processor = VectorDataProcessor()
-    vector_store = PineconeVectorStore(settings=settings, dimension=dimension)
-
-    ingestion_pipeline = IngestionPipeline(
-        document_loader=document_loader,
-        chunker=chunker,
-        embedder=embedder,
-        vector_data_processor=vector_data_processor,
-        vector_store=vector_store,
+    vector_store = PineconeVectorStore(
+        settings=settings,
+        dimension=embedder.dimension,
     )
-    ingestion_pipeline.run(str(pdf_path))
+    ingestion_pipeline = IngestionPipeline(
+        loader=DocumentLoader(),
+        chunker=TextChunker(config=settings.chunking_config()),
+        embedder=embedder,
+        processor=VectorDataProcessor(),
+        vector_store=vector_store,
+        batch_size=settings.embedding_batch_size,
+        bm25_corpus_path=settings.bm25_corpus_path,
+    )
+    ingestion_pipeline.ingest(str(pdf_path))
 
     retriever = DenseRetriever(
         vector_store=vector_store,
