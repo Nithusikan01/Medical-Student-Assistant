@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class IngestResponse(BaseModel):
@@ -12,7 +12,7 @@ class IngestResponse(BaseModel):
 class QueryRequest(BaseModel):
     conversation_id: str
     question: str
-    top_k: int = 5
+    top_k: int = Field(default=5, ge=1, le=20)
 
 
 class SourceMetadata(BaseModel):
@@ -32,7 +32,7 @@ class SourceMetadata(BaseModel):
 
     language: Optional[str] = None
 
-    tags: list[str] = []
+    tags: list[str] = Field(default_factory=list)
 
 
 class SourceChunk(BaseModel):
@@ -58,6 +58,6 @@ class QueryResponse(BaseModel):
 
     answer: str
 
-    sources: list[SourceChunk] = []
+    sources: list[SourceChunk] = Field(default_factory=list)
 
     processing_time_ms: Optional[int] = None
