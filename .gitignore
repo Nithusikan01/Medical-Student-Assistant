@@ -27,16 +27,17 @@ logs/*
 .DS_Store
 Thumbs.db
 
-# Test files temporarily ignored
-tests/*
-scripts/*
-
 # Test data temporarily ignored
 data/*
 storage/*
 storage/uploads/*
 !storage/uploads/.gitkeep
 
+# Generated package metadata
+src/rag_application.egg-info/
+
 
 # Temporary files
 tmp/*
+.claude/notes/
+.claude/settings.local.json
