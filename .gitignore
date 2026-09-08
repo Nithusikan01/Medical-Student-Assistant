@@ -41,3 +41,6 @@ src/rag_application.egg-info/
 tmp/*
 .claude/notes/
 .claude/settings.local.json
+
+# SessionEnd hook output (see .claude/hooks/session-end-auto-commit.sh)
+UNCOMMITTED_WARNING.txt
