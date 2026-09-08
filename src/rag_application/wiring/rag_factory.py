@@ -89,37 +89,38 @@ def load_bm25_corpus(
     for index, row in enumerate(rows):
 
         chunk_id = row["id"]
+        metadata_row = row.get("metadata", row)
 
         metadata = ChunkMetadata(
-            document_id=row.get(
+            document_id=metadata_row.get(
                 "document_id",
                 _parse_document_id(chunk_id),
             ),
-            filename=row.get(
+            filename=metadata_row.get(
                 "filename",
                 _parse_document_id(chunk_id),
             ),
-            source_path=row.get(
+            source_path=metadata_row.get(
                 "source_path",
-                "",
+                metadata_row.get("source", ""),
             ),
-            page_number=row.get("page_number"),
-            section_title=row.get("section_title"),
-            heading_level=row.get("heading_level"),
-            start_char=row.get("start_char"),
-            end_char=row.get("end_char"),
-            chunk_size=row.get("chunk_size", 0),
-            overlap_size=row.get("overlap_size", 0),
-            element_id=row.get("element_id"),
-            element_type=row.get("element_type"),
-            language=row.get("language", "en"),
-            tags=row.get("tags", []),
+            page_number=metadata_row.get("page_number"),
+            section_title=metadata_row.get("section_title"),
+            heading_level=metadata_row.get("heading_level"),
+            start_char=metadata_row.get("start_char"),
+            end_char=metadata_row.get("end_char"),
+            chunk_size=metadata_row.get("chunk_size", 0),
+            overlap_size=metadata_row.get("overlap_size", 0),
+            element_id=metadata_row.get("element_id"),
+            element_type=metadata_row.get("element_type"),
+            language=metadata_row.get("language", "en"),
+            tags=metadata_row.get("tags", []),
         )
 
         chunks.append(
             DocumentChunk(
                 id=chunk_id,
-                chunk_index=row.get(
+                chunk_index=metadata_row.get(
                     "chunk_index",
                     _parse_chunk_index(
                         chunk_id,

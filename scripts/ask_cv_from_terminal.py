@@ -65,7 +65,7 @@ def print_sources(chunks: list[RetrievedChunk]) -> None:
 
     print("\nSources:")
     for index, chunk in enumerate(chunks, start=1):
-        source = chunk.metadata.get("source", "unknown")
+        source = chunk.metadata.filename or chunk.metadata.source_path
         method = chunk.retrieval_method or "unknown"
         preview = " ".join(chunk.text.split())
         if len(preview) > 220:

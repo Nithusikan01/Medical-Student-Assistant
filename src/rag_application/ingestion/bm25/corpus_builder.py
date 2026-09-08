@@ -56,7 +56,10 @@ class BM25CorpusBuilder:
         exc_value,
         traceback,
     ) -> bool:
-        self.finish()
+        if exc_type is None:
+            self.finish()
+        else:
+            self.abort()
 
         # Never suppress exceptions
         return False
@@ -149,3 +152,21 @@ class BM25CorpusBuilder:
                     self.temp_path.unlink()
                 except OSError:
                     pass
+
+    def abort(self) -> None:
+        """
+        Close and remove the temporary corpus after a failed build.
+        """
+
+        if self._file is not None:
+            self._file.close()
+            self._file = None
+
+        if self.temp_path.exists():
+            try:
+                self.temp_path.unlink()
+            except OSError:
+                logger.warning(
+                    "Failed to remove temporary BM25 corpus: %s",
+                    self.temp_path,
+                )

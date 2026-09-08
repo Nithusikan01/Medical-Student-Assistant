@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import sys
 from pathlib import Path
@@ -55,47 +54,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def parse_chunk_index(chunk_id: str, fallback: int) -> int:
-    marker = "_chunk_"
-    if marker not in chunk_id:
-        return fallback
-
-    try:
-        return int(chunk_id.rsplit(marker, 1)[1])
-    except ValueError:
-        return fallback
-
-
-def parse_source(chunk_id: str) -> str:
-    marker = "_chunk_"
-    if marker not in chunk_id:
-        return "bm25_corpus"
-    return chunk_id.split(marker, 1)[0]
-
-
 def load_bm25_documents(corpus_path: Path) -> list[DocumentChunk]:
-    from rag_application.ingestion.schemas import DocumentChunk
+    from rag_application.wiring.rag_factory import load_bm25_corpus
 
     if not corpus_path.exists():
         print(f"BM25 corpus not found at {corpus_path}. BM25 retrieval will be empty.")
         return []
 
-    with corpus_path.open("r", encoding="utf-8") as file:
-        rows = json.load(file)
-
-    documents = []
-    for index, row in enumerate(rows):
-        chunk_id = row["id"]
-        documents.append(
-            DocumentChunk(
-                id=chunk_id,
-                text=row["text"],
-                source=parse_source(chunk_id),
-                chunk_index=parse_chunk_index(chunk_id, index),
-            )
-        )
-
-    return documents
+    return load_bm25_corpus(corpus_path)
 
 
 def build_query_service(corpus_path: Path, use_reranker: bool) -> QueryService:
@@ -147,7 +113,7 @@ def print_results(results: list[RetrievedChunk]) -> None:
 
     print(f"Retrieved {len(results)} chunks:\n")
     for index, result in enumerate(results, start=1):
-        source = result.metadata.get("source", "unknown")
+        source = result.metadata.filename or result.metadata.source_path
         preview = " ".join(result.text.split())
         if len(preview) > 320:
             preview = f"{preview[:317]}..."

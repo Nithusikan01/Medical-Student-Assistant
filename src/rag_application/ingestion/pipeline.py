@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 
+from rag_application.ingestion.bm25 import BM25CorpusBuilder
 from rag_application.ingestion.chunker import TextChunker
 from rag_application.ingestion.document_loader import DocumentLoader
 from rag_application.ingestion.embedder import Embedder
@@ -52,6 +53,7 @@ class IngestionPipeline:
         processor: VectorDataProcessor,
         vector_store: VectorStoreInterface,
         batch_size: int,
+        bm25_corpus_path: str | Path | None = None,
     ) -> None:
         self.loader = loader
         self.chunker = chunker
@@ -59,13 +61,18 @@ class IngestionPipeline:
         self.processor = processor
         self.vector_store = vector_store
         self.batch_size = batch_size
+        self.bm25_corpus_path = (
+            Path(bm25_corpus_path)
+            if bm25_corpus_path is not None
+            else None
+        )
 
     def ingest(
         self,
         file_path: str | Path,
-    ) -> None:
+    ) -> dict[str, int | str]:
         """
-        Ingest a document into the vector store.
+        Ingest a document into the vector store and BM25 corpus.
         """
 
         file_path = Path(file_path)
@@ -91,45 +98,55 @@ class IngestionPipeline:
             total_chunks = 0
             total_vectors = 0
 
-            # ---------------------------------------------------------
-            # Process document in batches
-            # ---------------------------------------------------------
-            for batch_number, chunk_batch in enumerate(
-                self.chunker.chunk_batches(
-                    document=document,
-                    batch_size=self.batch_size,
-                ),
-                start=1,
-            ):
+            bm25_builder = (
+                BM25CorpusBuilder(self.bm25_corpus_path)
+                if self.bm25_corpus_path is not None
+                else None
+            )
 
-                logger.info(
-                    "Processing batch %d (%d chunks).",
-                    batch_number,
-                    len(chunk_batch),
-                )
+            with bm25_builder if bm25_builder is not None else _NullContext() as builder:
+                # ---------------------------------------------------------
+                # Process document in batches
+                # ---------------------------------------------------------
+                for batch_number, chunk_batch in enumerate(
+                    self.chunker.chunk_batches(
+                        document=document,
+                        batch_size=self.batch_size,
+                    ),
+                    start=1,
+                ):
 
-                # Generate embeddings
-                embedded_chunks = self.embedder.embed_batch(
-                    chunk_batch
-                )
+                    logger.info(
+                        "Processing batch %d (%d chunks).",
+                        batch_number,
+                        len(chunk_batch),
+                    )
 
-                # Convert to vector records
-                vector_records = self.processor.prepare(
-                    embedded_chunks
-                )
+                    if builder is not None:
+                        builder.add_batch(chunk_batch)
 
-                # Store vectors
-                self.vector_store.upsert(
-                    vector_records
-                )
+                    # Generate embeddings
+                    embedded_chunks = self.embedder.embed_batch(
+                        chunk_batch
+                    )
 
-                total_chunks += len(chunk_batch)
-                total_vectors += len(vector_records)
+                    # Convert to vector records
+                    vector_records = self.processor.prepare(
+                        embedded_chunks
+                    )
 
-                logger.info(
-                    "Finished batch %d.",
-                    batch_number,
-                )
+                    # Store vectors
+                    self.vector_store.upsert(
+                        vector_records
+                    )
+
+                    total_chunks += len(chunk_batch)
+                    total_vectors += len(vector_records)
+
+                    logger.info(
+                        "Finished batch %d.",
+                        batch_number,
+                    )
 
             logger.info(
                 (
@@ -141,9 +158,23 @@ class IngestionPipeline:
                 total_vectors,
             )
 
+            return {
+                "filename": document.filename,
+                "chunks": total_chunks,
+                "vectors": total_vectors,
+            }
+
         except Exception:
             logger.exception(
                 "Failed to ingest document '%s'.",
                 filename,
             )
             raise
+
+
+class _NullContext:
+    def __enter__(self):
+        return None
+
+    def __exit__(self, exc_type, exc_value, traceback) -> bool:
+        return False

@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 
 from rag_application.api.schemas import IngestResponse
 from rag_application.api.services.upload_service import UploadService
@@ -11,6 +11,7 @@ from rag_application.ingestion.embedder import Embedder
 from rag_application.ingestion.pipeline import IngestionPipeline
 from rag_application.ingestion.processor import VectorDataProcessor
 from rag_application.vectorstore.pinecone_store import PineconeVectorStore
+from rag_application.wiring.rag_factory import build_history_aware_rag_service
 
 router = APIRouter()
 
@@ -37,6 +38,7 @@ def get_ingestion_pipeline() -> IngestionPipeline:
         processor=VectorDataProcessor(),
         vector_store=vector_store,
         batch_size=settings.embedding_batch_size,
+        bm25_corpus_path=settings.bm25_corpus_path,
     )
 
 
@@ -50,6 +52,7 @@ def get_upload_service() -> UploadService:
     response_model=IngestResponse,
 )
 async def ingest_document(
+    request: Request,
     file: UploadFile = File(...),
 ) -> IngestResponse:
 
@@ -70,6 +73,8 @@ async def ingest_document(
         pipeline = get_ingestion_pipeline()
 
         pipeline.ingest(saved_file)
+        build_history_aware_rag_service.cache_clear()
+        request.app.state.rag_service = build_history_aware_rag_service()
 
         return IngestResponse(
             filename=file.filename or saved_file.name,

@@ -23,20 +23,15 @@ def main():
     loader = DocumentLoader()
     chunker = TextChunker(settings.chunking_config())
 
-    pages = loader.load(PDF)
+    document = loader.load(PDF)
 
-    chunks = chunker.chunk(
-        pages=pages,
-        source=PDF.name,
-    )
+    chunks = chunker.chunk(document)
 
     with BM25CorpusBuilder(OUTPUT) as builder:
 
         for batch in chunker.chunk_batches(
-            pages=pages,
-            source=PDF.name,
+            document=document,
             batch_size=5,
-            
         ):
             builder.add_batch(batch)
 
@@ -62,19 +57,11 @@ def main():
         assert chunk.id == record["id"]
         assert chunk.text == record["text"]
 
-        assert (
-            chunk.source
-            == record["metadata"]["source"]
-        )
+        assert chunk.metadata.filename == record["metadata"]["filename"]
 
         assert (
             chunk.chunk_index
             == record["metadata"]["chunk_index"]
-        )
-
-        assert (
-            chunk.timestamp
-            == record["metadata"]["timestamp"]
         )
 
     print()

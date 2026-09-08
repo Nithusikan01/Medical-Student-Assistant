@@ -4,15 +4,29 @@ Schemas for the BM25 corpus.
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from typing import Optional
+
+from pydantic import BaseModel, Field
 
 from rag_application.ingestion.schemas import DocumentChunk
 
 
 class BM25Metadata(BaseModel):
-    source: str
+    document_id: str
+    filename: str
+    source_path: str
     chunk_index: int
-    timestamp: int
+    page_number: Optional[int] = None
+    section_title: Optional[str] = None
+    heading_level: Optional[int] = None
+    start_char: Optional[int] = None
+    end_char: Optional[int] = None
+    chunk_size: int = 0
+    overlap_size: int = 0
+    element_id: Optional[str] = None
+    element_type: Optional[str] = None
+    language: str = "en"
+    tags: list[str] = Field(default_factory=list)
 
 
 class BM25CorpusRecord(BaseModel):
@@ -28,12 +42,26 @@ class BM25CorpusRecord(BaseModel):
         """
         Create a BM25 corpus record from a DocumentChunk.
         """
+        metadata = chunk.metadata
+
         return cls(
             id=chunk.id,
             text=chunk.text,
             metadata=BM25Metadata(
-                source=chunk.source,
+                document_id=metadata.document_id,
+                filename=metadata.filename,
+                source_path=metadata.source_path,
                 chunk_index=chunk.chunk_index,
-                timestamp=chunk.timestamp,
+                page_number=metadata.page_number,
+                section_title=metadata.section_title,
+                heading_level=metadata.heading_level,
+                start_char=metadata.start_char,
+                end_char=metadata.end_char,
+                chunk_size=metadata.chunk_size,
+                overlap_size=metadata.overlap_size,
+                element_id=metadata.element_id,
+                element_type=metadata.element_type,
+                language=metadata.language,
+                tags=metadata.tags,
             ),
         )
