@@ -23,17 +23,24 @@ class VectorRecordMetadata:
     language: str = "en"
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert metadata to a dictionary suitable for vector stores."""
-        return asdict(self)
+        """
+        Convert metadata into Pinecone-compatible metadata.
+
+        Pinecone does not accept null metadata values, so optional
+        fields with None values are omitted.
+        """
+        return {
+            key: value
+            for key, value in asdict(self).items()
+            if value is not None
+        }
 
     @classmethod
     def from_dict(
         cls,
         metadata: dict[str, Any],
     ) -> "VectorRecordMetadata":
-        """Create metadata from a vector store response."""
         return cls(**metadata)
-
 
 @dataclass(slots=True)
 class VectorRecord:

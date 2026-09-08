@@ -72,7 +72,7 @@ class PineconeVectorStore(VectorStoreInterface):
                 {
                     "id": record.id,
                     "values": record.values,
-                    "metadata": vars(record.metadata),
+                    "metadata": record.metadata.to_dict(),
                 }
                 for record in records
             ]
