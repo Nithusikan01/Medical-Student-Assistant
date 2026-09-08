@@ -13,8 +13,10 @@ fi
 
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+WARNING_FILE="tmp/UNCOMMITTED_WARNING.txt"
 
 write_warning() {
+  mkdir -p tmp
   {
     echo "$1"
     echo "Timestamp: $TIMESTAMP"
@@ -27,7 +29,7 @@ write_warning() {
       echo "---- pytest output ----"
       echo "$2"
     fi
-  } > UNCOMMITTED_WARNING.txt
+  } > "$WARNING_FILE"
 }
 
 # Prefer the project's own virtualenv so imports of project dependencies
@@ -56,7 +58,7 @@ fi
 
 # Tests passed on a non-main branch: drop any stale warning from a previous
 # failed run, then stage everything and commit.
-rm -f UNCOMMITTED_WARNING.txt
+rm -f "$WARNING_FILE"
 git add -A
 
 if git diff --cached --quiet; then
