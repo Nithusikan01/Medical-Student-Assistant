@@ -1,7 +1,5 @@
 import logging
 
-from sentence_transformers import SentenceTransformer
-
 from rag_application.config.component_configs import EmbeddingConfig
 from rag_application.ingestion.schemas import (
     DocumentChunk,
@@ -23,6 +21,8 @@ class Embedder:
     def __init__(self, config: EmbeddingConfig) -> None:
         self.model_name = config.model_name
         self.batch_size = config.batch_size
+
+        from sentence_transformers import SentenceTransformer
 
         self.model = SentenceTransformer(self.model_name)
 

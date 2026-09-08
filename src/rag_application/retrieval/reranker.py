@@ -1,7 +1,5 @@
 import logging
 
-from sentence_transformers import CrossEncoder
-
 from rag_application.retrieval.schemas import RetrievedChunk
 
 logger = logging.getLogger(__name__)
@@ -23,6 +21,8 @@ class Reranker:
             "Loading reranker model: %s",
             model_name,
         )
+
+        from sentence_transformers import CrossEncoder
 
         self.model = CrossEncoder(model_name)
 

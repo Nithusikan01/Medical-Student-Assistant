@@ -1,8 +1,6 @@
 import logging
 from collections.abc import Iterator
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-
 from rag_application.config.component_configs import ChunkingConfig
 from rag_application.ingestion.schemas import (
     ChunkMetadata,
@@ -19,7 +17,7 @@ class TextChunker:
 
         self.config = config
 
-        self.splitter = RecursiveCharacterTextSplitter(
+        self.splitter = _build_splitter(
             chunk_size=config.chunk_size,
             chunk_overlap=config.chunk_overlap,
         )
@@ -50,7 +48,7 @@ class TextChunker:
 
                 chunks.append(
                     DocumentChunk(
-                        id=f"{document.document_id}_{global_chunk_index}",
+                        id=f"{document.document_id}_chunk_{global_chunk_index}",
                         chunk_index=global_chunk_index,
                         text=chunk_text,
                         metadata=metadata,
@@ -94,3 +92,15 @@ class TextChunker:
             )
 
             yield batch
+
+
+def _build_splitter(
+    chunk_size: int,
+    chunk_overlap: int,
+):
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+    return RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )

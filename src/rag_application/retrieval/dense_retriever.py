@@ -1,6 +1,5 @@
 import logging
-
-from sentence_transformers import SentenceTransformer
+from typing import Any
 
 from rag_application.config.component_configs import RetrievalConfig
 from rag_application.retrieval.base import BaseRetriever
@@ -21,7 +20,7 @@ class DenseRetriever(BaseRetriever):
     def __init__(
         self,
         vector_store: VectorStoreInterface,
-        embedding_model: SentenceTransformer,
+        embedding_model: Any,
     ) -> None:
         self.vector_store = vector_store
         self.embedding_model = embedding_model
