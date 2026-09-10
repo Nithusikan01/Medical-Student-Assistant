@@ -8,7 +8,6 @@ on:
       - "rag/**"
       - "Dockerfile"
       - ".dockerignore"
-      - "deploy/space-README.md"
       - ".github/workflows/backend-deploy.yml"
   workflow_dispatch:
 
@@ -17,10 +16,6 @@ on:
 concurrency:
   group: deploy-backend
   cancel-in-progress: false
-
-env:
-  # Set these to your Space, e.g. nithusikan/medical-student-assistant-api
-  HF_SPACE: ${{ vars.HF_SPACE }}
 
 jobs:
   deploy:
@@ -43,8 +38,9 @@ jobs:
           pytest rag/tests/unit -q
           pytest backend/tests -q
 
-      # Schema first: code that expects a column must never reach users before
-      # the column exists.
+      # Schema first: code that expects a column must never reach users
+      # before the column exists. Koyeb's own auto-deploy is left switched
+      # off so this ordering is guaranteed rather than a race.
       - name: Apply database migrations
         working-directory: backend
         env:
@@ -57,56 +53,20 @@ jobs:
           alembic upgrade head
           alembic current
 
-      - name: Assemble the Space contents
-        run: |
-          set -euo pipefail
-          mkdir -p space
-          cp -r rag backend Dockerfile space/
-          cp deploy/space-README.md space/README.md
-          # Runtime state and local secrets must never be published.
-          rm -rf space/backend/storage space/backend/data
-          find space -name '__pycache__' -type d -prune -exec rm -rf {} +
-          find space -name '*.egg-info' -type d -prune -exec rm -rf {} +
-          find space -name '.env' -delete
-          echo "--- files to publish ---"
-          find space -maxdepth 2 -not -path '*/.*' | sort | head -30
+      - name: Install the Koyeb CLI
+        uses: koyeb-community/koyeb-actions@v2
+        with:
+          api_token: ${{ secrets.KOYEB_API_TOKEN }}
 
-      - name: Guard against publishing a secret
-        run: |
-          set -euo pipefail
-          if grep -rIl --exclude='*.example' -E '(PINECONE_API_KEY|GEMINI_API_KEY|DATABASE_URL|SECRET_KEY)[[:space:]]*=[[:space:]]*[^[:space:]]' space/ ; then
-            echo "A file in the publish set assigns a secret value." >&2
-            exit 1
-          fi
-          echo "No inline secrets found."
-
-      - name: Push to the Space
+      # KOYEB_SERVICE is a repository variable shaped "app-name/service-name".
+      - name: Redeploy
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          KOYEB_SERVICE: ${{ vars.KOYEB_SERVICE }}
         run: |
-          set -euo pipefail
-          if [ -z "${HF_SPACE:-}" ]; then
-            echo "Set the HF_SPACE repository variable, e.g. user/space-name." >&2
+          if [ -z "$KOYEB_SERVICE" ]; then
+            echo "Set the KOYEB_SERVICE repository variable, e.g. msa/api." >&2
             exit 1
           fi
-
-          git clone --depth 1 \
-            "https://user:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" space-repo
-
-          # Replace the tracked contents wholesale so deletions propagate,
-          # while keeping the Space's git history.
-          find space-repo -mindepth 1 -maxdepth 1 -not -name '.git' -exec rm -rf {} +
-          cp -r space/. space-repo/
-
-          cd space-repo
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-
-          if git diff --cached --quiet; then
-            echo "Space already matches this commit; nothing to push."
-            exit 0
-          fi
-
-          git commit -m "Deploy ${GITHUB_SHA::7} from ${GITHUB_REPOSITORY}"
-          git push origin main
+          koyeb service redeploy "$KOYEB_SERVICE"
+          echo "Redeploy requested. Koyeb builds the image from the Dockerfile;"
+          echo "watch progress at https://app.koyeb.com/"

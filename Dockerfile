@@ -1,4 +1,4 @@
-# Backend image for Hugging Face Spaces.
+# Backend image.
 #
 # The build context is the repository root, because the API package imports
 # the engine package and both must be present.
@@ -40,7 +40,9 @@ RUN mkdir -p /app/backend/storage/uploads /app/backend/data/raw \
 USER appuser
 WORKDIR /app/backend
 
-# Spaces routes public traffic to this port (see app_port in the Space README).
-EXPOSE 7860
+# Most platforms inject the port to listen on; 8000 is the local default.
+ENV PORT=8000
+EXPOSE 8000
 
-CMD ["uvicorn", "api_app.app:app", "--host", "0.0.0.0", "--port", "7860"]
+# Shell form so $PORT is expanded at runtime rather than taken literally.
+CMD uvicorn api_app.app:app --host 0.0.0.0 --port ${PORT}
