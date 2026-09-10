@@ -1,9 +1,11 @@
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from rag_application.utils.logger import setup_logging
 
 from api_app.auth.bootstrap import ensure_admin_user
 from api_app.db.session import get_engine, session_scope
@@ -16,12 +18,27 @@ from api_app.routers.health import router as health_router
 from api_app.routers.ingest import router as ingest_router
 from api_app.routers.query import router as query_router
 from api_app.wiring.rag_factory import build_history_aware_rag_service
-from rag_application.utils.logger import setup_logging
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 # Initialize logging once when the application starts
 setup_logging()
+
+
+DEFAULT_CORS_ORIGINS = (
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+)
+
+
+def cors_origins() -> list[str]:
+    configured = os.getenv("CORS_ORIGINS", "")
+
+    origins = [
+        origin.strip().rstrip("/") for origin in configured.split(",") if origin.strip()
+    ]
+
+    return origins or list(DEFAULT_CORS_ORIGINS)
 
 
 @asynccontextmanager
@@ -51,13 +68,14 @@ def create_app() -> FastAPI:
 
     # ------------------------------------------------------------------
     # CORS Configuration
+    #
+    # Origins come from CORS_ORIGINS (comma separated) so a deployment can
+    # name its own frontend. Credentials are allowed, which forbids the "*"
+    # wildcard, so every permitted origin must be listed explicitly.
     # ------------------------------------------------------------------
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:5173",  # React (Vite)
-            "http://127.0.0.1:5173",
-        ],
+        allow_origins=cors_origins(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

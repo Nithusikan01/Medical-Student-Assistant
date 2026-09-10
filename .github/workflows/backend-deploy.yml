@@ -1,0 +1,112 @@
+name: Deploy backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "rag/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "deploy/space-README.md"
+      - ".github/workflows/backend-deploy.yml"
+  workflow_dispatch:
+
+# Never let two deploys race: a half-applied migration alongside a rollback
+# is far worse than waiting.
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+env:
+  # Set these to your Space, e.g. nithusikan/medical-student-assistant-api
+  HF_SPACE: ${{ vars.HF_SPACE }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ./rag -e "./backend[dev]"
+
+      - name: Test before deploying
+        run: |
+          pytest rag/tests/unit -q
+          pytest backend/tests -q
+
+      # Schema first: code that expects a column must never reach users before
+      # the column exists.
+      - name: Apply database migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set." >&2
+            exit 1
+          fi
+          alembic upgrade head
+          alembic current
+
+      - name: Assemble the Space contents
+        run: |
+          set -euo pipefail
+          mkdir -p space
+          cp -r rag backend Dockerfile space/
+          cp deploy/space-README.md space/README.md
+          # Runtime state and local secrets must never be published.
+          rm -rf space/backend/storage space/backend/data
+          find space -name '__pycache__' -type d -prune -exec rm -rf {} +
+          find space -name '*.egg-info' -type d -prune -exec rm -rf {} +
+          find space -name '.env' -delete
+          echo "--- files to publish ---"
+          find space -maxdepth 2 -not -path '*/.*' | sort | head -30
+
+      - name: Guard against publishing a secret
+        run: |
+          set -euo pipefail
+          if grep -rIl --exclude='*.example' -E '(PINECONE_API_KEY|GEMINI_API_KEY|DATABASE_URL|SECRET_KEY)[[:space:]]*=[[:space:]]*[^[:space:]]' space/ ; then
+            echo "A file in the publish set assigns a secret value." >&2
+            exit 1
+          fi
+          echo "No inline secrets found."
+
+      - name: Push to the Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HF_SPACE:-}" ]; then
+            echo "Set the HF_SPACE repository variable, e.g. user/space-name." >&2
+            exit 1
+          fi
+
+          git clone --depth 1 \
+            "https://user:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" space-repo
+
+          # Replace the tracked contents wholesale so deletions propagate,
+          # while keeping the Space's git history.
+          find space-repo -mindepth 1 -maxdepth 1 -not -name '.git' -exec rm -rf {} +
+          cp -r space/. space-repo/
+
+          cd space-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "Space already matches this commit; nothing to push."
+            exit 0
+          fi
+
+          git commit -m "Deploy ${GITHUB_SHA::7} from ${GITHUB_REPOSITORY}"
+          git push origin main
