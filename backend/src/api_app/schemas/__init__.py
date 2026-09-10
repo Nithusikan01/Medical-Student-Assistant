@@ -1,5 +1,4 @@
 from api_app.schemas.auth import (
-    GoogleLoginRequest,
     LoginRequest,
     RegisterRequest,
     SetPasswordRequest,
@@ -15,7 +14,6 @@ from api_app.schemas.query import (
 )
 
 __all__ = [
-    "GoogleLoginRequest",
     "IngestResponse",
     "LoginRequest",
     "QueryRequest",

@@ -28,10 +28,6 @@ class LoginRequest(BaseModel):
     password: str
 
 
-class GoogleLoginRequest(BaseModel):
-    id_token: str
-
-
 class SetPasswordRequest(BaseModel):
     new_password: str = Field(min_length=MIN_PASSWORD_LENGTH)
     current_password: str | None = None

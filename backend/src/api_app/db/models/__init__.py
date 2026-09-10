@@ -1,3 +1,4 @@
+from api_app.db.models.conversation import Conversation, ConversationMessage
 from api_app.db.models.invite_code import InviteCode
 from api_app.db.models.oauth_account import PROVIDER_GOOGLE, OAuthAccount
 from api_app.db.models.refresh_token import RefreshToken
@@ -7,6 +8,8 @@ __all__ = [
     "PROVIDER_GOOGLE",
     "ROLE_ADMIN",
     "ROLE_USER",
+    "Conversation",
+    "ConversationMessage",
     "InviteCode",
     "OAuthAccount",
     "RefreshToken",
