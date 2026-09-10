@@ -7,9 +7,9 @@ from sqlalchemy import engine_from_config, pool
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
-from api_app.db import models  # noqa: E402,F401  (registers tables on Base.metadata)
-from api_app.db.base import Base  # noqa: E402
-from api_app.db.session import database_url  # noqa: E402
+from api_app.db import models  # noqa: F401  (registers tables on Base.metadata)
+from api_app.db.base import Base
+from api_app.db.session import database_url
 
 config = context.config
 
