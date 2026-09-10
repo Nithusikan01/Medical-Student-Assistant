@@ -16,6 +16,9 @@ class AuthConfig:
     allow_open_registration: bool = False
     admin_email: str | None = None
     admin_password: str | None = None
+    # Must be True wherever the app is served over HTTPS; False lets the
+    # refresh cookie work over plain http during local development.
+    cookie_secure: bool = False
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -56,4 +59,5 @@ def load_auth_config() -> AuthConfig:
         allow_open_registration=_env_bool("ALLOW_OPEN_REGISTRATION", False),
         admin_email=os.getenv("ADMIN_EMAIL") or None,
         admin_password=os.getenv("ADMIN_PASSWORD") or None,
+        cookie_secure=_env_bool("COOKIE_SECURE", False),
     )

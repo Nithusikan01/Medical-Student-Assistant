@@ -3,12 +3,6 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
-class IngestResponse(BaseModel):
-    filename: str
-    status: str
-    message: str
-
-
 class QueryRequest(BaseModel):
     conversation_id: str
     question: str

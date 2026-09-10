@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api_app.routers.auth import router as auth_router
 from api_app.routers.health import router as health_router
 from api_app.routers.ingest import router as ingest_router
 from api_app.routers.query import router as query_router
@@ -55,6 +56,12 @@ def create_app() -> FastAPI:
         health_router,
         prefix="/health",
         tags=["Health"],
+    )
+
+    app.include_router(
+        auth_router,
+        prefix="/api",
+        tags=["Authentication"],
     )
 
     app.include_router(
