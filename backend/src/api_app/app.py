@@ -5,6 +5,10 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api_app.auth.bootstrap import ensure_admin_user
+from api_app.db.session import get_engine, session_scope
+from api_app.db.startup import verify_connectivity, warn_if_schema_outdated
+from api_app.dependencies import get_auth_config
 from api_app.routers.auth import router as auth_router
 from api_app.routers.health import router as health_router
 from api_app.routers.ingest import router as ingest_router
@@ -23,6 +27,14 @@ async def lifespan(app: FastAPI):
     """
     Application startup and shutdown lifecycle.
     """
+    engine = get_engine()
+
+    verify_connectivity(engine)
+    warn_if_schema_outdated(engine)
+
+    with session_scope() as session:
+        ensure_admin_user(session, get_auth_config())
+
     app.state.rag_service = build_history_aware_rag_service()
     yield
 
@@ -41,7 +53,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
-            "http://localhost:5173",   # React (Vite)
+            "http://localhost:5173",  # React (Vite)
             "http://127.0.0.1:5173",
         ],
         allow_credentials=True,
