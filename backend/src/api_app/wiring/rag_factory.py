@@ -25,6 +25,7 @@ from rag_application.llm.generator import GeminiGenerator
 
 from api_app.db.session import get_session_factory
 from api_app.services.conversation_store import PersistentConversationStore
+from api_app.wiring.bm25_loader import load_bm25_documents
 from rag_application.conversation.query_rewriter import QueryRewriter
 from rag_application.conversation.summarizer import ConversationSummarizer
 
@@ -142,6 +143,33 @@ def load_bm25_corpus(
     return chunks
 
 
+@lru_cache
+def build_bm25_index() -> BM25Index:
+    """
+    The one BM25 index the running service uses.
+
+    Cached so that ingesting or deleting a document can refresh it in place
+    with .rebuild(), instead of tearing down the whole RAG service and
+    reloading the embedding model and cross-encoder reranker with it.
+    """
+
+    return BM25Index(documents=load_bm25_documents(get_session_factory()))
+
+
+def refresh_bm25_index() -> int:
+    """
+    Reload the lexical corpus into the live index.
+
+    The running service holds a reference to the same object, so the change
+    is visible immediately without a restart.
+    """
+
+    documents = load_bm25_documents(get_session_factory())
+    build_bm25_index().rebuild(documents)
+
+    return len(documents)
+
+
 @lru_cache()
 def build_history_aware_rag_service() -> HistoryAwareRAGService:
 
@@ -168,14 +196,8 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
     #
     # BM25 Retriever
     #
-    bm25_documents = load_bm25_corpus(corpus_path=settings.bm25_corpus_path)
-
-    bm25_index = BM25Index(
-        documents=bm25_documents,
-    )
-
     bm25_retriever = BM25Retriever(
-        bm25_index=bm25_index,
+        bm25_index=build_bm25_index(),
     )
 
     #
