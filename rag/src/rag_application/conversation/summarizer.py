@@ -1,5 +1,5 @@
-from rag_application.llm.generator import GeminiGenerator
 from rag_application.conversation.memory import ConversationMemory
+from rag_application.llm.generator import GeminiGenerator
 
 
 class ConversationSummarizer:
@@ -11,10 +11,7 @@ class ConversationSummarizer:
 
         messages = memory.get_recent_messages()
 
-        conversation_text = "\n".join(
-            f"{m.role}: {m.content}"
-            for m in messages
-        )
+        conversation_text = "\n".join(f"{m.role}: {m.content}" for m in messages)
 
         prompt = f"""
 You are a conversation summarizer.

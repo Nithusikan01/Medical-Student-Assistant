@@ -3,7 +3,6 @@ from unittest.mock import MagicMock
 import numpy as np
 
 from rag_application.ingestion.embedder import Embedder
-
 from tests.unit.helpers import make_chunk
 
 

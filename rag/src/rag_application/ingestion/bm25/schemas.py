@@ -4,8 +4,6 @@ Schemas for the BM25 corpus.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from pydantic import BaseModel, Field
 
 from rag_application.ingestion.schemas import DocumentChunk
@@ -16,15 +14,15 @@ class BM25Metadata(BaseModel):
     filename: str
     source_path: str
     chunk_index: int
-    page_number: Optional[int] = None
-    section_title: Optional[str] = None
-    heading_level: Optional[int] = None
-    start_char: Optional[int] = None
-    end_char: Optional[int] = None
+    page_number: int | None = None
+    section_title: str | None = None
+    heading_level: int | None = None
+    start_char: int | None = None
+    end_char: int | None = None
     chunk_size: int = 0
     overlap_size: int = 0
-    element_id: Optional[str] = None
-    element_type: Optional[str] = None
+    element_id: str | None = None
+    element_type: str | None = None
     language: str = "en"
     tags: list[str] = Field(default_factory=list)
 
@@ -38,7 +36,7 @@ class BM25CorpusRecord(BaseModel):
     def from_chunk(
         cls,
         chunk: DocumentChunk,
-    ) -> "BM25CorpusRecord":
+    ) -> BM25CorpusRecord:
         """
         Create a BM25 corpus record from a DocumentChunk.
         """

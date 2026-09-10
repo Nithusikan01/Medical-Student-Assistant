@@ -52,9 +52,7 @@ class HybridRetriever(BaseRetriever):
         )
 
         if not dense_results and not bm25_results:
-            logger.warning(
-                "No results found from either retriever."
-            )
+            logger.warning("No results found from either retriever.")
             return []
 
         fused_scores: dict[str, float] = defaultdict(float)
@@ -66,9 +64,7 @@ class HybridRetriever(BaseRetriever):
 
             for rank, chunk in enumerate(results, start=1):
 
-                fused_scores[chunk.id] += (
-                    1.0 / (self.rrf_k + rank)
-                )
+                fused_scores[chunk.id] += 1.0 / (self.rrf_k + rank)
 
                 #
                 # Preserve scores from both retrievers.

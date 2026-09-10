@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TextIO
+from typing import Self, TextIO
 
 from rag_application.ingestion.schemas import DocumentChunk
 
@@ -46,7 +46,7 @@ class BM25CorpusBuilder:
     # Context Manager
     # ------------------------------------------------------------------
 
-    def __enter__(self) -> "BM25CorpusBuilder":
+    def __enter__(self) -> Self:
         self.start()
         return self
 
@@ -102,9 +102,7 @@ class BM25CorpusBuilder:
         """
 
         if self._file is None:
-            raise RuntimeError(
-                "BM25CorpusBuilder has not been started."
-            )
+            raise RuntimeError("BM25CorpusBuilder has not been started.")
 
         for chunk in chunks:
 
@@ -113,9 +111,7 @@ class BM25CorpusBuilder:
 
             record = BM25CorpusRecord.from_chunk(chunk)
 
-            self._file.write(
-                record.model_dump_json(indent=None)
-            )
+            self._file.write(record.model_dump_json(indent=None))
 
             self._first_record = False
             self._document_count += 1

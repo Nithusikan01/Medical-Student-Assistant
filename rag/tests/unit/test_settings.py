@@ -1,5 +1,7 @@
 import pytest
+
 from rag_application.config.settings import load_settings
+
 
 def test_missing_api_key(monkeypatch):
     # Remove environment variables if they exist
@@ -10,6 +12,7 @@ def test_missing_api_key(monkeypatch):
     # Attempt to load settings, expecting a ValueError due to missing API key
     with pytest.raises(ValueError):
         load_settings()
+
 
 def test_load_settings(monkeypatch):
     # Set environment variables for testing

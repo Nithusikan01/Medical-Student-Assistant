@@ -29,11 +29,7 @@ class VectorRecordMetadata:
         Pinecone does not accept null metadata values, so optional
         fields with None values are omitted.
         """
-        return {
-            key: value
-            for key, value in asdict(self).items()
-            if value is not None
-        }
+        return {key: value for key, value in asdict(self).items() if value is not None}
 
     @classmethod
     def from_dict(
@@ -41,6 +37,7 @@ class VectorRecordMetadata:
         metadata: dict[str, Any],
     ) -> "VectorRecordMetadata":
         return cls(**metadata)
+
 
 @dataclass(slots=True)
 class VectorRecord:

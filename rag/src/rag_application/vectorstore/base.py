@@ -98,6 +98,4 @@ class VectorStoreInterface(ABC):
         existing implementations. Backends that cannot enumerate ids simply
         do not override it.
         """
-        raise NotImplementedError(
-            "This vector store cannot list vector ids."
-        )
+        raise NotImplementedError("This vector store cannot list vector ids.")

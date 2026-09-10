@@ -84,7 +84,7 @@ class PineconeVectorStore(VectorStoreInterface):
 
             for start in range(0, total, self.batch_size):
 
-                batch = vectors[start:start + self.batch_size]
+                batch = vectors[start : start + self.batch_size]
 
                 self.index.upsert(vectors=batch)
 
@@ -103,13 +103,9 @@ class PineconeVectorStore(VectorStoreInterface):
 
         except Exception as exc:
 
-            logger.exception(
-                "Failed to upsert vectors into Pinecone."
-            )
+            logger.exception("Failed to upsert vectors into Pinecone.")
 
-            raise VectorStoreError(
-                "Failed to upsert vectors."
-            ) from exc
+            raise VectorStoreError("Failed to upsert vectors.") from exc
 
     def query(
         self,
@@ -155,10 +151,7 @@ class PineconeVectorStore(VectorStoreInterface):
 
             except Exception as exc:
 
-                if (
-                    attempt < max_attempts
-                    and _is_transient_query_error(exc)
-                ):
+                if attempt < max_attempts and _is_transient_query_error(exc):
 
                     wait = base_backoff * attempt
 
@@ -176,13 +169,9 @@ class PineconeVectorStore(VectorStoreInterface):
                     time.sleep(wait)
                     continue
 
-                logger.exception(
-                    "Vector query failed."
-                )
+                logger.exception("Vector query failed.")
 
-                raise VectorStoreError(
-                    "Failed to query Pinecone."
-                ) from exc
+                raise VectorStoreError("Failed to query Pinecone.") from exc
 
         return []
 
@@ -200,9 +189,7 @@ class PineconeVectorStore(VectorStoreInterface):
             # long document exceeds easily.
             for start in range(0, len(ids), DELETE_BATCH_SIZE):
 
-                self.index.delete(
-                    ids=ids[start:start + DELETE_BATCH_SIZE]
-                )
+                self.index.delete(ids=ids[start : start + DELETE_BATCH_SIZE])
 
             logger.info(
                 "Deleted %d vectors.",
@@ -213,13 +200,9 @@ class PineconeVectorStore(VectorStoreInterface):
 
         except Exception as exc:
 
-            logger.exception(
-                "Failed to delete vectors."
-            )
+            logger.exception("Failed to delete vectors.")
 
-            raise VectorStoreError(
-                "Failed to delete vectors."
-            ) from exc
+            raise VectorStoreError("Failed to delete vectors.") from exc
 
     def list_ids(self, prefix: str) -> Iterator[str]:
         """
@@ -244,9 +227,7 @@ class PineconeVectorStore(VectorStoreInterface):
                 prefix,
             )
 
-            raise VectorStoreError(
-                "Failed to list vector ids."
-            ) from exc
+            raise VectorStoreError("Failed to list vector ids.") from exc
 
     def delete_all(self) -> None:
         """
@@ -264,13 +245,9 @@ class PineconeVectorStore(VectorStoreInterface):
 
         except Exception as exc:
 
-            logger.exception(
-                "Failed to delete all vectors."
-            )
+            logger.exception("Failed to delete all vectors.")
 
-            raise VectorStoreError(
-                "Failed to delete all vectors."
-            ) from exc
+            raise VectorStoreError("Failed to delete all vectors.") from exc
 
     def count(self) -> int:
         """
@@ -292,13 +269,9 @@ class PineconeVectorStore(VectorStoreInterface):
 
         except Exception as exc:
 
-            logger.exception(
-                "Failed to retrieve vector count."
-            )
+            logger.exception("Failed to retrieve vector count.")
 
-            raise VectorStoreError(
-                "Failed to retrieve vector count."
-            ) from exc
+            raise VectorStoreError("Failed to retrieve vector count.") from exc
 
 
 VectorStore = PineconeVectorStore

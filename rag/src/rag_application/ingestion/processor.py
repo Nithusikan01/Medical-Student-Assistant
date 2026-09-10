@@ -1,5 +1,4 @@
 import logging
-from typing import List
 
 from rag_application.ingestion.schemas import EmbeddedChunk
 from rag_application.vectorstore.schemas import (
@@ -9,12 +8,13 @@ from rag_application.vectorstore.schemas import (
 
 logger = logging.getLogger(__name__)
 
+
 class VectorDataProcessor:
 
     def prepare(
         self,
-        embedded_chunks: List[EmbeddedChunk],
-    ) -> List[VectorRecord]:
+        embedded_chunks: list[EmbeddedChunk],
+    ) -> list[VectorRecord]:
 
         records = []
 
@@ -37,6 +37,6 @@ class VectorDataProcessor:
                     ),
                 )
             )
-    
+
         logger.info("Prepared %d vector records.", len(records))
         return records

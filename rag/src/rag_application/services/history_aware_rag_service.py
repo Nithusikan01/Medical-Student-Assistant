@@ -3,10 +3,8 @@ import logging
 from rag_application.conversation.query_rewriter import QueryRewriter
 from rag_application.conversation.store import ConversationStore
 from rag_application.conversation.summarizer import ConversationSummarizer
-
 from rag_application.llm.generator import GeminiGenerator
 from rag_application.llm.prompt_builder import PromptBuilder
-
 from rag_application.retrieval.query_service import QueryService
 from rag_application.retrieval.schemas import RetrievedChunk
 
@@ -74,9 +72,7 @@ class HistoryAwareRAGService:
         #
         # 1. Conversation memory
         #
-        memory = self.session_manager.get_memory(
-            conversation_id
-        )
+        memory = self.session_manager.get_memory(conversation_id)
 
         memory.add_message(
             role="user",
@@ -109,10 +105,7 @@ class HistoryAwareRAGService:
 
         if not chunks:
 
-            answer = (
-                "I couldn't find relevant information "
-                "in the documents."
-            )
+            answer = "I couldn't find relevant information " "in the documents."
 
             memory.add_message(
                 role="assistant",
@@ -142,9 +135,7 @@ class HistoryAwareRAGService:
         response = self.generator.generate(prompt)
 
         if not response.text:
-            raise ValueError(
-                "LLM returned an empty response."
-            )
+            raise ValueError("LLM returned an empty response.")
 
         answer = response.text
 
@@ -161,13 +152,9 @@ class HistoryAwareRAGService:
         #
         if len(memory.messages) >= self.SUMMARY_TRIGGER:
 
-            logger.debug(
-                "Updating conversation summary."
-            )
+            logger.debug("Updating conversation summary.")
 
-            summary = self.summarizer.summarize(
-                memory
-            )
+            summary = self.summarizer.summarize(memory)
 
             memory.update_summary(summary)
 

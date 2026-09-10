@@ -31,11 +31,7 @@ class BM25Retriever(BaseRetriever):
         Retrieve the most relevant chunks using BM25 lexical search.
         """
 
-        top_k = (
-            RetrievalConfig().candidate_k
-            if top_k is None
-            else top_k
-        )
+        top_k = RetrievalConfig().candidate_k if top_k is None else top_k
 
         logger.debug(
             "Running BM25 retrieval for query: %s",

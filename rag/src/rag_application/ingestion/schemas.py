@@ -1,12 +1,13 @@
 from dataclasses import dataclass, field
-from typing import Any, Optional
 
 # ------STAGE 1 -------
+
 
 @dataclass(slots=True)
 class LoadedPage:
     page_number: int
     text: str
+
 
 @dataclass(slots=True)
 class LoadedDocument:
@@ -15,7 +16,9 @@ class LoadedDocument:
     source_path: str
     pages: list[LoadedPage]
 
+
 # ------STAGE 2 -------
+
 
 @dataclass(slots=True)
 class ChunkMetadata:
@@ -25,21 +28,21 @@ class ChunkMetadata:
     source_path: str
 
     # ---------- Location ----------
-    page_number: Optional[int] = None
-    section_title: Optional[str] = None
-    heading_level: Optional[int] = None
+    page_number: int | None = None
+    section_title: str | None = None
+    heading_level: int | None = None
 
     # Position inside document
-    start_char: Optional[int] = None
-    end_char: Optional[int] = None
+    start_char: int | None = None
+    end_char: int | None = None
 
     # ---------- Chunk Information ----------
     chunk_size: int = 0
     overlap_size: int = 0
 
     # Parent element information
-    element_id: Optional[str] = None
-    element_type: Optional[str] = None
+    element_id: str | None = None
+    element_type: str | None = None
 
     # ---------- Retrieval ----------
     language: str = "en"
@@ -50,13 +53,14 @@ class ChunkMetadata:
 
 @dataclass(slots=True)
 class DocumentChunk:
-    id: str                 # Globally unique identifier
-    chunk_index: int        # Position within the document
+    id: str  # Globally unique identifier
+    chunk_index: int  # Position within the document
     text: str
     metadata: ChunkMetadata
 
 
 # -----STAGE 3 -------
+
 
 @dataclass(slots=True)
 class EmbeddedChunk:
@@ -65,4 +69,3 @@ class EmbeddedChunk:
     text: str
     metadata: ChunkMetadata
     embedding: list[float]
-

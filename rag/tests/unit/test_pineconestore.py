@@ -1,7 +1,6 @@
 from unittest.mock import MagicMock
 
 from rag_application.vectorstore.pinecone_store import VectorStore
-
 from tests.unit.helpers import make_vector_record
 
 

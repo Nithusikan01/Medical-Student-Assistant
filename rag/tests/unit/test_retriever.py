@@ -3,7 +3,6 @@ from unittest.mock import Mock
 from rag_application.retrieval.dense_retriever import DenseRetriever
 from rag_application.retrieval.hybrid_retriever import HybridRetriever
 from rag_application.retrieval.schemas import RetrievalMethod, RetrievedChunk
-
 from tests.unit.helpers import make_retrieved_chunk, make_search_result
 
 

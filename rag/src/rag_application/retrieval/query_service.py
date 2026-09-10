@@ -69,9 +69,7 @@ class QueryService:
         )
 
         if not candidates:
-            logger.warning(
-                "No retrieval results found."
-            )
+            logger.warning("No retrieval results found.")
             return []
 
         logger.debug(
@@ -84,9 +82,7 @@ class QueryService:
         #
         if use_reranker and self.reranker is not None:
 
-            logger.debug(
-                "Applying cross-encoder reranker."
-            )
+            logger.debug("Applying cross-encoder reranker.")
 
             results = self.reranker.rerank(
                 query=query,
@@ -96,9 +92,7 @@ class QueryService:
 
         else:
 
-            logger.debug(
-                "Skipping reranker."
-            )
+            logger.debug("Skipping reranker.")
 
             results = candidates[:top_k]
 

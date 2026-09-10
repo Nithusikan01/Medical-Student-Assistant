@@ -3,7 +3,6 @@ from unittest.mock import Mock, patch
 from rag_application.config.component_configs import ChunkingConfig
 from rag_application.ingestion.chunker import TextChunker
 from rag_application.ingestion.schemas import DocumentChunk, LoadedDocument
-
 from tests.unit.helpers import make_loaded_document
 
 

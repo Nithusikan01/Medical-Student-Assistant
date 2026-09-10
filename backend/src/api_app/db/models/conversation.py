@@ -39,9 +39,7 @@ class Conversation(Base):
     # Messages at or before this id are already folded into `summary`.
     # Without it the summariser would re-fire on every turn once the history
     # passes the trigger length.
-    summary_checkpoint_message_id: Mapped[int | None] = mapped_column(
-        _MessageId
-    )
+    summary_checkpoint_message_id: Mapped[int | None] = mapped_column(_MessageId)
 
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
@@ -56,9 +54,7 @@ class Conversation(Base):
         onupdate=sa.func.now(),
     )
 
-    last_message_at: Mapped[datetime | None] = mapped_column(
-        sa.DateTime(timezone=True)
-    )
+    last_message_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
 
     messages: Mapped[list["ConversationMessage"]] = relationship(
         back_populates="conversation",
@@ -104,9 +100,7 @@ class ConversationMessage(Base):
         server_default=sa.func.now(),
     )
 
-    conversation: Mapped["Conversation"] = relationship(
-        back_populates="messages"
-    )
+    conversation: Mapped["Conversation"] = relationship(back_populates="messages")
 
     __table_args__ = (
         sa.CheckConstraint(

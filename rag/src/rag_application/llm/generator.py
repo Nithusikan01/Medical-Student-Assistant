@@ -1,4 +1,3 @@
-
 import logging
 import time
 
@@ -37,9 +36,7 @@ class GeminiGenerator:
             raise ValueError("Gemini model name is missing.")
 
         self.client = (
-            client
-            if client is not None
-            else genai.Client(api_key=config.api_key)
+            client if client is not None else genai.Client(api_key=config.api_key)
         )
 
         self.model_name = config.model_name
@@ -55,9 +52,7 @@ class GeminiGenerator:
         Generate a response from Gemini.
         """
 
-        logger.debug(
-            "Generating response with Gemini."
-        )
+        logger.debug("Generating response with Gemini.")
 
         start_time = time.perf_counter()
 
@@ -70,11 +65,9 @@ class GeminiGenerator:
 
             try:
 
-                response = (
-                    self.client.models.generate_content(
-                        model=self.model_name,
-                        contents=prompt,
-                    )
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
                 )
 
                 text = getattr(
@@ -84,14 +77,9 @@ class GeminiGenerator:
                 )
 
                 if not text:
-                    raise RuntimeError(
-                        "Gemini returned an empty response."
-                    )
+                    raise RuntimeError("Gemini returned an empty response.")
 
-                latency = (
-                    time.perf_counter()
-                    - start_time
-                )
+                latency = time.perf_counter() - start_time
 
                 logger.debug(
                     "Generation completed in %.3f seconds.",
@@ -108,7 +96,11 @@ class GeminiGenerator:
                     },
                 )
 
-            except Exception as exc:
+            # Deliberately broad: this is a retry wrapper around a third-party
+            # client, and any failure it raises - transport, quota, or an
+            # empty response - is worth one more attempt. Narrowing this would
+            # let an unlisted error escape the retry entirely.
+            except Exception as exc:  # noqa: BLE001
 
                 last_error = exc
 
@@ -120,10 +112,6 @@ class GeminiGenerator:
                 )
 
                 if attempt <= self.max_retries:
-                    time.sleep(
-                        self.retry_delay
-                    )
+                    time.sleep(self.retry_delay)
 
-        raise RuntimeError(
-            "Gemini generation failed."
-        ) from last_error
+        raise RuntimeError("Gemini generation failed.") from last_error

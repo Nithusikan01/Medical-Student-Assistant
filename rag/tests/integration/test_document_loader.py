@@ -2,7 +2,6 @@ from pathlib import Path
 
 from rag_application.ingestion.document_loader import DocumentLoader
 
-
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "cv.pdf"
 
 

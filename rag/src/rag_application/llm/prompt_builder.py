@@ -18,9 +18,7 @@ class PromptBuilder:
     ) -> str:
 
         context = PromptBuilder._format_context(chunks)
-        conversation = PromptBuilder._format_conversation(
-            recent_messages
-        )
+        conversation = PromptBuilder._format_conversation(recent_messages)
 
         prompt = dedent(
             f"""
@@ -84,14 +82,10 @@ class PromptBuilder:
             ]
 
             if metadata.page_number is not None:
-                lines.append(
-                    f"Page: {metadata.page_number}"
-                )
+                lines.append(f"Page: {metadata.page_number}")
 
             if metadata.section_title:
-                lines.append(
-                    f"Section: {metadata.section_title}"
-                )
+                lines.append(f"Section: {metadata.section_title}")
 
             lines.extend(
                 [
@@ -112,7 +106,4 @@ class PromptBuilder:
         if not messages:
             return "No recent conversation."
 
-        return "\n".join(
-            f"{message.role}: {message.content}"
-            for message in messages
-        )
+        return "\n".join(f"{message.role}: {message.content}" for message in messages)

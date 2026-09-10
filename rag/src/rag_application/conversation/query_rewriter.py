@@ -8,10 +8,7 @@ class QueryRewriter:
 
     def rewrite(self, query: str, summary: str, recent_messages: list) -> str:
 
-        recent_text = "\n".join(
-            f"{m.role}: {m.content}"
-            for m in recent_messages
-        )
+        recent_text = "\n".join(f"{m.role}: {m.content}" for m in recent_messages)
 
         prompt = f"""
         You are a query rewriting system for a RAG application.

@@ -26,9 +26,7 @@ class Reranker:
 
         self.model = CrossEncoder(model_name)
 
-        logger.info(
-            "Reranker model loaded successfully."
-        )
+        logger.info("Reranker model loaded successfully.")
 
     def rerank(
         self,
@@ -38,9 +36,7 @@ class Reranker:
     ) -> list[RetrievedChunk]:
 
         if not candidates:
-            logger.warning(
-                "No candidates provided to reranker."
-            )
+            logger.warning("No candidates provided to reranker.")
             return []
 
         logger.debug(
@@ -51,10 +47,7 @@ class Reranker:
         #
         # Prepare (query, document) pairs.
         #
-        pairs = [
-            (query, chunk.text)
-            for chunk in candidates
-        ]
+        pairs = [(query, chunk.text) for chunk in candidates]
 
         #
         # CrossEncoder scores.
@@ -65,9 +58,7 @@ class Reranker:
         # Update each chunk with its rerank score.
         #
         reranked = [
-            chunk.with_rerank_score(
-                score=float(score)
-            )
+            chunk.with_rerank_score(score=float(score))
             for chunk, score in zip(
                 candidates,
                 scores,
