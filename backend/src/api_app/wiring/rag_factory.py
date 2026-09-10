@@ -23,8 +23,9 @@ from rag_application.retrieval.query_service import QueryService
 
 from rag_application.llm.generator import GeminiGenerator
 
+from api_app.db.session import get_session_factory
+from api_app.services.conversation_store import PersistentConversationStore
 from rag_application.conversation.query_rewriter import QueryRewriter
-from rag_application.conversation.session_manager import SessionManager
 from rag_application.conversation.summarizer import ConversationSummarizer
 
 from rag_application.services.history_aware_rag_service import (
@@ -149,17 +150,12 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
     #
     # Embedding Model
     #
-    embedder = Embedder(
-        settings.embedding_config()
-    )
+    embedder = Embedder(settings.embedding_config())
 
     #
     # Vector Store
     #
-    vector_store = PineconeVectorStore(
-        settings=settings,
-        dimension=embedder.dimension
-    )
+    vector_store = PineconeVectorStore(settings=settings, dimension=embedder.dimension)
 
     #
     # Dense Retriever
@@ -172,9 +168,7 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
     #
     # BM25 Retriever
     #
-    bm25_documents = load_bm25_corpus(
-        corpus_path=settings.bm25_corpus_path
-    )
+    bm25_documents = load_bm25_corpus(corpus_path=settings.bm25_corpus_path)
 
     bm25_index = BM25Index(
         documents=bm25_documents,
@@ -217,7 +211,7 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
     #
     # Conversation Components
     #
-    session_manager = SessionManager()
+    session_manager = PersistentConversationStore(get_session_factory())
 
     query_rewriter = QueryRewriter(llm)
 
@@ -234,8 +228,6 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
         summarizer=summarizer,
     )
 
-    logger.info(
-        "History-aware RAG system initialized successfully."
-    )
+    logger.info("History-aware RAG system initialized successfully.")
 
     return rag_service
