@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 
 from rag_application.vectorstore.schemas import (
     SearchResult,
@@ -88,3 +89,15 @@ class VectorStoreInterface(ABC):
         Return the total number of stored vectors.
         """
         raise NotImplementedError
+
+    def list_ids(self, prefix: str) -> Iterator[str]:
+        """
+        Yield stored vector ids beginning with `prefix`.
+
+        Deliberately not abstract: adding a required method would break
+        existing implementations. Backends that cannot enumerate ids simply
+        do not override it.
+        """
+        raise NotImplementedError(
+            "This vector store cannot list vector ids."
+        )

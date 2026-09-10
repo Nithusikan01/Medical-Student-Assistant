@@ -1,18 +1,21 @@
 import logging
 import time
+from collections.abc import Iterator
 
 from pinecone import Pinecone, ServerlessSpec
 
 from rag_application.config.settings import Settings
+from rag_application.utils.exceptions import VectorStoreError
+from rag_application.vectorstore.base import VectorStoreInterface
 from rag_application.vectorstore.schemas import (
     SearchResult,
     VectorRecord,
     VectorRecordMetadata,
 )
-from rag_application.vectorstore.base import VectorStoreInterface
-from rag_application.utils.exceptions import VectorStoreError
 
 logger = logging.getLogger(__name__)
+
+DELETE_BATCH_SIZE = 1000
 
 
 def _is_transient_query_error(error: Exception) -> bool:
@@ -188,9 +191,18 @@ class PineconeVectorStore(VectorStoreInterface):
         ids: list[str],
     ) -> int:
 
+        if not ids:
+            return 0
+
         try:
 
-            self.index.delete(ids=ids)
+            # Pinecone rejects more than 1000 ids in a single delete, which a
+            # long document exceeds easily.
+            for start in range(0, len(ids), DELETE_BATCH_SIZE):
+
+                self.index.delete(
+                    ids=ids[start:start + DELETE_BATCH_SIZE]
+                )
 
             logger.info(
                 "Deleted %d vectors.",
@@ -207,6 +219,33 @@ class PineconeVectorStore(VectorStoreInterface):
 
             raise VectorStoreError(
                 "Failed to delete vectors."
+            ) from exc
+
+    def list_ids(self, prefix: str) -> Iterator[str]:
+        """
+        Yield stored vector ids beginning with `prefix`.
+
+        Pinecone's listing is eventually consistent, so this is only safe for
+        reconciliation sweeps - never as the authoritative set of ids to
+        delete.
+        """
+
+        try:
+
+            for page in self.index.list(prefix=prefix):
+
+                for item in page:
+                    yield item if isinstance(item, str) else item.id
+
+        except Exception as exc:
+
+            logger.exception(
+                "Failed to list vector ids for prefix '%s'.",
+                prefix,
+            )
+
+            raise VectorStoreError(
+                "Failed to list vector ids."
             ) from exc
 
     def delete_all(self) -> None:
