@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag-backend"
+version = "0.1.0"
+description = "FastAPI HTTP layer over the RAG engine"
+requires-python = ">=3.11"
+
+authors = [
+{ name = "T. Nithusikan" }
+]
+
+# rag-application is a local path dependency, installed separately:
+#   python -m pip install -e ./rag
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "python-multipart",
+    "python-dotenv",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-mock",
+    "pytest-cov",
+    "black",
+    "ruff",
+    "httpx",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+pythonpath = ["src", "../rag/src"]
+
+[tool.black]
+line-length = 88
+
+[tool.ruff]
+line-length = 88

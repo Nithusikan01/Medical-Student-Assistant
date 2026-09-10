@@ -27,17 +27,29 @@ logs/*
 .DS_Store
 Thumbs.db
 
-# Test data temporarily ignored
-data/*
-storage/*
-storage/uploads/*
-!storage/uploads/.gitkeep
+# Runtime data and generated corpora
+backend/data/*
+!backend/data/raw/
+backend/data/raw/*
+!backend/data/raw/.gitkeep
+backend/storage/*
+!backend/storage/uploads/
+backend/storage/uploads/*
+!backend/storage/uploads/.gitkeep
 
 # Generated package metadata
-src/rag_application.egg-info/
+**/*.egg-info/
+
+# Frontend
+node_modules/
+frontend/dist/
+frontend/node_modules/
+.vite/
 
 
 # Temporary files
 tmp/*
 .claude/notes/
 .claude/settings.local.json
+*.tsbuildinfo
+
