@@ -1,6 +1,6 @@
 import uuid
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -83,6 +83,7 @@ def require_admin(
     return user
 
 
+RagService = Annotated[Any, Depends(get_rag_service)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 AdminUser = Annotated[User, Depends(require_admin)]
 DbSession = Annotated[Session, Depends(get_db)]

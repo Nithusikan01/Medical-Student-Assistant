@@ -5,6 +5,13 @@ from api_app.schemas.auth import (
     TokenResponse,
     UserResponse,
 )
+from api_app.schemas.conversation import (
+    ConversationCreateRequest,
+    ConversationDetailResponse,
+    ConversationMessageResponse,
+    ConversationSummaryResponse,
+    ConversationUpdateRequest,
+)
 from api_app.schemas.document import IngestResponse
 from api_app.schemas.query import (
     QueryRequest,
@@ -14,6 +21,11 @@ from api_app.schemas.query import (
 )
 
 __all__ = [
+    "ConversationCreateRequest",
+    "ConversationDetailResponse",
+    "ConversationMessageResponse",
+    "ConversationSummaryResponse",
+    "ConversationUpdateRequest",
     "IngestResponse",
     "LoginRequest",
     "QueryRequest",
