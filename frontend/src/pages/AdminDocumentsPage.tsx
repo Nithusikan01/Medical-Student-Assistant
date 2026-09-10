@@ -6,6 +6,14 @@ import {
   listDocuments,
   uploadDocument,
 } from "../api/documents";
+import {
+  ArrowLeft,
+  Document,
+  Spinner,
+  Trash,
+  Upload,
+} from "../components/Icons";
+import { ThemeToggle } from "../components/ThemeToggle";
 import type { DocumentSummary } from "../types";
 
 function formatSize(bytes: number | null): string {
@@ -48,7 +56,7 @@ export function AdminDocumentsPage() {
 
     try {
       const response = await uploadDocument(file);
-      setMessage(`${response.filename} ingested.`);
+      setMessage(`${response.filename} added to the library.`);
       await refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Upload failed.");
@@ -62,7 +70,7 @@ export function AdminDocumentsPage() {
 
   const remove = async (document: DocumentSummary) => {
     const confirmed = window.confirm(
-      `Delete "${document.filename}"? Its vectors will be removed and it ` +
+      `Delete "${document.filename}"? Its passages will be removed and it ` +
         `will stop appearing in answers.`,
     );
 
@@ -76,101 +84,162 @@ export function AdminDocumentsPage() {
     try {
       await deleteDocument(document.id);
       setMessage(`${document.filename} deleted.`);
-      await refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Delete failed.");
+    } finally {
       await refresh();
     }
   };
 
   return (
-    <div className="admin-page">
-      <header className="admin-head">
-        <div>
-          <h1>Documents</h1>
-          <p className="tagline">
-            Everyone queries this shared library. Only admins can change it.
-          </p>
-        </div>
-        <Link to="/" className="secondary button-like">
+    <div className="admin-shell">
+      <div className="admin-bar">
+        <Link to="/" className="back-link">
+          <ArrowLeft />
           Back to chat
         </Link>
-      </header>
+        <ThemeToggle compact />
+      </div>
 
-      <section className="upload-block">
-        <input
-          ref={inputRef}
-          type="file"
-          accept="application/pdf,.pdf"
-          disabled={uploading !== null}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) {
-              void upload(file);
-            }
-          }}
-        />
+      <div className="admin-body">
+        <div className="admin-inner">
+          <div>
+            <h1>Library</h1>
+            <p className="tagline">
+              Everyone queries these documents. Only admins can change them.
+            </p>
+          </div>
 
-        {uploading && (
-          <p className="upload-status">
-            Ingesting {uploading}… this can take a while for a long PDF.
-          </p>
-        )}
-        {message && <p className="upload-status upload-ok">{message}</p>}
-        {error && <p className="upload-status upload-error">{error}</p>}
-      </section>
+          <div className="dropzone">
+            <span className="dropzone-icon">
+              <Upload size={20} strokeWidth={1.7} />
+            </span>
 
-      <table className="documents">
-        <thead>
-          <tr>
-            <th>File</th>
-            <th>Status</th>
-            <th>Pages</th>
-            <th>Chunks</th>
-            <th>Size</th>
-            <th>Uploaded by</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {documents.length === 0 && (
-            <tr>
-              <td colSpan={7} className="empty-row">
-                No documents yet. Upload a PDF to get started.
-              </td>
-            </tr>
+            <div className="dropzone-copy">
+              <strong>Add a PDF to the library</strong>
+              <span>
+                Text-based PDFs only. A long textbook can take several minutes
+                to process.
+              </span>
+            </div>
+
+            <input
+              ref={inputRef}
+              id="document-upload"
+              type="file"
+              accept="application/pdf,.pdf"
+              disabled={uploading !== null}
+              style={{ display: "none" }}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  void upload(file);
+                }
+              }}
+            />
+
+            <button
+              type="button"
+              className="btn"
+              disabled={uploading !== null}
+              onClick={() => inputRef.current?.click()}
+            >
+              <Upload />
+              {uploading ? "Ingesting…" : "Choose file"}
+            </button>
+          </div>
+
+          {uploading && (
+            <p className="upload-status">
+              <Spinner />
+              Ingesting {uploading}…
+            </p>
           )}
+          {message && (
+            <p className="upload-status upload-ok">{message}</p>
+          )}
+          {error && <p className="upload-status upload-error">{error}</p>}
 
-          {documents.map((document) => (
-            <tr key={document.id}>
-              <td>{document.filename}</td>
-              <td>
-                <span className={`badge badge-${document.status}`}>
-                  {document.status}
-                </span>
-                {document.error && (
-                  <span className="row-error" title={document.error}>
-                    {document.error.slice(0, 60)}
-                  </span>
-                )}
-              </td>
-              <td>{document.page_count ?? "—"}</td>
-              <td>{document.chunk_count}</td>
-              <td>{formatSize(document.size_bytes)}</td>
-              <td>{document.uploaded_by_email ?? "—"}</td>
-              <td>
-                <button
-                  type="button"
-                  className="danger small"
-                  onClick={() => void remove(document)}
-                >
-                  Delete
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+          {documents.length === 0 ? (
+            <div className="empty-state">
+              <span className="empty-state-icon">
+                <Document size={24} strokeWidth={1.5} />
+              </span>
+              <div>
+                <strong>The library is empty</strong>
+                <p>
+                  Until a PDF is added, every question comes back with “I
+                  couldn't find relevant information in the documents.”
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="table-card">
+              <table className="documents">
+                <thead>
+                  <tr>
+                    <th>Document</th>
+                    <th>Status</th>
+                    <th className="numeric">Pages</th>
+                    <th className="numeric">Chunks</th>
+                    <th className="numeric">Size</th>
+                    <th>Added by</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {documents.map((document) => (
+                    <tr key={document.id}>
+                      <td>
+                        <span className="file-cell">
+                          <Document />
+                          {document.filename}
+                        </span>
+                        {document.error && (
+                          <span className="row-error" title={document.error}>
+                            {document.error}
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        <span className={`badge badge-${document.status}`}>
+                          {document.status === "processing" ||
+                          document.status === "deleting" ? (
+                            <Spinner size={11} />
+                          ) : (
+                            <span className="badge-dot" />
+                          )}
+                          {document.status}
+                        </span>
+                      </td>
+                      <td className="numeric">
+                        {document.page_count ?? <span className="dim">—</span>}
+                      </td>
+                      <td className="numeric">{document.chunk_count}</td>
+                      <td className="numeric dim">
+                        {formatSize(document.size_bytes)}
+                      </td>
+                      <td className="dim">
+                        {document.uploaded_by_email ?? "—"}
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <button
+                          type="button"
+                          className="btn btn-danger btn-small"
+                          onClick={() => void remove(document)}
+                        >
+                          <Trash size={13} />
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

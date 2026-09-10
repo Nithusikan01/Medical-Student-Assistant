@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { ChatMessage } from "../hooks/useConversation";
+import { Send, Spinner } from "./Icons";
 import { SourceList } from "./SourceList";
 
 interface ChatPanelProps {
@@ -41,36 +42,44 @@ export function ChatPanel({
   };
 
   return (
-    <section className="chat">
+    <>
       <div className="messages">
-        {loading && <div className="thinking">Loading conversation…</div>}
+        {loading && (
+          <div className="thinking">
+            <Spinner />
+            Loading conversation…
+          </div>
+        )}
 
         {messages.length === 0 && !pending && !loading && (
           <div className="empty">
-            <h2>Ask about your documents</h2>
+            <h2>Ask about the library</h2>
             <p>
-              Upload a PDF, then ask a question. Every answer is grounded in the
-              retrieved chunks listed beneath it.
+              Every answer is grounded in the retrieved passages listed beneath
+              it, so you can check the source before you trust it.
             </p>
           </div>
         )}
 
-        {messages.map((message) => (
-          <article key={message.id} className={`message message-${message.role}`}>
-            <div className="message-role">
-              {message.role === "user" ? "You" : "Assistant"}
+        {messages.map((message) =>
+          message.role === "user" ? (
+            <div key={message.id} className="message-user">
+              {message.content}
             </div>
-
-            <div className="message-body">{message.content}</div>
-
-            {message.sources && <SourceList sources={message.sources} />}
-          </article>
-        ))}
+          ) : (
+            <article key={message.id} className="message-assistant">
+              <p className="message-body">{message.content}</p>
+              {message.sources && <SourceList sources={message.sources} />}
+            </article>
+          ),
+        )}
 
         {pending && (
-          <article className="message message-assistant">
-            <div className="message-role">Assistant</div>
-            <div className="message-body thinking">Retrieving and generating…</div>
+          <article className="message-assistant">
+            <div className="thinking">
+              <Spinner />
+              Retrieving and generating…
+            </div>
           </article>
         )}
 
@@ -88,7 +97,7 @@ export function ChatPanel({
       >
         <textarea
           value={draft}
-          rows={3}
+          rows={2}
           placeholder="Ask a question about the ingested documents…"
           disabled={pending}
           onChange={(event) => setDraft(event.target.value)}
@@ -112,11 +121,20 @@ export function ChatPanel({
             />
           </label>
 
-          <button type="submit" disabled={pending || draft.trim().length === 0}>
+          <span className="composer-hint">
+            Enter to send · Shift+Enter for a new line
+          </span>
+
+          <button
+            type="submit"
+            className="btn"
+            disabled={pending || draft.trim().length === 0}
+          >
+            <Send />
             {pending ? "Asking…" : "Ask"}
           </button>
         </div>
       </form>
-    </section>
+    </>
   );
 }

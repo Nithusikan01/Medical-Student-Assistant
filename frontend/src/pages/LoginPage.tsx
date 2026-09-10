@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth/useAuth";
+import { ArrowRight, BookMark } from "../components/Icons";
+import { ThemeToggle } from "../components/ThemeToggle";
 
 export function LoginPage() {
   const { user, ready, login } = useAuth();
@@ -35,42 +37,57 @@ export function LoginPage() {
 
   return (
     <div className="auth-page">
-      <form className="auth-card" onSubmit={submit}>
-        <h1>Medical Student Assistant</h1>
-        <p className="tagline">Sign in to continue</p>
+      <div className="auth-bar">
+        <span className="wordmark">
+          <BookMark size={22} />
+          Medical Student Assistant
+        </span>
+        <ThemeToggle />
+      </div>
 
-        <label>
-          Email
-          <input
-            type="email"
-            value={email}
-            autoComplete="email"
-            required
-            onChange={(event) => setEmail(event.target.value)}
-          />
-        </label>
+      <div className="auth-body">
+        <form className="auth-card" onSubmit={submit}>
+          <h1>Sign in</h1>
+          <p className="tagline">Ask questions against your class library.</p>
 
-        <label>
-          Password
-          <input
-            type="password"
-            value={password}
-            autoComplete="current-password"
-            required
-            onChange={(event) => setPassword(event.target.value)}
-          />
-        </label>
+          <div className="field">
+            <label htmlFor="login-email">Email</label>
+            <input
+              id="login-email"
+              type="email"
+              value={email}
+              autoComplete="email"
+              required
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </div>
 
-        {error && <p className="form-error">{error}</p>}
+          <div className="field">
+            <label htmlFor="login-password">Password</label>
+            <input
+              id="login-password"
+              type="password"
+              value={password}
+              autoComplete="current-password"
+              required
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </div>
 
-        <button type="submit" disabled={busy}>
-          {busy ? "Signing in…" : "Sign in"}
-        </button>
+          {error && <p className="form-error">{error}</p>}
 
-        <p className="auth-switch">
-          No account? <Link to="/register">Create one</Link>
-        </p>
-      </form>
+          <button type="submit" className="btn btn-block" disabled={busy}>
+            {busy ? "Signing in…" : "Sign in"}
+            {!busy && <ArrowRight />}
+          </button>
+
+          <div className="rule">New here?</div>
+
+          <p className="auth-switch">
+            <Link to="/register">Create an account</Link>
+          </p>
+        </form>
+      </div>
     </div>
   );
 }

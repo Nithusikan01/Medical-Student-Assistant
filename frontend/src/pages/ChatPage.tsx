@@ -11,6 +11,8 @@ import {
 import { useAuth } from "../auth/useAuth";
 import { ChatPanel } from "../components/ChatPanel";
 import { ConversationSidebar } from "../components/ConversationSidebar";
+import { BookMark, Document, SignOut } from "../components/Icons";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { useConversation } from "../hooks/useConversation";
 import type { ConversationSummary } from "../types";
 
@@ -92,28 +94,32 @@ export function ChatPage() {
     }
   };
 
+  const active = conversations.find(
+    (conversation) => conversation.id === conversationId,
+  );
+
   return (
     <div className="app">
       <aside className="sidebar">
-        <header className="brand">
-          <h1>Medical Student Assistant</h1>
-          <p className="tagline">Retrieval-grounded answers over the library</p>
-        </header>
+        <span className="wordmark">
+          <BookMark />
+          Medical Student Assistant
+        </span>
 
         <div className="status">
           <span
             className={`dot ${
               online === null
-                ? "dot-unknown"
+                ? ""
                 : online
                   ? "dot-online"
                   : "dot-offline"
             }`}
           />
           {online === null
-            ? "Checking API…"
+            ? "Checking…"
             : online
-              ? "API connected"
+              ? "Connected"
               : "API unreachable"}
         </div>
 
@@ -126,36 +132,55 @@ export function ChatPage() {
         />
 
         <div className="account">
-          <h3>Account</h3>
-          <p className="account-email" title={user?.email}>
-            {user?.email}
-          </p>
+          <div className="account-row">
+            <span className="avatar">
+              {(user?.email ?? "?").charAt(0).toUpperCase()}
+            </span>
+            <span className="account-email" title={user?.email}>
+              {user?.email}
+            </span>
+          </div>
+
           {user?.role === "admin" && (
             <Link to="/admin/documents" className="admin-link">
+              <Document />
               Manage documents
             </Link>
           )}
+
           <button
             type="button"
-            className="secondary"
+            className="btn btn-ghost"
             onClick={() => void logout()}
           >
+            <SignOut />
             Sign out
           </button>
         </div>
       </aside>
 
-      <ChatPanel
-        messages={messages}
-        pending={pending}
-        loading={loading}
-        error={error}
-        topK={topK}
-        onTopKChange={(value) =>
-          setTopK(Number.isFinite(value) ? Math.min(20, Math.max(1, value)) : 5)
-        }
-        onSend={(question) => void ask(question, topK)}
-      />
+      <div className="chat">
+        <div className="chat-head">
+          <span className="chat-title">
+            {active?.title ?? "New conversation"}
+          </span>
+          <ThemeToggle compact />
+        </div>
+
+        <ChatPanel
+          messages={messages}
+          pending={pending}
+          loading={loading}
+          error={error}
+          topK={topK}
+          onTopKChange={(value) =>
+            setTopK(
+              Number.isFinite(value) ? Math.min(20, Math.max(1, value)) : 5,
+            )
+          }
+          onSend={(question) => void ask(question, topK)}
+        />
+      </div>
     </div>
   );
 }

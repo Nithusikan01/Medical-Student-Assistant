@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth/useAuth";
+import { ArrowRight, BookMark } from "../components/Icons";
+import { ThemeToggle } from "../components/ThemeToggle";
 
 const MIN_PASSWORD_LENGTH = 12;
 
@@ -44,65 +46,84 @@ export function RegisterPage() {
 
   return (
     <div className="auth-page">
-      <form className="auth-card" onSubmit={submit}>
-        <h1>Create an account</h1>
-        <p className="tagline">Ask questions about the study library</p>
+      <div className="auth-bar">
+        <span className="wordmark">
+          <BookMark size={22} />
+          Medical Student Assistant
+        </span>
+        <ThemeToggle />
+      </div>
 
-        <label>
-          Email
-          <input
-            type="email"
-            value={email}
-            autoComplete="email"
-            required
-            onChange={(event) => setEmail(event.target.value)}
-          />
-        </label>
+      <div className="auth-body">
+        <form className="auth-card" onSubmit={submit}>
+          <h1>Create an account</h1>
+          <p className="tagline">Your chats stay private to you.</p>
 
-        <label>
-          Name <span className="optional">(optional)</span>
-          <input
-            type="text"
-            value={fullName}
-            autoComplete="name"
-            onChange={(event) => setFullName(event.target.value)}
-          />
-        </label>
+          <div className="field">
+            <label htmlFor="register-email">Email</label>
+            <input
+              id="register-email"
+              type="email"
+              value={email}
+              autoComplete="email"
+              required
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </div>
 
-        <label>
-          Password
-          <input
-            type="password"
-            value={password}
-            autoComplete="new-password"
-            minLength={MIN_PASSWORD_LENGTH}
-            required
-            onChange={(event) => setPassword(event.target.value)}
-          />
-          <span className="hint">
-            At least {MIN_PASSWORD_LENGTH} characters.
-          </span>
-        </label>
+          <div className="field">
+            <label htmlFor="register-name">
+              Name <span className="field-optional">optional</span>
+            </label>
+            <input
+              id="register-name"
+              type="text"
+              value={fullName}
+              autoComplete="name"
+              onChange={(event) => setFullName(event.target.value)}
+            />
+          </div>
 
-        <label>
-          Invite code <span className="optional">(if required)</span>
-          <input
-            type="text"
-            value={inviteCode}
-            onChange={(event) => setInviteCode(event.target.value)}
-          />
-        </label>
+          <div className="field">
+            <label htmlFor="register-password">Password</label>
+            <input
+              id="register-password"
+              type="password"
+              value={password}
+              autoComplete="new-password"
+              minLength={MIN_PASSWORD_LENGTH}
+              required
+              onChange={(event) => setPassword(event.target.value)}
+            />
+            <span className="field-hint">
+              At least {MIN_PASSWORD_LENGTH} characters.
+            </span>
+          </div>
 
-        {error && <p className="form-error">{error}</p>}
+          <div className="field">
+            <label htmlFor="register-invite">
+              Invite code <span className="field-optional">if required</span>
+            </label>
+            <input
+              id="register-invite"
+              type="text"
+              value={inviteCode}
+              onChange={(event) => setInviteCode(event.target.value)}
+            />
+          </div>
 
-        <button type="submit" disabled={busy}>
-          {busy ? "Creating…" : "Create account"}
-        </button>
+          {error && <p className="form-error">{error}</p>}
 
-        <p className="auth-switch">
-          Already registered? <Link to="/login">Sign in</Link>
-        </p>
-      </form>
+          <button type="submit" className="btn btn-block" disabled={busy}>
+            {busy ? "Creating…" : "Create account"}
+            {!busy && <ArrowRight />}
+          </button>
+
+          <p className="auth-switch">
+            Already registered? <Link to="/login">Sign in</Link>
+          </p>
+        </form>
+      </div>
     </div>
   );
 }
