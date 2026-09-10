@@ -1,4 +1,5 @@
 import logging
+from functools import cached_property
 
 from rag_application.config.component_configs import EmbeddingConfig
 from rag_application.ingestion.schemas import (
@@ -14,9 +15,17 @@ class Embedder:
     """
     Generates vector embeddings for document chunks.
     """
-    @property
+
+    @cached_property
     def dimension(self) -> int:
-        return self.model.encode("dimension_check").shape[0]
+        """
+        Vector width of the loaded model.
+
+        Cached because determining it costs a full forward pass, and it
+        cannot change for the life of the instance.
+        """
+
+        return int(self.model.encode("dimension_check").shape[0])
 
     def __init__(self, config: EmbeddingConfig) -> None:
         self.model_name = config.model_name
@@ -25,6 +34,19 @@ class Embedder:
         from sentence_transformers import SentenceTransformer
 
         self.model = SentenceTransformer(self.model_name)
+
+    def embed_query(self, text: str) -> list[float]:
+        """
+        Embed a search query.
+
+        Normalised here because the vector store uses cosine similarity.
+        """
+
+        return self.model.encode(
+            text,
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+        ).tolist()
 
     def embed(
         self,
@@ -53,7 +75,7 @@ class Embedder:
             logger.debug(
                 "Generated embedding for chunk '%s' (dimension=%d)",
                 chunk.id,
-                self.dimension,
+                len(embedding),
             )
 
             return embedded_chunk
@@ -103,7 +125,7 @@ class Embedder:
                     "(dimension=%d, model='%s', batch_size=%d)"
                 ),
                 len(embedded_chunks),
-                self.dimension, 
+                len(embedded_chunks[0].embedding) if embedded_chunks else 0,
                 self.model_name,
                 self.batch_size,
             )

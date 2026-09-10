@@ -6,8 +6,8 @@ from pathlib import Path
 from rag_application.config.settings import load_settings
 from rag_application.conversation.query_rewriter import QueryRewriter
 from rag_application.conversation.summarizer import ConversationSummarizer
+from rag_application.embeddings.pinecone_embedder import PineconeEmbedder
 from rag_application.indexes.bm25_index import BM25Index
-from rag_application.ingestion.embedder import Embedder
 from rag_application.ingestion.schemas import (
     ChunkMetadata,
     DocumentChunk,
@@ -16,8 +16,8 @@ from rag_application.llm.generator import GeminiGenerator
 from rag_application.retrieval.bm25_retriever import BM25Retriever
 from rag_application.retrieval.dense_retriever import DenseRetriever
 from rag_application.retrieval.hybrid_retriever import HybridRetriever
+from rag_application.retrieval.pinecone_reranker import PineconeReranker
 from rag_application.retrieval.query_service import QueryService
-from rag_application.retrieval.reranker import Reranker
 from rag_application.services.history_aware_rag_service import (
     HistoryAwareRAGService,
 )
@@ -138,15 +138,42 @@ def load_bm25_corpus(
 
 
 @lru_cache
-def build_embedder() -> Embedder:
+def build_embedder():
     """
-    One embedding model for the whole process.
+    One embedder for the whole process, shared by ingestion and querying.
 
-    Ingestion and querying previously each built their own, loading two
-    copies of the same weights into memory.
+    Hosted inference is the default: it downloads no weights, so the service
+    starts in seconds and the deployed image needs neither PyTorch nor
+    sentence-transformers. Set USE_HOSTED_INFERENCE=false to run the local
+    model instead, which requires the rag package's "local-models" extra.
     """
 
-    return Embedder(load_settings().embedding_config())
+    settings = load_settings()
+
+    if settings.use_hosted_inference:
+        return PineconeEmbedder(settings.hosted_embedding_config())
+
+    # Imported lazily so the module loads without torch installed.
+    from rag_application.ingestion.embedder import Embedder
+
+    return Embedder(settings.embedding_config())
+
+
+@lru_cache
+def build_reranker():
+    """
+    Hosted reranking by default; the local cross-encoder on request.
+    """
+
+    settings = load_settings()
+
+    if settings.use_hosted_inference:
+        return PineconeReranker(settings.hosted_rerank_config())
+
+    # Imported lazily so the module loads without torch installed.
+    from rag_application.retrieval.reranker import Reranker
+
+    return Reranker(model_name=DEFAULT_RERANKER_MODEL)
 
 
 @lru_cache
@@ -199,7 +226,7 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
     #
     dense_retriever = DenseRetriever(
         vector_store=build_vector_store(),
-        embedding_model=embedder.model,
+        embedding_model=embedder,
     )
 
     #
@@ -220,9 +247,7 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
     #
     # Reranker
     #
-    reranker = Reranker(
-        model_name=DEFAULT_RERANKER_MODEL,
-    )
+    reranker = build_reranker()
 
     #
     # Query Service

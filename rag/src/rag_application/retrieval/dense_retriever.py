@@ -34,24 +34,14 @@ class DenseRetriever(BaseRetriever):
         Retrieve the most relevant chunks using dense vector search.
         """
 
-        top_k = (
-            RetrievalConfig().candidate_k
-            if top_k is None
-            else top_k
-        )
+        top_k = RetrievalConfig().candidate_k if top_k is None else top_k
 
         logger.debug(
             "Running dense retrieval for query: %s",
             query,
         )
 
-        query_embedding = (
-            self.embedding_model.encode(
-                query,
-                convert_to_numpy=True,
-                normalize_embeddings=True,
-            ).tolist()
-        )
+        query_embedding = self.embedding_model.embed_query(query)
 
         matches = self.vector_store.query(
             embedding=query_embedding,

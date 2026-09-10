@@ -16,14 +16,19 @@ dependencies = [
     "pypdf",
     "python-dotenv",
     "google-genai",
-    "sentence-transformers",
-    "torch",
     "pinecone",
     "rank-bm25",
     "langchain-text-splitters",
 ]
 
 [project.optional-dependencies]
+# Local embedding and reranking models. Not needed when USE_HOSTED_INFERENCE
+# is on: leaving these out keeps PyTorch and its ~2GB of weights out of a
+# deployed image.
+local-models = [
+    "sentence-transformers",
+    "torch",
+]
 dev = [
     "pytest",
     "pytest-mock",
