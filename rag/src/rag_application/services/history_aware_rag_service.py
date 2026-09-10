@@ -1,7 +1,7 @@
 import logging
 
 from rag_application.conversation.query_rewriter import QueryRewriter
-from rag_application.conversation.session_manager import SessionManager
+from rag_application.conversation.store import ConversationStore
 from rag_application.conversation.summarizer import ConversationSummarizer
 
 from rag_application.llm.generator import GeminiGenerator
@@ -44,7 +44,7 @@ class HistoryAwareRAGService:
         self,
         query_service: QueryService,
         generator: GeminiGenerator,
-        session_manager: SessionManager,
+        session_manager: ConversationStore,
         query_rewriter: QueryRewriter,
         summarizer: ConversationSummarizer,
     ) -> None:
