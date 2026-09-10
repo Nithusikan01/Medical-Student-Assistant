@@ -40,7 +40,7 @@ def test_ingestion_pipeline_runs_all_steps(tmp_path):
 
     summary = pipeline.ingest("cv.pdf")
 
-    loader.load.assert_called_once_with("cv.pdf")
+    loader.load.assert_called_once_with("cv.pdf", document_id=None)
     chunker.chunk_batches.assert_called_once_with(
         document=document,
         batch_size=32,
@@ -49,7 +49,9 @@ def test_ingestion_pipeline_runs_all_steps(tmp_path):
     processor.prepare.assert_called_once_with(embedded_chunks)
     vector_store.upsert.assert_called_once_with(vector_records)
     assert summary == {
+        "document_id": "doc",
         "filename": "doc.pdf",
+        "pages": 1,
         "chunks": 1,
         "vectors": 1,
     }

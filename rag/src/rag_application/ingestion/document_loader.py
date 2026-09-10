@@ -15,9 +15,17 @@ logger = logging.getLogger(__name__)
 
 class DocumentLoader:
 
-    def load(self, file_path: str | Path) -> LoadedDocument:
+    def load(
+        self,
+        file_path: str | Path,
+        document_id: str | None = None,
+    ) -> LoadedDocument:
         """
         Load a PDF document and extract text from each page.
+
+        Passing document_id lets the caller mint the id up front, so a
+        registry row can exist before ingestion starts. It defaults to a
+        fresh uuid.
 
         Returns
         -------
@@ -31,7 +39,7 @@ class DocumentLoader:
             reader = PdfReader(file_path)
 
             document = LoadedDocument(
-                document_id=str(uuid.uuid4()),
+                document_id=document_id or str(uuid.uuid4()),
                 filename=file_path.name,
                 source_path=str(file_path.resolve()),
                 pages=[],

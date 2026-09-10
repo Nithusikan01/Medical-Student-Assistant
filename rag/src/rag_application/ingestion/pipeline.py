@@ -6,6 +6,7 @@ from rag_application.ingestion.chunker import TextChunker
 from rag_application.ingestion.document_loader import DocumentLoader
 from rag_application.ingestion.embedder import Embedder
 from rag_application.ingestion.processor import VectorDataProcessor
+from rag_application.ingestion.sinks import ChunkSink
 from rag_application.vectorstore.base import VectorStoreInterface
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ class IngestionPipeline:
         vector_store: VectorStoreInterface,
         batch_size: int,
         bm25_corpus_path: str | Path | None = None,
+        chunk_sink: ChunkSink | None = None,
     ) -> None:
         self.loader = loader
         self.chunker = chunker
@@ -66,10 +68,13 @@ class IngestionPipeline:
             if bm25_corpus_path is not None
             else None
         )
+        # Takes precedence over bm25_corpus_path when supplied.
+        self.chunk_sink = chunk_sink
 
     def ingest(
         self,
         file_path: str | Path,
+        document_id: str | None = None,
     ) -> dict[str, int | str]:
         """
         Ingest a document into the vector store and BM25 corpus.
@@ -87,7 +92,10 @@ class IngestionPipeline:
             # ---------------------------------------------------------
             # Load document
             # ---------------------------------------------------------
-            document = self.loader.load(str(file_path))
+            document = self.loader.load(
+                str(file_path),
+                document_id=document_id,
+            )
 
             logger.info(
                 "Loaded '%s' (%d pages).",
@@ -98,11 +106,10 @@ class IngestionPipeline:
             total_chunks = 0
             total_vectors = 0
 
-            bm25_builder = (
-                BM25CorpusBuilder(self.bm25_corpus_path)
-                if self.bm25_corpus_path is not None
-                else None
-            )
+            bm25_builder = self.chunk_sink
+
+            if bm25_builder is None and self.bm25_corpus_path is not None:
+                bm25_builder = BM25CorpusBuilder(self.bm25_corpus_path)
 
             with bm25_builder if bm25_builder is not None else _NullContext() as builder:
                 # ---------------------------------------------------------
@@ -159,7 +166,9 @@ class IngestionPipeline:
             )
 
             return {
+                "document_id": document.document_id,
                 "filename": document.filename,
+                "pages": len(document.pages),
                 "chunks": total_chunks,
                 "vectors": total_vectors,
             }
