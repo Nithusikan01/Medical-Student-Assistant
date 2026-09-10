@@ -40,7 +40,7 @@ def test_ingestion_pipeline_runs_all_steps(tmp_path):
 
     summary = pipeline.ingest("cv.pdf")
 
-    loader.load.assert_called_once_with("cv.pdf", document_id=None)
+    loader.load.assert_called_once_with("cv.pdf", document_id=None, filename=None)
     chunker.chunk_batches.assert_called_once_with(
         document=document,
         batch_size=32,

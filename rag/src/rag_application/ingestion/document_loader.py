@@ -19,13 +19,16 @@ class DocumentLoader:
         self,
         file_path: str | Path,
         document_id: str | None = None,
+        filename: str | None = None,
     ) -> LoadedDocument:
         """
         Load a PDF document and extract text from each page.
 
         Passing document_id lets the caller mint the id up front, so a
-        registry row can exist before ingestion starts. It defaults to a
-        fresh uuid.
+        registry row can exist before ingestion starts. Passing filename
+        keeps the original name in chunk metadata when the file on disk is a
+        temporary upload with a generated name - otherwise every citation
+        would show that generated name. Both default to the file itself.
 
         Returns
         -------
@@ -40,7 +43,7 @@ class DocumentLoader:
 
             document = LoadedDocument(
                 document_id=document_id or str(uuid.uuid4()),
-                filename=file_path.name,
+                filename=filename or file_path.name,
                 source_path=str(file_path.resolve()),
                 pages=[],
             )
@@ -60,9 +63,7 @@ class DocumentLoader:
                 )
 
             if not document.pages:
-                raise PDFLoadError(
-                    f"No text found in PDF: {file_path}"
-                )
+                raise PDFLoadError(f"No text found in PDF: {file_path}")
 
             logger.info(
                 "Loaded '%s' (%d pages)",
@@ -78,6 +79,4 @@ class DocumentLoader:
                 file_path,
             )
 
-            raise PDFLoadError(
-                f"Failed to load PDF: {file_path}"
-            ) from exc
+            raise PDFLoadError(f"Failed to load PDF: {file_path}") from exc

@@ -64,9 +64,7 @@ class IngestionPipeline:
         self.vector_store = vector_store
         self.batch_size = batch_size
         self.bm25_corpus_path = (
-            Path(bm25_corpus_path)
-            if bm25_corpus_path is not None
-            else None
+            Path(bm25_corpus_path) if bm25_corpus_path is not None else None
         )
         # Takes precedence over bm25_corpus_path when supplied.
         self.chunk_sink = chunk_sink
@@ -75,17 +73,19 @@ class IngestionPipeline:
         self,
         file_path: str | Path,
         document_id: str | None = None,
+        chunk_sink: ChunkSink | None = None,
+        filename: str | None = None,
     ) -> dict[str, int | str]:
         """
         Ingest a document into the vector store and BM25 corpus.
         """
 
         file_path = Path(file_path)
-        filename = file_path.name
+        source_name = filename or file_path.name
 
         logger.info(
             "Starting ingestion of '%s'.",
-            filename,
+            source_name,
         )
 
         try:
@@ -95,6 +95,7 @@ class IngestionPipeline:
             document = self.loader.load(
                 str(file_path),
                 document_id=document_id,
+                filename=filename,
             )
 
             logger.info(
@@ -106,12 +107,15 @@ class IngestionPipeline:
             total_chunks = 0
             total_vectors = 0
 
-            bm25_builder = self.chunk_sink
+            # A per-call sink wins, since it may be scoped to this document.
+            bm25_builder = chunk_sink or self.chunk_sink
 
             if bm25_builder is None and self.bm25_corpus_path is not None:
                 bm25_builder = BM25CorpusBuilder(self.bm25_corpus_path)
 
-            with bm25_builder if bm25_builder is not None else _NullContext() as builder:
+            with (
+                bm25_builder if bm25_builder is not None else _NullContext()
+            ) as builder:
                 # ---------------------------------------------------------
                 # Process document in batches
                 # ---------------------------------------------------------
@@ -133,19 +137,13 @@ class IngestionPipeline:
                         builder.add_batch(chunk_batch)
 
                     # Generate embeddings
-                    embedded_chunks = self.embedder.embed_batch(
-                        chunk_batch
-                    )
+                    embedded_chunks = self.embedder.embed_batch(chunk_batch)
 
                     # Convert to vector records
-                    vector_records = self.processor.prepare(
-                        embedded_chunks
-                    )
+                    vector_records = self.processor.prepare(embedded_chunks)
 
                     # Store vectors
-                    self.vector_store.upsert(
-                        vector_records
-                    )
+                    self.vector_store.upsert(vector_records)
 
                     total_chunks += len(chunk_batch)
                     total_vectors += len(vector_records)
@@ -156,10 +154,7 @@ class IngestionPipeline:
                     )
 
             logger.info(
-                (
-                    "Successfully ingested '%s'. "
-                    "(chunks=%d, vectors=%d)"
-                ),
+                ("Successfully ingested '%s'. " "(chunks=%d, vectors=%d)"),
                 document.filename,
                 total_chunks,
                 total_vectors,
@@ -176,7 +171,7 @@ class IngestionPipeline:
         except Exception:
             logger.exception(
                 "Failed to ingest document '%s'.",
-                filename,
+                source_name,
             )
             raise
 

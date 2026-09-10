@@ -12,7 +12,7 @@ from api_app.schemas.conversation import (
     ConversationSummaryResponse,
     ConversationUpdateRequest,
 )
-from api_app.schemas.document import IngestResponse
+from api_app.schemas.document import DocumentResponse, IngestResponse
 from api_app.schemas.query import (
     QueryRequest,
     QueryResponse,
@@ -26,6 +26,7 @@ __all__ = [
     "ConversationMessageResponse",
     "ConversationSummaryResponse",
     "ConversationUpdateRequest",
+    "DocumentResponse",
     "IngestResponse",
     "LoginRequest",
     "QueryRequest",

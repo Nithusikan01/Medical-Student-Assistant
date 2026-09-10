@@ -4,34 +4,28 @@ from functools import lru_cache
 from pathlib import Path
 
 from rag_application.config.settings import load_settings
-
+from rag_application.conversation.query_rewriter import QueryRewriter
+from rag_application.conversation.summarizer import ConversationSummarizer
+from rag_application.indexes.bm25_index import BM25Index
 from rag_application.ingestion.embedder import Embedder
 from rag_application.ingestion.schemas import (
     ChunkMetadata,
     DocumentChunk,
 )
-
-from rag_application.vectorstore.pinecone_store import PineconeVectorStore
-
-from rag_application.indexes.bm25_index import BM25Index
-
-from rag_application.retrieval.dense_retriever import DenseRetriever
-from rag_application.retrieval.bm25_retriever import BM25Retriever
-from rag_application.retrieval.hybrid_retriever import HybridRetriever
-from rag_application.retrieval.reranker import Reranker
-from rag_application.retrieval.query_service import QueryService
-
 from rag_application.llm.generator import GeminiGenerator
+from rag_application.retrieval.bm25_retriever import BM25Retriever
+from rag_application.retrieval.dense_retriever import DenseRetriever
+from rag_application.retrieval.hybrid_retriever import HybridRetriever
+from rag_application.retrieval.query_service import QueryService
+from rag_application.retrieval.reranker import Reranker
+from rag_application.services.history_aware_rag_service import (
+    HistoryAwareRAGService,
+)
+from rag_application.vectorstore.pinecone_store import PineconeVectorStore
 
 from api_app.db.session import get_session_factory
 from api_app.services.conversation_store import PersistentConversationStore
 from api_app.wiring.bm25_loader import load_bm25_documents
-from rag_application.conversation.query_rewriter import QueryRewriter
-from rag_application.conversation.summarizer import ConversationSummarizer
-
-from rag_application.services.history_aware_rag_service import (
-    HistoryAwareRAGService,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +138,26 @@ def load_bm25_corpus(
 
 
 @lru_cache
+def build_embedder() -> Embedder:
+    """
+    One embedding model for the whole process.
+
+    Ingestion and querying previously each built their own, loading two
+    copies of the same weights into memory.
+    """
+
+    return Embedder(load_settings().embedding_config())
+
+
+@lru_cache
+def build_vector_store() -> PineconeVectorStore:
+    return PineconeVectorStore(
+        settings=load_settings(),
+        dimension=build_embedder().dimension,
+    )
+
+
+@lru_cache
 def build_bm25_index() -> BM25Index:
     """
     The one BM25 index the running service uses.
@@ -170,26 +184,21 @@ def refresh_bm25_index() -> int:
     return len(documents)
 
 
-@lru_cache()
+@lru_cache
 def build_history_aware_rag_service() -> HistoryAwareRAGService:
 
     settings = load_settings()
 
     #
-    # Embedding Model
+    # Embedding Model and Vector Store (shared with the ingestion path)
     #
-    embedder = Embedder(settings.embedding_config())
-
-    #
-    # Vector Store
-    #
-    vector_store = PineconeVectorStore(settings=settings, dimension=embedder.dimension)
+    embedder = build_embedder()
 
     #
     # Dense Retriever
     #
     dense_retriever = DenseRetriever(
-        vector_store=vector_store,
+        vector_store=build_vector_store(),
         embedding_model=embedder.model,
     )
 

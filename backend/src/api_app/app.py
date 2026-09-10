@@ -11,6 +11,7 @@ from api_app.db.startup import verify_connectivity, warn_if_schema_outdated
 from api_app.dependencies import get_auth_config
 from api_app.routers.auth import router as auth_router
 from api_app.routers.conversations import router as conversations_router
+from api_app.routers.documents import router as documents_router
 from api_app.routers.health import router as health_router
 from api_app.routers.ingest import router as ingest_router
 from api_app.routers.query import router as query_router
@@ -87,6 +88,12 @@ def create_app() -> FastAPI:
         ingest_router,
         prefix="/api",
         tags=["Ingestion"],
+    )
+
+    app.include_router(
+        documents_router,
+        prefix="/api",
+        tags=["Documents"],
     )
 
     app.include_router(

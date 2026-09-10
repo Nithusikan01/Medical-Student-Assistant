@@ -91,6 +91,19 @@ def test_pipeline_forwards_supplied_document_id():
     pipeline.loader.load.assert_called_once_with(
         "cv.pdf",
         document_id="chosen-id",
+        filename=None,
+    )
+
+
+def test_pipeline_forwards_the_original_filename():
+    pipeline, _ = build_pipeline()
+
+    pipeline.ingest("9f2c.pdf", filename="lecture-notes.pdf")
+
+    pipeline.loader.load.assert_called_once_with(
+        "9f2c.pdf",
+        document_id=None,
+        filename="lecture-notes.pdf",
     )
 
 
