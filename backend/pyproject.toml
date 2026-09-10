@@ -19,6 +19,13 @@ dependencies = [
     "uvicorn[standard]",
     "python-multipart",
     "python-dotenv",
+    "sqlalchemy>=2.0.30",
+    "alembic>=1.13",
+    "psycopg[binary]>=3.1",
+    "python-jose[cryptography]>=3.3",
+    "bcrypt>=4.1",
+    "email-validator>=2.1",
+    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
@@ -28,7 +35,6 @@ dev = [
     "pytest-cov",
     "black",
     "ruff",
-    "httpx",
 ]
 
 [tool.setuptools]
