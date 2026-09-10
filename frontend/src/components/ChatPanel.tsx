@@ -6,6 +6,7 @@ import { SourceList } from "./SourceList";
 interface ChatPanelProps {
   messages: ChatMessage[];
   pending: boolean;
+  loading?: boolean;
   error: string | null;
   topK: number;
   onTopKChange: (value: number) => void;
@@ -15,6 +16,7 @@ interface ChatPanelProps {
 export function ChatPanel({
   messages,
   pending,
+  loading = false,
   error,
   topK,
   onTopKChange,
@@ -41,7 +43,9 @@ export function ChatPanel({
   return (
     <section className="chat">
       <div className="messages">
-        {messages.length === 0 && !pending && (
+        {loading && <div className="thinking">Loading conversation…</div>}
+
+        {messages.length === 0 && !pending && !loading && (
           <div className="empty">
             <h2>Ask about your documents</h2>
             <p>

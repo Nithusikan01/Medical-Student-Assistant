@@ -341,3 +341,316 @@ button.secondary {
     padding-right: 18px;
   }
 }
+
+/* ------------------------------------------------------------ auth pages */
+
+.auth-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.auth-card h1 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.auth-card .tagline {
+  margin: -8px 0 4px;
+}
+
+.auth-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.auth-card input {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.auth-card input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.optional {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.form-error {
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  color: var(--danger);
+  font-size: 0.82rem;
+}
+
+.auth-switch {
+  margin: 4px 0 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.auth-switch a,
+.admin-link {
+  color: var(--accent);
+}
+
+.booting {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 100vh;
+  color: var(--text-muted);
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* -------------------------------------------------------- conversations */
+
+.conversations-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+button.small {
+  padding: 5px 10px;
+  font-size: 0.78rem;
+}
+
+button.danger {
+  background: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.conversation-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.conversation-list li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 8px;
+  padding: 2px 4px;
+}
+
+.conversation-list li:hover,
+.conversation-list li.active {
+  background: var(--surface-raised);
+}
+
+.conversation-link {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 6px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.conversation-title {
+  font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conversation-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.conversation-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+}
+
+.conversation-list li:hover .conversation-actions {
+  opacity: 1;
+}
+
+.conversation-actions button {
+  padding: 3px 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.conversation-actions button:hover {
+  color: var(--text);
+}
+
+.rename-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.account {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.account-email {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ------------------------------------------------------------ admin page */
+
+.admin-page {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+}
+
+.admin-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.admin-head h1 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.button-like {
+  padding: 9px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 0.88rem;
+  text-decoration: none;
+}
+
+.upload-block {
+  padding: 18px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  margin-bottom: 24px;
+}
+
+.documents {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.documents th,
+.documents td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.documents th {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.empty-row {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 28px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.74rem;
+}
+
+.badge-ready {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.badge-processing,
+.badge-deleting {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.badge-failed {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.row-error {
+  display: block;
+  margin-top: 4px;
+  color: var(--danger);
+  font-size: 0.74rem;
+}
