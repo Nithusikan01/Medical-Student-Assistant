@@ -53,3 +53,16 @@ line-length = 88
 
 [tool.ruff]
 line-length = 88
+
+[tool.ruff.lint]
+# TID251 backs the banned-api table below; the rest is ruff's default set.
+extend-select = ["TID251"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+# The engine is a library: it must not depend on the application that hosts
+# it. Enforced here rather than left to discipline, because this boundary is
+# what forces protocols (ConversationStore, ChunkSink, TextEmbedder) instead
+# of the engine reaching into web and database code.
+"api_app".msg = "The rag engine must not import the web application. Depend on a protocol in rag_application and implement it in api_app."
+"fastapi".msg = "The rag engine must stay framework-free. Keep HTTP concerns in api_app."
+"sqlalchemy".msg = "The rag engine must not depend on the database layer. Define a protocol and implement it in api_app."
