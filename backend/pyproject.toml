@@ -47,6 +47,9 @@ where = ["src"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 pythonpath = ["src", "../rag/src"]
+markers = [
+    "closed_registration: build the AuthConfig with ALLOW_OPEN_REGISTRATION off",
+]
 
 [tool.black]
 line-length = 88

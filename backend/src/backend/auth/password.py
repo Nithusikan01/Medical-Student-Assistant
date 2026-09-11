@@ -8,7 +8,23 @@ MAX_PASSWORD_BYTES = 72
 
 MIN_PASSWORD_LENGTH = 12
 
+# Every bcrypt digest is 60 characters and starts with a $2 version tag.
+BCRYPT_HASH_LENGTH = 60
+
 _TIMING_PROBE = b"timing-equalization"
+
+
+def _looks_like_bcrypt(password_hash: str) -> bool:
+    """
+    Reject a malformed digest before handing it to bcrypt.
+
+    bcrypt 4.x is a Rust extension: a truncated hash makes it panic, and the
+    resulting PanicException derives from BaseException, so `except
+    ValueError` below would not catch it and a single corrupted row would
+    turn every login attempt for that account into a 500.
+    """
+
+    return len(password_hash) == BCRYPT_HASH_LENGTH and password_hash.startswith("$2")
 
 
 def hash_password(password: str) -> str:
@@ -24,6 +40,9 @@ def verify_password(password: str, password_hash: str) -> bool:
     encoded = password.encode("utf-8")
 
     if len(encoded) > MAX_PASSWORD_BYTES:
+        return False
+
+    if not _looks_like_bcrypt(password_hash):
         return False
 
     try:

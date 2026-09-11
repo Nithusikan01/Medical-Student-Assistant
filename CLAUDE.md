@@ -29,13 +29,21 @@ cd frontend; npm install
 Run tests (each package owns its suite; `pythonpath` is configured in each `pyproject.toml`, so no install is strictly needed):
 
 ```powershell
-cd rag; python -m pytest tests\unit     # engine unit tests, no external services
-cd rag; python -m pytest                # adds engine integration tests
-cd backend; python -m pytest            # API/wiring integration tests
+cd rag; python -m pytest tests\unit                  # engine, no external services
+cd backend; python -m pytest                         # all three suites below
+cd backend; python -m pytest tests\unit tests\api    # exactly what CI runs
 cd rag; python -m pytest tests\unit\test_pipeline.py::test_ingestion_pipeline_runs_all_steps
 ```
 
-Integration tests hit real Pinecone/Gemini and download model weights on first run — they `pytest.skip()` themselves unless `RUN_REAL_RAG_TESTS=1` and credentials are present, so don't assume a green run means credentials are configured. Note `rag/tests/unit/test_embedder.py::test_embed_single_chunk` fails on a pre-existing mock-call-count assertion, unrelated to wiring.
+Three kinds of suite, split by directory because that is what CI selects on:
+
+- `rag/tests/unit/` and `backend/tests/unit/` — no HTTP, no external services. The backend ones still use a database: a throwaway SQLite file per test, built by `backend/tests/conftest.py`.
+- `backend/tests/api/` — through `TestClient` against the real app, with `get_db`, `get_auth_config`, and `get_rag_service` overridden. The `client` fixture deliberately does *not* enter the TestClient context manager, because that would run the lifespan and connect to the real database.
+- `rag/tests/integration/` and `backend/tests/integration/` — the only suites that touch Pinecone/Gemini or download model weights. They `pytest.skip()` at module level unless `RUN_REAL_RAG_TESTS=1`, so a green run does **not** mean credentials are configured.
+
+`backend/tests/api/test_route_protection.py` compares a hand-written classification table against the routes the app actually exposes, so adding an endpoint without deciding who may call it fails the build. Update that table in the same commit as the route.
+
+The backend fixtures work because the models use portable types (`sa.Uuid`, `sa.JSON`, `String` + `CHECK` rather than PG enums); `conftest.py` additionally patches the SQLite dialect to return timezone-aware datetimes, so expiry comparisons behave as they do on Postgres.
 
 Format and lint:
 
@@ -53,7 +61,7 @@ cd frontend; npm run dev
 
 The Vite dev server (port 5173) proxies `/api` and `/health` to `http://127.0.0.1:8000`; override with `VITE_BACKEND_URL` in `frontend/.env` or the shell (`vite.config.ts` reads it via `loadEnv`, so both work). `npm run build` runs `tsc -b` first, so it also type-checks.
 
-Ingestion runs through `POST /api/ingest` (multipart upload) or the frontend's upload panel — there is no CLI ingestion entry point (`main.py` was deleted). Ad-hoc scripts in `backend/scripts/` are for manual smoke testing, not part of the test suite: `ask_cv_from_terminal.py` (interactive Q&A), `test_rag.py` / `test_retrieval.py` / `test_reranker.py` (component smoke tests), `run_ingestion.py` (BM25 corpus verification, despite the name), `evaluate_rag.py` (currently broken — imports `rag.evaluation` modules that don't exist), `reset_pinecone.py` (drops and recreates the Pinecone index — destructive).
+Ingestion runs through `POST /api/ingest` (multipart upload) or the frontend's upload panel — there is no CLI ingestion entry point (`main.py` was deleted). Ad-hoc scripts in `backend/scripts/` are for manual smoke testing, not part of the test suite: `ask_cv_from_terminal.py` (interactive Q&A), `smoke_rag.py` / `smoke_retrieval.py` / `smoke_reranker.py` (component smoke checks — named `smoke_` rather than `test_` so pytest cannot collect them), `run_ingestion.py` (BM25 corpus verification, despite the name), `migrate_bm25_corpus.py` (imports a legacy `bm25_corpus.json` into the database), `reset_pinecone.py` (drops and recreates the Pinecone index — destructive).
 
 Required environment variables (`.env` in `backend/`, templated by `backend/.env.example`): `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `GEMINI_API_KEY`. The example file documents every optional tuning variable (`CHUNK_SIZE`, `CANDIDATE_K`, `EMBEDDING_MODEL_NAME`, etc.) — they're all read in `rag/src/rag/config/settings.py::load_settings`. `.env` files are gitignored at any depth; `.env.example` files are committed.
 

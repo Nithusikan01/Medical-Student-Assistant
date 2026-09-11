@@ -41,8 +41,9 @@ jobs:
 
       - name: API tests
         working-directory: backend
-        # Integration tests skip themselves without RUN_REAL_RAG_TESTS, so no
-        # credentials are needed here.
+        # tests/unit and tests/api both run against a throwaway SQLite file,
+        # so no Postgres service is needed. tests/integration skips itself
+        # without RUN_REAL_RAG_TESTS.
         run: pytest -q
 
   docker:

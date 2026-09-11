@@ -65,6 +65,21 @@ def _clear_refresh_cookie(response: Response) -> None:
     )
 
 
+def _clearing_headers() -> dict[str, str]:
+    """
+    The same Set-Cookie, but as headers on an HTTPException.
+
+    Raising discards the injected Response, so a cookie set on it never
+    reaches the client. Without this the browser keeps its dead refresh
+    token and retries with it until it expires.
+    """
+
+    carrier = Response()
+    _clear_refresh_cookie(carrier)
+
+    return {"set-cookie": carrier.headers["set-cookie"]}
+
+
 def _token_response(user: User, tokens: TokenPair) -> TokenResponse:
     return TokenResponse(
         access_token=tokens.access_token,
@@ -176,16 +191,16 @@ def refresh(
     except InvalidTokenError as exc:
         # The cookie is dead either way; clearing it stops the client from
         # retrying with it forever.
-        _clear_refresh_cookie(response)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(exc),
+            headers=_clearing_headers(),
         ) from exc
     except InactiveUserError as exc:
-        _clear_refresh_cookie(response)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(exc),
+            headers=_clearing_headers(),
         ) from exc
 
     _set_refresh_cookie(response, tokens, config)

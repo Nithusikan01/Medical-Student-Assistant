@@ -36,7 +36,7 @@ jobs:
       - name: Test before deploying
         run: |
           pytest rag/tests/unit -q
-          pytest backend/tests -q
+          pytest backend/tests/unit backend/tests/api -q
 
       # Schema first: code that expects a column must never reach users
       # before the column exists. Koyeb's own auto-deploy is left switched
