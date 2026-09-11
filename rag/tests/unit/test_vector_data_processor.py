@@ -1,5 +1,5 @@
-from rag_application.ingestion.processor import VectorDataProcessor
-from rag_application.vectorstore.schemas import VectorRecord
+from rag.ingestion.processor import VectorDataProcessor
+from rag.vectorstore.schemas import VectorRecord
 from tests.unit.helpers import make_embedded_chunk
 
 

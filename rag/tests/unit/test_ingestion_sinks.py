@@ -1,8 +1,8 @@
 from unittest.mock import Mock
 
-from rag_application.ingestion.bm25.corpus_builder import BM25CorpusBuilder
-from rag_application.ingestion.pipeline import IngestionPipeline
-from rag_application.ingestion.sinks import ChunkSink
+from rag.ingestion.bm25.corpus_builder import BM25CorpusBuilder
+from rag.ingestion.pipeline import IngestionPipeline
+from rag.ingestion.sinks import ChunkSink
 from tests.unit.helpers import make_chunk
 
 

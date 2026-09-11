@@ -14,15 +14,15 @@ if os.getenv("RUN_REAL_RAG_TESTS") != "1":
 
 pytest.importorskip("sentence_transformers")
 
-from rag_application.config.settings import load_settings
-from rag_application.ingestion.chunker import TextChunker
-from rag_application.ingestion.document_loader import DocumentLoader
-from rag_application.ingestion.embedder import Embedder
-from rag_application.ingestion.pipeline import IngestionPipeline
-from rag_application.ingestion.processor import VectorDataProcessor
-from rag_application.retrieval.dense_retriever import DenseRetriever
-from rag_application.retrieval.query_service import QueryService
-from rag_application.vectorstore.pinecone_store import PineconeVectorStore
+from rag.config.settings import load_settings
+from rag.ingestion.chunker import TextChunker
+from rag.ingestion.document_loader import DocumentLoader
+from rag.ingestion.embedder import Embedder
+from rag.ingestion.pipeline import IngestionPipeline
+from rag.ingestion.processor import VectorDataProcessor
+from rag.retrieval.dense_retriever import DenseRetriever
+from rag.retrieval.query_service import QueryService
+from rag.vectorstore.pinecone_store import PineconeVectorStore
 
 
 def test_retrieval_pipeline():

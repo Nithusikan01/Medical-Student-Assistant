@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rag-application"
+name = "rag-engine"
 version = "0.1.0"
 description = "RAG engine: PDF ingestion, hybrid retrieval, reranking, and Gemini generation"
 requires-python = ">=3.11"
@@ -63,6 +63,6 @@ extend-select = ["TID251"]
 # it. Enforced here rather than left to discipline, because this boundary is
 # what forces protocols (ConversationStore, ChunkSink, TextEmbedder) instead
 # of the engine reaching into web and database code.
-"api_app".msg = "The rag engine must not import the web application. Depend on a protocol in rag_application and implement it in api_app."
-"fastapi".msg = "The rag engine must stay framework-free. Keep HTTP concerns in api_app."
-"sqlalchemy".msg = "The rag engine must not depend on the database layer. Define a protocol and implement it in api_app."
+"backend".msg = "The rag engine must not import the web application. Depend on a protocol in rag and implement it in backend."
+"fastapi".msg = "The rag engine must stay framework-free. Keep HTTP concerns in backend."
+"sqlalchemy".msg = "The rag engine must not depend on the database layer. Define a protocol and implement it in backend."

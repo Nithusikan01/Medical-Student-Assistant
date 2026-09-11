@@ -11,7 +11,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(_ROOT / "backend" / "src"), str(_ROOT / "rag" / "src")]
 
 if TYPE_CHECKING:
-    from rag_application.retrieval.schemas import RetrievedChunk
+    from rag.retrieval.schemas import RetrievedChunk
 
 
 DEFAULT_QUESTION = "Who is Nithusikan?"
@@ -69,7 +69,7 @@ def main() -> int:
     args = parse_args()
     load_dotenv()
 
-    from api_app.wiring.rag_factory import build_history_aware_rag_service
+    from backend.wiring.rag_factory import build_history_aware_rag_service
 
     question = " ".join(args.question).strip() or DEFAULT_QUESTION
     rag = build_history_aware_rag_service()

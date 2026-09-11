@@ -1,6 +1,6 @@
-from rag_application.conversation.memory import ConversationMemory
-from rag_application.conversation.session_manager import SessionManager
-from rag_application.conversation.store import ConversationStore
+from rag.conversation.memory import ConversationMemory
+from rag.conversation.session_manager import SessionManager
+from rag.conversation.store import ConversationStore
 
 
 def test_session_manager_satisfies_conversation_store():

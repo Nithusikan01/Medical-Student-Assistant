@@ -12,8 +12,8 @@ _ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(_ROOT / "backend" / "src"), str(_ROOT / "rag" / "src")]
 
 if TYPE_CHECKING:
-    from rag_application.retrieval.schemas import RetrievedChunk
-    from rag_application.services.history_aware_rag_service import HistoryAwareRAGService
+    from rag.retrieval.schemas import RetrievedChunk
+    from rag.services.history_aware_rag_service import HistoryAwareRAGService
 
 
 DEFAULT_QUESTION = "Who is the person in the CV?"
@@ -54,7 +54,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def build_history_aware_rag() -> HistoryAwareRAGService:
-    from api_app.wiring.rag_factory import build_history_aware_rag_service
+    from backend.wiring.rag_factory import build_history_aware_rag_service
 
     return build_history_aware_rag_service()
 

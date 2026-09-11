@@ -1,6 +1,6 @@
 from unittest.mock import Mock
 
-from rag_application.retrieval.query_service import QueryService
+from rag.retrieval.query_service import QueryService
 from tests.unit.helpers import make_retrieved_chunk
 
 

@@ -1,6 +1,6 @@
 import pytest
 
-from rag_application.config.settings import load_settings
+from rag.config.settings import load_settings
 
 
 def test_missing_api_key(monkeypatch):

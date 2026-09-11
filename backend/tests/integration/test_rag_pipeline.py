@@ -15,7 +15,7 @@ if os.getenv("RUN_REAL_RAG_TESTS") != "1":
 pytest.importorskip("rank_bm25")
 pytest.importorskip("sentence_transformers")
 
-from api_app.wiring.rag_factory import build_history_aware_rag_service
+from backend.wiring.rag_factory import build_history_aware_rag_service
 
 
 def test_full_rag_pipeline():

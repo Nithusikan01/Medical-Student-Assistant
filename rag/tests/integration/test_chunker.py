@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from rag_application.config.component_configs import ChunkingConfig
-from rag_application.ingestion.chunker import TextChunker
-from rag_application.ingestion.schemas import LoadedDocument, LoadedPage
+from rag.config.component_configs import ChunkingConfig
+from rag.ingestion.chunker import TextChunker
+from rag.ingestion.schemas import LoadedDocument, LoadedPage
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
 OUTPUT_PATH = FIXTURES_DIR / "output.txt"

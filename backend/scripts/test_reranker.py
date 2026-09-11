@@ -34,7 +34,7 @@ def main() -> int:
     configure_output()
     load_dotenv()
 
-    from api_app.wiring.rag_factory import build_history_aware_rag_service
+    from backend.wiring.rag_factory import build_history_aware_rag_service
 
     service = build_history_aware_rag_service()
     query = "Who is Roshan Ragel?"

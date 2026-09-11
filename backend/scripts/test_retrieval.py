@@ -12,9 +12,9 @@ _ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(_ROOT / "backend" / "src"), str(_ROOT / "rag" / "src")]
 
 if TYPE_CHECKING:
-    from rag_application.ingestion.schemas import DocumentChunk
-    from rag_application.retrieval.query_service import QueryService
-    from rag_application.retrieval.schemas import RetrievedChunk
+    from rag.ingestion.schemas import DocumentChunk
+    from rag.retrieval.query_service import QueryService
+    from rag.retrieval.schemas import RetrievedChunk
 
 
 DEFAULT_QUERY = "Who is Nithusikan?"
@@ -56,7 +56,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_bm25_documents(corpus_path: Path) -> list[DocumentChunk]:
-    from api_app.wiring.rag_factory import load_bm25_corpus
+    from backend.wiring.rag_factory import load_bm25_corpus
 
     if not corpus_path.exists():
         print(f"BM25 corpus not found at {corpus_path}. BM25 retrieval will be empty.")
@@ -66,15 +66,15 @@ def load_bm25_documents(corpus_path: Path) -> list[DocumentChunk]:
 
 
 def build_query_service(corpus_path: Path, use_reranker: bool) -> QueryService:
-    from rag_application.config.settings import load_settings
-    from rag_application.indexes.bm25_index import BM25Index
-    from rag_application.ingestion.embedder import Embedder
-    from rag_application.retrieval.bm25_retriever import BM25Retriever
-    from rag_application.retrieval.dense_retriever import DenseRetriever
-    from rag_application.retrieval.hybrid_retriever import HybridRetriever
-    from rag_application.retrieval.query_service import QueryService
-    from rag_application.retrieval.reranker import Reranker
-    from rag_application.vectorstore.pinecone_store import PineconeVectorStore
+    from rag.config.settings import load_settings
+    from rag.indexes.bm25_index import BM25Index
+    from rag.ingestion.embedder import Embedder
+    from rag.retrieval.bm25_retriever import BM25Retriever
+    from rag.retrieval.dense_retriever import DenseRetriever
+    from rag.retrieval.hybrid_retriever import HybridRetriever
+    from rag.retrieval.query_service import QueryService
+    from rag.retrieval.reranker import Reranker
+    from rag.vectorstore.pinecone_store import PineconeVectorStore
 
     settings = load_settings()
 

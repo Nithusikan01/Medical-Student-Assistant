@@ -1,7 +1,7 @@
 import json
 from unittest.mock import Mock
 
-from rag_application.ingestion.pipeline import IngestionPipeline
+from rag.ingestion.pipeline import IngestionPipeline
 from tests.unit.helpers import (
     make_chunk,
     make_embedded_chunk,

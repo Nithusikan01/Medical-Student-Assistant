@@ -1,7 +1,7 @@
 from unittest.mock import Mock
 
-from rag_application.llm.schemas import LLMResponse
-from rag_application.services.history_aware_rag_service import HistoryAwareRAGService
+from rag.llm.schemas import LLMResponse
+from rag.services.history_aware_rag_service import HistoryAwareRAGService
 from tests.unit.helpers import make_retrieved_chunk
 
 

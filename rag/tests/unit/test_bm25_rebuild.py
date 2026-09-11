@@ -1,4 +1,4 @@
-from rag_application.indexes.bm25_index import BM25Index
+from rag.indexes.bm25_index import BM25Index
 from tests.unit.helpers import make_chunk
 
 # BM25 gives a term that appears in every document a negative IDF, and search

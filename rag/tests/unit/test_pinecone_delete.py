@@ -2,8 +2,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from rag_application.utils.exceptions import VectorStoreError
-from rag_application.vectorstore.pinecone_store import (
+from rag.utils.exceptions import VectorStoreError
+from rag.vectorstore.pinecone_store import (
     DELETE_BATCH_SIZE,
     PineconeVectorStore,
 )

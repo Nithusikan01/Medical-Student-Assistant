@@ -12,7 +12,7 @@ authors = [
 { name = "T. Nithusikan" }
 ]
 
-# rag-application is a local path dependency, installed separately:
+# rag-engine is a local path dependency, installed separately:
 #   python -m pip install -e ./rag
 dependencies = [
     "fastapi",

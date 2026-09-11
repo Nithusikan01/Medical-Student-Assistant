@@ -48,9 +48,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
 
-    from api_app.db.models import STATUS_READY, Document, DocumentChunkRecord
-    from api_app.db.session import get_session_factory
-    from api_app.wiring.rag_factory import load_bm25_corpus
+    from backend.db.models import STATUS_READY, Document, DocumentChunkRecord
+    from backend.db.session import get_session_factory
+    from backend.wiring.rag_factory import load_bm25_corpus
 
     corpus_path = Path(args.corpus)
 

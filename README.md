@@ -57,8 +57,8 @@ The repository is a monorepo with three top-level parts:
 ```text
 Medical-Student-Assistant/
 |-- rag/                          # RAG engine (importable library, no HTTP)
-|   |-- pyproject.toml            # package: rag_application
-|   |-- src/rag_application/
+|   |-- pyproject.toml            # package: rag
+|   |-- src/rag/
 |   |   |-- config/               # Settings + per-component config dataclasses
 |   |   |-- conversation/         # memory, query rewriting, summarization
 |   |   |-- evaluation/
@@ -74,12 +74,12 @@ Medical-Student-Assistant/
 |       |-- integration/
 |       `-- unit/
 |-- backend/                      # FastAPI HTTP layer (runtime root)
-|   |-- pyproject.toml            # package: api_app
+|   |-- pyproject.toml            # package: backend
 |   |-- .env                      # credentials live here
 |   |-- data/raw/                 # source PDFs
 |   |-- storage/                  # bm25_corpus.json, uploads/
 |   |-- scripts/                  # ad-hoc smoke-test / maintenance scripts
-|   |-- src/api_app/
+|   |-- src/backend/
 |   |   |-- app.py                # create_app + lifespan
 |   |   |-- dependencies.py
 |   |   |-- schemas.py            # request/response models
@@ -98,7 +98,7 @@ Medical-Student-Assistant/
 
 `backend` depends on `rag`; `rag` never imports `backend`. The composition root
 that assembles the engine into a live service is
-`backend/src/api_app/wiring/rag_factory.py`.
+`backend/src/backend/wiring/rag_factory.py`.
 
 ## Requirements
 
@@ -122,8 +122,8 @@ From the project root on Windows PowerShell:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install -e ".\rag[dev]"
-python -m pip install -e ".\backend[dev]"
+python -m pip install -e "./rag[dev]"
+python -m pip install -e "./backend[dev]"
 ```
 
 On macOS/Linux:
@@ -226,7 +226,7 @@ for `.env`, `data/`, and `storage/`:
 
 ```powershell
 cd backend
-uvicorn api_app.app:app --reload
+uvicorn backend.app:app --reload
 ```
 
 Local URLs:
@@ -411,8 +411,8 @@ npm run build
 
 ## Current Implementation Notes
 
-- The FastAPI app is built in `api_app.app:create_app` and registers health, ingestion, and query routers.
-- `api_app.wiring.rag_factory.build_history_aware_rag_service()` wires the runtime RAG service at API startup and is rebuilt after every ingest.
+- The FastAPI app is built in `backend.app:create_app` and registers health, ingestion, and query routers.
+- `backend.wiring.rag_factory.build_history_aware_rag_service()` wires the runtime RAG service at API startup and is rebuilt after every ingest.
 - Pinecone indexes are created automatically with cosine similarity in AWS `us-east-1`.
 - `BM25Index` is built from `backend/storage/bm25_corpus.json` when the factory runs, so BM25 results reflect whatever was ingested before the service was last built.
 - Conversation memory is process-local and resets when the app restarts.
@@ -438,7 +438,7 @@ black rag\src rag\tests backend\src backend\tests
 ruff check rag\src rag\tests backend\src backend\tests
 
 # Run API
-cd backend; uvicorn api_app.app:app --reload
+cd backend; uvicorn backend.app:app --reload
 
 # Run frontend
 cd frontend; npm run dev

@@ -1,12 +1,12 @@
 from unittest.mock import Mock, patch
 
-from rag_application.config.component_configs import ChunkingConfig
-from rag_application.ingestion.chunker import TextChunker
-from rag_application.ingestion.schemas import DocumentChunk, LoadedDocument
+from rag.config.component_configs import ChunkingConfig
+from rag.ingestion.chunker import TextChunker
+from rag.ingestion.schemas import DocumentChunk, LoadedDocument
 from tests.unit.helpers import make_loaded_document
 
 
-@patch("rag_application.ingestion.chunker._build_splitter")
+@patch("rag.ingestion.chunker._build_splitter")
 def test_chunk_document(mock_build_splitter):
     splitter = Mock()
     splitter.split_text.return_value = [
@@ -30,7 +30,7 @@ def test_chunk_document(mock_build_splitter):
     assert chunks[0].metadata.filename == "doc.pdf"
 
 
-@patch("rag_application.ingestion.chunker._build_splitter")
+@patch("rag.ingestion.chunker._build_splitter")
 def test_empty_document_pages(mock_build_splitter):
     document = LoadedDocument(
         document_id="empty",

@@ -1,8 +1,8 @@
 from unittest.mock import Mock
 
-from rag_application.config.component_configs import GenerationConfig
-from rag_application.llm.generator import GeminiGenerator
-from rag_application.llm.schemas import LLMResponse
+from rag.config.component_configs import GenerationConfig
+from rag.llm.generator import GeminiGenerator
+from rag.llm.schemas import LLMResponse
 
 
 def test_generate_success():

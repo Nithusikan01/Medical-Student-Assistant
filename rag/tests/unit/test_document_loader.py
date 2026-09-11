@@ -1,9 +1,9 @@
 from unittest.mock import MagicMock, patch
 
-from rag_application.ingestion.document_loader import DocumentLoader
+from rag.ingestion.document_loader import DocumentLoader
 
 
-@patch("rag_application.ingestion.document_loader.PdfReader")
+@patch("rag.ingestion.document_loader.PdfReader")
 def test_load_pdf(mock_pdf_reader):
     page1 = MagicMock()
     page1.extract_text.return_value = "This is the first page."
