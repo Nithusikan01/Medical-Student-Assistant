@@ -142,7 +142,6 @@ Medical-Student-Assistant/
 `-- frontend/                     # React + TypeScript (Vite) web app
     |-- package.json
     |-- vite.config.ts            # proxies /api and /health to the backend
-    |-- vercel.json               # production rewrites to the deployed backend
     `-- src/
         |-- api/                  # typed fetch client (client, auth, conversations, documents)
         |-- auth/                 # AuthContext, useAuth, single-flight token refresh
@@ -164,7 +163,8 @@ whose database-backed implementation lives in `backend/`.
 
 - Python 3.11 or newer
 - Node.js 18 or newer (for the frontend)
-- A PostgreSQL database (a free-tier hosted instance such as Supabase works)
+- A PostgreSQL database (this deploys to AWS RDS — see `AWS_DEPLOYMENT_PLAN.md`; any Postgres
+  works for local development)
 - Pinecone API key and index name
 - Google Gemini API key
 - Network access for Pinecone, Gemini, and (only if `USE_HOSTED_INFERENCE=false`) model
@@ -553,8 +553,8 @@ npm run build
 - No rate limiting on `/api/auth/login` or `/api/query`.
 - Pinecone index name is not separated per environment, so a document deleted in a
   development deployment is also deleted in production if they share `PINECONE_INDEX_NAME`.
-- `frontend/vercel.json` ships with a placeholder backend URL that must be replaced before
-  the production frontend can reach the API.
+- The AWS deployment described below is planned (`AWS_DEPLOYMENT_PLAN.md`) but not yet built —
+  there is no live environment, ECS cluster, or RDS instance today.
 - API startup builds the embedder, vector store, BM25 index, and reranker clients, so cold
   start time depends on Pinecone/Gemini reachability even though no model weights are
   downloaded by default.
@@ -586,32 +586,23 @@ cd backend; python -m pytest tests\unit tests\api
 
 ## Deployment
 
-The intended shape is free-tier across the board: Vercel (frontend), Koyeb (backend
-container), Supabase (PostgreSQL), Pinecone (vectors + hosted inference), GitHub Actions
-(CI/CD). What's in the repository:
+The target is fully AWS: ECS Fargate (backend container) + RDS (PostgreSQL) + S3/CloudFront
+(frontend, and the same CloudFront distribution fronts the API so the two stay same-origin —
+required because the refresh cookie is `SameSite=Lax`), deployed via GitHub Actions. **The full
+runbook — architecture decisions, one-time AWS setup, the database cutover, and the CI/CD
+workflow rewrite — is `AWS_DEPLOYMENT_PLAN.md` in the repository root; read section 0 there
+before doing anything else.** Nothing in that plan has been executed yet: there is no live AWS
+environment, and `.github/workflows/backend-deploy.yml` (previously a Koyeb deploy) has been
+removed rather than left pointing at a host this project no longer uses.
+
+What's already in the repository and stays true regardless of host:
 
 - **`Dockerfile`** (root): builds from the repo root since `backend` imports `rag`. No ML
   weights baked in — hosted inference means the image needs neither PyTorch nor
   sentence-transformers. Reads `$PORT` at runtime.
 - **`.github/workflows/pr-checks.yml`**: on every PR — lint (ruff + black), engine tests,
-  backend unit + API tests, a Docker build (not pushed), and a frontend build.
-- **`.github/workflows/backend-deploy.yml`**: on push to `main` — tests, then
-  `alembic upgrade head` against `DATABASE_URL`, then a Koyeb service redeploy. Migrations run
-  before the deploy is triggered, deliberately, so new code never reaches a database that
-  doesn't yet have the column it expects.
-- **`frontend/vercel.json`**: rewrites `/api/*` and `/health/*` to the deployed backend URL,
-  keeping the frontend and API same-origin from the browser's point of view — this is what
-  lets the httpOnly refresh cookie work at all, since a cross-site cookie would otherwise be
-  blocked. **The backend URL in this file is a placeholder (`REPLACE-ME.koyeb.app`)** and must
-  be updated once the Koyeb service exists.
-
-To actually deploy: create the Postgres database (e.g. a Supabase project), create the
-Pinecone index, create a Koyeb service pointed at this repository's Dockerfile with the
-environment variables from `backend/.env.example` set (including `COOKIE_SECURE=true` and,
-once open registration should close, `ALLOW_OPEN_REGISTRATION=false`), set `KOYEB_API_TOKEN`
-and `DATABASE_URL` as GitHub secrets and `KOYEB_SERVICE` as a repository variable, update
-`vercel.json` with the real Koyeb URL, deploy the frontend to Vercel, and set `CORS_ORIGINS`
-on the backend to the deployed frontend's origin.
+  backend unit + API tests, a Docker build (not pushed), and a frontend build. This workflow
+  isn't tied to any deployment target and needs no changes for the AWS move.
 
 ## Recommended Next Improvements
 
