@@ -11,8 +11,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.filter.outputs.python }}
+      docker: ${{ steps.filter.outputs.docker }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # For a pull_request event this diffs against the PR's base ref; for a
+      # push it diffs against the commit before the push. Either way, a job
+      # skipped because its paths didn't change still reports as a passing
+      # (skipped) check, so it satisfies branch protection's required checks.
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            python:
+              - 'rag/**'
+              - 'backend/**'
+              - '.github/workflows/pr-checks.yml'
+            docker:
+              - 'rag/**'
+              - 'backend/**'
+              - 'Dockerfile'
+              - '.dockerignore'
+              - '.github/workflows/pr-checks.yml'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/pr-checks.yml'
+
   python:
     name: Python tests and lint
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,6 +82,8 @@ jobs:
 
   docker:
     name: Backend image builds
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -64,6 +100,8 @@ jobs:
 
   frontend:
     name: Frontend build
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
