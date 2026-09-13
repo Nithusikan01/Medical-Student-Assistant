@@ -14,8 +14,16 @@ authors = [
 
 # rag-engine is a local path dependency, installed separately:
 #   python -m pip install -e ./rag
+#
+# fastapi is pinned, not left open-ended like most deps below: a route's
+# `.methods`/`.path` attributes and how FastAPI exposes routes from included
+# routers are exactly what test_route_protection.py's route-classification
+# check depends on, and an unrelated major-version bump (fastapi 0.111 ->
+# 0.141, pulling starlette 0.37 -> 1.6) silently changed that enough to make
+# _documented_routes() return nothing - a real, deployed-app risk, not just
+# a CI annoyance, since the Docker image installs with no lock file too.
 dependencies = [
-    "fastapi",
+    "fastapi==0.111.0",
     "uvicorn[standard]",
     "python-multipart",
     "python-dotenv",
