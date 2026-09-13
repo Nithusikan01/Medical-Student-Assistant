@@ -1,0 +1,127 @@
+name: Deploy backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "rag/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".github/workflows/backend-deploy.yml"
+  workflow_dispatch:
+
+# Never let two deploys race: a half-applied migration alongside a rollback
+# is far worse than waiting.
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+# id-token: write is what lets this workflow exchange its own OIDC token for
+# temporary AWS credentials - no long-lived access keys stored as secrets.
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REGISTRY: 519035820911.dkr.ecr.ap-south-1.amazonaws.com
+  ECR_REPOSITORY: medical-student-assistant-backend
+  ECS_CLUSTER: medical-student-assistant-cluster
+  ECS_SERVICE: medical-student-assistant-service
+  CONTAINER_NAME: backend
+  # Same subnet/security group the manual migration task used: public
+  # subnet (so it can reach Pinecone/Gemini with no NAT Gateway) and the
+  # task security group (which rds-sg trusts for port 5432).
+  MIGRATION_SUBNET: subnet-0d7efb05e950dd1ea
+  TASK_SECURITY_GROUP: sg-08dc9e7b00a8940b8
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ./rag -e "./backend[dev]"
+
+      - name: Test before deploying
+        run: |
+          pytest rag/tests/unit -q
+          pytest backend/tests/unit backend/tests/api -q
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        run: |
+          IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}"
+          docker build -t "$IMAGE" -f Dockerfile .
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      # Registered as its own revision, ahead of the migration step, so the
+      # migration task below runs against the *exact* image and dependency
+      # versions that are about to go live - not the family's current
+      # (still-old) latest revision.
+      - name: Register a new task definition revision
+        id: register
+        run: |
+          jq --arg IMAGE "$IMAGE" \
+             '.containerDefinitions[0].image = $IMAGE' \
+             backend/deploy/task-definition.json > rendered-task-definition.json
+
+          NEW_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://rendered-task-definition.json \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+
+          echo "Registered $NEW_ARN"
+          echo "task_definition_arn=$NEW_ARN" >> "$GITHUB_OUTPUT"
+
+      # Schema first: code that expects a column must never reach users
+      # before the column exists. A failure here stops the workflow before
+      # the "Deploy to ECS" step, so a broken migration never reaches the
+      # live service - it just never gets updated.
+      - name: Apply database migrations
+        run: |
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "$ECS_CLUSTER" \
+            --task-definition "${{ steps.register.outputs.task_definition_arn }}" \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[$MIGRATION_SUBNET],securityGroups=[$TASK_SECURITY_GROUP],assignPublicIp=ENABLED}" \
+            --overrides "{\"containerOverrides\":[{\"name\":\"$CONTAINER_NAME\",\"command\":[\"alembic\",\"upgrade\",\"head\"]}]}" \
+            --query 'tasks[0].taskArn' --output text)
+
+          echo "Migration task: $TASK_ARN"
+          aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN"
+
+          EXIT_CODE=$(aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+          echo "Migration exit code: $EXIT_CODE"
+
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "Migration failed - the service will NOT be updated." >&2
+            exit 1
+          fi
+
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --task-definition "${{ steps.register.outputs.task_definition_arn }}" \
+            --force-new-deployment
+
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"

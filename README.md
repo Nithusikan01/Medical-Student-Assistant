@@ -553,8 +553,8 @@ npm run build
 - No rate limiting on `/api/auth/login` or `/api/query`.
 - Pinecone index name is not separated per environment, so a document deleted in a
   development deployment is also deleted in production if they share `PINECONE_INDEX_NAME`.
-- The AWS deployment described below is planned (`AWS_DEPLOYMENT_PLAN.md`) but not yet built —
-  there is no live environment, ECS cluster, or RDS instance today.
+- No custom domain yet — the live deployment is reachable only via CloudFront's default
+  `*.cloudfront.net` domain (deferred per `AWS_DEPLOYMENT_PLAN.md` section 1.11).
 - API startup builds the embedder, vector store, BM25 index, and reranker clients, so cold
   start time depends on Pinecone/Gemini reachability even though no model weights are
   downloaded by default.
@@ -586,14 +586,32 @@ cd backend; python -m pytest tests\unit tests\api
 
 ## Deployment
 
-The target is fully AWS: ECS Fargate (backend container) + RDS (PostgreSQL) + S3/CloudFront
-(frontend, and the same CloudFront distribution fronts the API so the two stay same-origin —
-required because the refresh cookie is `SameSite=Lax`), deployed via GitHub Actions. **The full
-runbook — architecture decisions, one-time AWS setup, the database cutover, and the CI/CD
-workflow rewrite — is `AWS_DEPLOYMENT_PLAN.md` in the repository root; read section 0 there
-before doing anything else.** Nothing in that plan has been executed yet: there is no live AWS
-environment, and `.github/workflows/backend-deploy.yml` (previously a Koyeb deploy) has been
-removed rather than left pointing at a host this project no longer uses.
+Live on AWS: ECS Fargate (backend container) + RDS (PostgreSQL) + S3/CloudFront (frontend, with
+the same CloudFront distribution fronting the API so the two stay same-origin — required
+because the refresh cookie is `SameSite=Lax`). `AWS_DEPLOYMENT_PLAN.md` in the repository root
+is the full runbook this deployment was built from — architecture decisions (read section 0
+first), the one-time AWS setup, and the CI/CD design.
+
+Deploys are automated via GitHub Actions on every push to `main`:
+
+- **`.github/workflows/backend-deploy.yml`**: runs the engine + backend test suites, builds and
+  pushes the Docker image to ECR, registers a new ECS task definition revision, runs
+  `alembic upgrade head` as a one-off ECS task **against that exact revision** before touching
+  the live service, and only then updates the ECS service — a failed migration stops the
+  workflow before the service is ever pointed at code that expects a schema that isn't there
+  yet. Triggers only on changes under `backend/`, `rag/`, or the `Dockerfile`.
+- **`.github/workflows/frontend-deploy.yml`**: builds the frontend, syncs `dist/` to the S3
+  bucket (`--delete`, so old fingerprinted bundles from previous builds don't pile up), and
+  invalidates the CloudFront cache so visitors get the new build immediately rather than a
+  stale cached one. Triggers only on changes under `frontend/`.
+- **`backend/deploy/task-definition.json`**: the checked-in baseline task definition (roles,
+  CPU/memory, port mapping, non-secret env vars, and references to the Secrets Manager secret
+  for credentials) that the backend workflow renders a new image tag into on every run.
+
+Both workflows authenticate to AWS via **OIDC** (a GitHub Actions-specific IAM role,
+`medical-student-assistant-github-actions`, trusted only for pushes to `main` in this exact
+repo) rather than long-lived access keys stored as secrets — the only repository secret
+involved is `AWS_ROLE_ARN`.
 
 What's already in the repository and stays true regardless of host:
 
@@ -602,7 +620,7 @@ What's already in the repository and stays true regardless of host:
   sentence-transformers. Reads `$PORT` at runtime.
 - **`.github/workflows/pr-checks.yml`**: on every PR — lint (ruff + black), engine tests,
   backend unit + API tests, a Docker build (not pushed), and a frontend build. This workflow
-  isn't tied to any deployment target and needs no changes for the AWS move.
+  isn't tied to any deployment target and runs regardless of what's live.
 
 ## Recommended Next Improvements
 
