@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rag-application"
+name = "rag-engine"
 version = "0.1.0"
 description = "RAG engine: PDF ingestion, hybrid retrieval, reranking, and Gemini generation"
 requires-python = ">=3.11"
@@ -16,20 +16,25 @@ dependencies = [
     "pypdf",
     "python-dotenv",
     "google-genai",
-    "sentence-transformers",
-    "torch",
     "pinecone",
     "rank-bm25",
     "langchain-text-splitters",
 ]
 
 [project.optional-dependencies]
+# Local embedding and reranking models. Not needed when USE_HOSTED_INFERENCE
+# is on: leaving these out keeps PyTorch and its ~2GB of weights out of a
+# deployed image.
+local-models = [
+    "sentence-transformers",
+    "torch",
+]
 dev = [
     "pytest",
     "pytest-mock",
     "pytest-cov",
-    "black",
-    "ruff",
+    "black==25.1.0",
+    "ruff==0.16.6",
 ]
 
 [tool.setuptools]
@@ -48,3 +53,16 @@ line-length = 88
 
 [tool.ruff]
 line-length = 88
+
+[tool.ruff.lint]
+# TID251 backs the banned-api table below; the rest is ruff's default set.
+extend-select = ["TID251"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+# The engine is a library: it must not depend on the application that hosts
+# it. Enforced here rather than left to discipline, because this boundary is
+# what forces protocols (ConversationStore, ChunkSink, TextEmbedder) instead
+# of the engine reaching into web and database code.
+"backend".msg = "The rag engine must not import the web application. Depend on a protocol in rag and implement it in backend."
+"fastapi".msg = "The rag engine must stay framework-free. Keep HTTP concerns in backend."
+"sqlalchemy".msg = "The rag engine must not depend on the database layer. Define a protocol and implement it in backend."

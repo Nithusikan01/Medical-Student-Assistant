@@ -1,4 +1,5 @@
 import type { SourceChunk } from "../types";
+import { ChevronDown, Document } from "./Icons";
 
 interface SourceListProps {
   sources: SourceChunk[];
@@ -12,6 +13,7 @@ export function SourceList({ sources }: SourceListProps) {
   return (
     <details className="sources">
       <summary>
+        <ChevronDown />
         {sources.length} source{sources.length === 1 ? "" : "s"}
       </summary>
 
@@ -19,16 +21,19 @@ export function SourceList({ sources }: SourceListProps) {
         {sources.map((source) => (
           <li key={source.id} className="source">
             <div className="source-head">
+              <Document size={13} />
               <span className="source-file">{source.metadata.filename}</span>
 
               {source.metadata.page_number !== null && (
-                <span className="source-tag">p. {source.metadata.page_number}</span>
+                <span className="chip">p. {source.metadata.page_number}</span>
               )}
 
-              <span className="source-tag">chunk {source.metadata.chunk_index}</span>
+              <span className="chip">chunk {source.metadata.chunk_index}</span>
 
               {source.retrieval_method && (
-                <span className="source-tag">{source.retrieval_method}</span>
+                <span className="chip chip-accent">
+                  {source.retrieval_method}
+                </span>
               )}
 
               <span className="source-score">{source.score.toFixed(3)}</span>

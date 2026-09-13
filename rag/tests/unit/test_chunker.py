@@ -1,13 +1,15 @@
+from pathlib import Path
 from unittest.mock import Mock, patch
 
-from rag_application.config.component_configs import ChunkingConfig
-from rag_application.ingestion.chunker import TextChunker
-from rag_application.ingestion.schemas import DocumentChunk, LoadedDocument
-
+from rag.config.component_configs import ChunkingConfig
+from rag.ingestion.chunker import TextChunker
+from rag.ingestion.schemas import DocumentChunk, LoadedDocument, LoadedPage
 from tests.unit.helpers import make_loaded_document
 
+FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
 
-@patch("rag_application.ingestion.chunker._build_splitter")
+
+@patch("rag.ingestion.chunker._build_splitter")
 def test_chunk_document(mock_build_splitter):
     splitter = Mock()
     splitter.split_text.return_value = [
@@ -31,7 +33,7 @@ def test_chunk_document(mock_build_splitter):
     assert chunks[0].metadata.filename == "doc.pdf"
 
 
-@patch("rag_application.ingestion.chunker._build_splitter")
+@patch("rag.ingestion.chunker._build_splitter")
 def test_empty_document_pages(mock_build_splitter):
     document = LoadedDocument(
         document_id="empty",
@@ -47,3 +49,29 @@ def test_empty_document_pages(mock_build_splitter):
     )
 
     assert chunker.chunk(document) == []
+
+
+def test_chunker_splits_a_real_document():
+    """
+    The two tests above patch the splitter, so nothing checks that the real
+    langchain splitter is wired up correctly. This one runs it for real
+    against a text fixture - no network, no model weights.
+    """
+
+    text = (FIXTURES_DIR / "output.txt").read_text(encoding="utf-8")
+    document = LoadedDocument(
+        document_id="output",
+        filename="output.txt",
+        source_path=str(FIXTURES_DIR / "output.txt"),
+        pages=[LoadedPage(page_number=1, text=text)],
+    )
+
+    chunks = TextChunker(ChunkingConfig(chunk_size=500, chunk_overlap=50)).chunk(
+        document
+    )
+
+    assert len(chunks) > 1
+    assert chunks[0].id == "output_chunk_0"
+    assert chunks[0].metadata.filename == "output.txt"
+    assert all(chunk.text.strip() for chunk in chunks)
+    assert all(chunk.metadata.chunk_size <= 500 for chunk in chunks)

@@ -6,8 +6,8 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 from pinecone import Pinecone, ServerlessSpec
 
-from rag_application.config.settings import load_settings
-from rag_application.ingestion.embedder import Embedder
+from rag.config.settings import load_settings
+from rag.ingestion.embedder import Embedder
 
 
 def main():

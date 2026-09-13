@@ -1,5 +1,4 @@
-from rag_application.llm.prompt_builder import PromptBuilder
-
+from rag.llm.prompt_builder import PromptBuilder
 from tests.unit.helpers import make_retrieved_chunk
 
 

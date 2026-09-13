@@ -1,18 +1,15 @@
 from unittest.mock import Mock
 
-from rag_application.retrieval.dense_retriever import DenseRetriever
-from rag_application.retrieval.hybrid_retriever import HybridRetriever
-from rag_application.retrieval.schemas import RetrievalMethod, RetrievedChunk
-
+from rag.retrieval.dense_retriever import DenseRetriever
+from rag.retrieval.hybrid_retriever import HybridRetriever
+from rag.retrieval.schemas import RetrievalMethod, RetrievedChunk
 from tests.unit.helpers import make_retrieved_chunk, make_search_result
 
 
 def test_dense_retrieve_returns_retrieved_chunks():
     mock_embedding_model = Mock()
     mock_vector_store = Mock()
-    mock_embedding = Mock()
-    mock_embedding.tolist.return_value = [0.1, 0.2, 0.3]
-    mock_embedding_model.encode.return_value = mock_embedding
+    mock_embedding_model.embed_query.return_value = [0.1, 0.2, 0.3]
     mock_vector_store.query.return_value = [
         make_search_result("chunk_1", "First chunk", 0.95),
     ]
@@ -39,9 +36,7 @@ def test_dense_retrieve_returns_retrieved_chunks():
 def test_dense_retrieve_calls_embedding_model():
     mock_embedding_model = Mock()
     mock_vector_store = Mock()
-    mock_embedding = Mock()
-    mock_embedding.tolist.return_value = [1, 2, 3]
-    mock_embedding_model.encode.return_value = mock_embedding
+    mock_embedding_model.embed_query.return_value = [1, 2, 3]
     mock_vector_store.query.return_value = []
 
     retriever = DenseRetriever(
@@ -51,19 +46,13 @@ def test_dense_retrieve_calls_embedding_model():
 
     retriever.retrieve("test query")
 
-    mock_embedding_model.encode.assert_called_once_with(
-        "test query",
-        convert_to_numpy=True,
-        normalize_embeddings=True,
-    )
+    mock_embedding_model.embed_query.assert_called_once_with("test query")
 
 
 def test_dense_retrieve_calls_vector_store():
     mock_embedding_model = Mock()
     mock_vector_store = Mock()
-    mock_embedding = Mock()
-    mock_embedding.tolist.return_value = [0.1, 0.2, 0.3]
-    mock_embedding_model.encode.return_value = mock_embedding
+    mock_embedding_model.embed_query.return_value = [0.1, 0.2, 0.3]
     mock_vector_store.query.return_value = []
 
     retriever = DenseRetriever(
@@ -86,9 +75,7 @@ def test_dense_retrieve_calls_vector_store():
 def test_dense_retrieve_returns_empty_list():
     mock_embedding_model = Mock()
     mock_vector_store = Mock()
-    mock_embedding = Mock()
-    mock_embedding.tolist.return_value = [0.1]
-    mock_embedding_model.encode.return_value = mock_embedding
+    mock_embedding_model.embed_query.return_value = [0.1]
     mock_vector_store.query.return_value = []
 
     retriever = DenseRetriever(
@@ -102,9 +89,7 @@ def test_dense_retrieve_returns_empty_list():
 def test_dense_retrieve_skips_matches_without_text_metadata():
     mock_embedding_model = Mock()
     mock_vector_store = Mock()
-    mock_embedding = Mock()
-    mock_embedding.tolist.return_value = [0.1]
-    mock_embedding_model.encode.return_value = mock_embedding
+    mock_embedding_model.embed_query.return_value = [0.1]
 
     result = make_search_result("chunk_without_text", "Missing", 0.5)
     result.metadata.text = None

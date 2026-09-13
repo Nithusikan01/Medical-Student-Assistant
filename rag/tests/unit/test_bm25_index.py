@@ -2,8 +2,7 @@ import pytest
 
 pytest.importorskip("rank_bm25")
 
-from rag_application.indexes.bm25_index import BM25Index
-
+from rag.indexes.bm25_index import BM25Index
 from tests.unit.helpers import make_chunk
 
 

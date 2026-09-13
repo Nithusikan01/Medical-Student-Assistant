@@ -1,15 +1,15 @@
-from rag_application.ingestion.schemas import (
+from rag.ingestion.schemas import (
     ChunkMetadata,
     DocumentChunk,
     EmbeddedChunk,
     LoadedDocument,
     LoadedPage,
 )
-from rag_application.retrieval.schemas import (
+from rag.retrieval.schemas import (
     RetrievedChunk,
     RetrievedChunkMetadata,
 )
-from rag_application.vectorstore.schemas import (
+from rag.vectorstore.schemas import (
     SearchResult,
     VectorRecord,
     VectorRecordMetadata,

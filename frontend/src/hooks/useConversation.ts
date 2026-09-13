@@ -1,6 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import { askQuestion } from "../api/client";
+import { askQuestion, getConversation } from "../api/conversations";
 import type { SourceChunk } from "../types";
 
 export interface ChatMessage {
@@ -10,16 +10,66 @@ export interface ChatMessage {
   sources?: SourceChunk[];
 }
 
-export function useConversation() {
-  const [conversationId, setConversationId] = useState(() =>
-    crypto.randomUUID(),
-  );
+export function useConversation(conversationId: string | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPending] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Hydrate from the server whenever the route's conversation changes, so
+  // history survives a reload and is shared across devices.
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!conversationId) {
+      setMessages([]);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    getConversation(conversationId)
+      .then((detail) => {
+        if (cancelled) {
+          return;
+        }
+
+        setMessages(
+          detail.messages.map((message) => ({
+            id: String(message.id),
+            role: message.role,
+            content: message.content,
+            sources: message.sources ?? undefined,
+          })),
+        );
+      })
+      .catch((caught) => {
+        if (!cancelled) {
+          setError(
+            caught instanceof Error
+              ? caught.message
+              : "Could not load this conversation.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId]);
 
   const ask = useCallback(
     async (question: string, topK: number) => {
+      if (!conversationId) {
+        return;
+      }
+
       setError(null);
       setPending(true);
 
@@ -55,11 +105,5 @@ export function useConversation() {
     [conversationId],
   );
 
-  const reset = useCallback(() => {
-    setConversationId(crypto.randomUUID());
-    setMessages([]);
-    setError(null);
-  }, []);
-
-  return { conversationId, messages, pending, error, ask, reset };
+  return { messages, pending, loading, error, ask };
 }

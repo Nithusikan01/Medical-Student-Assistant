@@ -1,8 +1,7 @@
 from unittest.mock import Mock
 
-from rag_application.llm.schemas import LLMResponse
-from rag_application.services.history_aware_rag_service import HistoryAwareRAGService
-
+from rag.llm.schemas import LLMResponse
+from rag.services.history_aware_rag_service import HistoryAwareRAGService
 from tests.unit.helpers import make_retrieved_chunk
 
 
@@ -132,10 +131,7 @@ def test_answer_updates_summary_after_trigger():
     service, *_, mock_summarizer, mock_memory = build_service(
         generated_text="Answer",
     )
-    mock_memory.messages = [
-        Mock()
-        for _ in range(service.SUMMARY_TRIGGER)
-    ]
+    mock_memory.messages = [Mock() for _ in range(service.SUMMARY_TRIGGER)]
 
     service.answer(
         conversation_id="conversation_1",

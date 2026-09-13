@@ -1,0 +1,32 @@
+# Keep the build context small: without this, node_modules alone adds ~74MB
+# and every layer rebuild re-uploads it.
+
+.git
+.github
+frontend
+docs
+
+**/node_modules
+**/dist
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/*.egg-info
+
+# Secrets never belong in an image; the platform injects them as env vars.
+**/.env
+**/.env.*
+!**/.env.example
+
+# Runtime state, recreated by the container.
+backend/storage
+backend/data
+
+# Local tooling
+.vscode
+.idea
+.venv
+venv
+*.log
+tmp

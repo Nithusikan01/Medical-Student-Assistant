@@ -1,4 +1,33 @@
-import type { IngestResponse, QueryResponse } from "../types";
+let accessToken: string | null = null;
+
+// A single in-flight refresh shared by every caller. Without this, N requests
+// failing with 401 at once would each rotate the refresh token, and rotation
+// treats a replayed token as theft - logging the user out.
+let refreshInFlight: Promise<string | null> | null = null;
+
+let onAuthLost: (() => void) | null = null;
+
+export function setAccessToken(token: string | null): void {
+  accessToken = token;
+}
+
+export function getAccessToken(): string | null {
+  return accessToken;
+}
+
+export function setAuthLostHandler(handler: (() => void) | null): void {
+  onAuthLost = handler;
+}
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
 
 async function readError(response: Response): Promise<string> {
   const fallback = `Request failed (${response.status})`;
@@ -22,41 +51,84 @@ async function readError(response: Response): Promise<string> {
   return fallback;
 }
 
-export async function askQuestion(params: {
-  conversationId: string;
-  question: string;
-  topK: number;
-  signal?: AbortSignal;
-}): Promise<QueryResponse> {
-  const response = await fetch("/api/query", {
+async function refreshAccessToken(): Promise<string | null> {
+  const response = await fetch("/api/auth/refresh", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      conversation_id: params.conversationId,
-      question: params.question,
-      top_k: params.topK,
-    }),
-    signal: params.signal,
+    credentials: "include",
   });
 
   if (!response.ok) {
-    throw new Error(await readError(response));
+    return null;
   }
 
-  return response.json();
+  const body = await response.json();
+  accessToken = body.access_token;
+
+  return accessToken;
 }
 
-export async function ingestDocument(file: File): Promise<IngestResponse> {
-  const form = new FormData();
-  form.append("file", file);
-
-  const response = await fetch("/api/ingest", {
-    method: "POST",
-    body: form,
+function refreshOnce(): Promise<string | null> {
+  refreshInFlight ??= refreshAccessToken().finally(() => {
+    refreshInFlight = null;
   });
 
+  return refreshInFlight;
+}
+
+interface RequestOptions {
+  method?: string;
+  body?: unknown;
+  formData?: FormData;
+  // Auth endpoints must never trigger a refresh retry: refreshing a failed
+  // refresh would loop.
+  skipRefresh?: boolean;
+}
+
+export async function request<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const send = async (): Promise<Response> => {
+    const headers: Record<string, string> = {};
+
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
+    }
+
+    if (options.body !== undefined) {
+      headers["Content-Type"] = "application/json";
+    }
+
+    return fetch(path, {
+      method: options.method ?? "GET",
+      headers,
+      credentials: "include",
+      body: options.formData ?? (
+        options.body !== undefined ? JSON.stringify(options.body) : undefined
+      ),
+    });
+  };
+
+  let response = await send();
+
+  if (response.status === 401 && !options.skipRefresh) {
+    const renewed = await refreshOnce();
+
+    if (renewed) {
+      response = await send();
+    } else {
+      accessToken = null;
+      onAuthLost?.();
+      throw new ApiError("Your session has expired.", 401);
+    }
+  }
+
   if (!response.ok) {
-    throw new Error(await readError(response));
+    throw new ApiError(await readError(response), response.status);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
   }
 
   return response.json();
@@ -70,3 +142,5 @@ export async function checkHealth(): Promise<boolean> {
     return false;
   }
 }
+
+export { refreshOnce as attemptSilentRefresh };

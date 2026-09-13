@@ -1,0 +1,41 @@
+{
+  "family": "medical-student-assistant-backend",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::519035820911:role/medical-student-assistant-task-execution-role",
+  "taskRoleArn": "arn:aws:iam::519035820911:role/medical-student-assistant-task-role",
+  "containerDefinitions": [
+    {
+      "name": "backend",
+      "image": "519035820911.dkr.ecr.ap-south-1.amazonaws.com/medical-student-assistant-backend:latest",
+      "essential": true,
+      "portMappings": [
+        { "containerPort": 8000, "protocol": "tcp" }
+      ],
+      "environment": [
+        { "name": "COOKIE_SECURE", "value": "true" },
+        { "name": "ALLOW_OPEN_REGISTRATION", "value": "true" },
+        { "name": "CORS_ORIGINS", "value": "https://d1u7p8d1507l08.cloudfront.net" }
+      ],
+      "secrets": [
+        { "name": "PINECONE_API_KEY", "valueFrom": "arn:aws:secretsmanager:ap-south-1:519035820911:secret:medical-student-assistant/backend-q62Rkn:PINECONE_API_KEY::" },
+        { "name": "PINECONE_INDEX_NAME", "valueFrom": "arn:aws:secretsmanager:ap-south-1:519035820911:secret:medical-student-assistant/backend-q62Rkn:PINECONE_INDEX_NAME::" },
+        { "name": "GEMINI_API_KEY", "valueFrom": "arn:aws:secretsmanager:ap-south-1:519035820911:secret:medical-student-assistant/backend-q62Rkn:GEMINI_API_KEY::" },
+        { "name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:ap-south-1:519035820911:secret:medical-student-assistant/backend-q62Rkn:DATABASE_URL::" },
+        { "name": "SECRET_KEY", "valueFrom": "arn:aws:secretsmanager:ap-south-1:519035820911:secret:medical-student-assistant/backend-q62Rkn:SECRET_KEY::" },
+        { "name": "ADMIN_EMAIL", "valueFrom": "arn:aws:secretsmanager:ap-south-1:519035820911:secret:medical-student-assistant/backend-q62Rkn:ADMIN_EMAIL::" },
+        { "name": "ADMIN_PASSWORD", "valueFrom": "arn:aws:secretsmanager:ap-south-1:519035820911:secret:medical-student-assistant/backend-q62Rkn:ADMIN_PASSWORD::" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/medical-student-assistant-backend",
+          "awslogs-region": "ap-south-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
