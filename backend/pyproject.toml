@@ -33,8 +33,8 @@ dev = [
     "pytest",
     "pytest-mock",
     "pytest-cov",
-    "black",
-    "ruff",
+    "black==25.1.0",
+    "ruff==0.16.6",
 ]
 
 [tool.setuptools]

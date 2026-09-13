@@ -31,7 +31,7 @@ jobs:
 
       - name: Lint and format check
         run: |
-          pip install ruff black
+          pip install "ruff==0.16.6" "black==25.1.0"
           ruff check rag/src rag/tests backend/src backend/tests
           black --check rag/src rag/tests backend/src backend/tests
 
