@@ -1,7 +1,7 @@
 import logging
 
 from rag.retrieval.base import BaseRetriever
-from rag.retrieval.reranker import Reranker
+from rag.rerankers.base import BaseReranker
 from rag.retrieval.schemas import RetrievedChunk
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ class QueryService:
     def __init__(
         self,
         retriever: BaseRetriever,
-        reranker: Reranker | None = None,
+        reranker: BaseReranker | None = None,
     ) -> None:
         self.retriever = retriever
         self.reranker = reranker

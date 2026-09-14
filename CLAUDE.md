@@ -21,7 +21,8 @@ Three top-level parts, two of them installable Python packages:
 - `rag/` — the RAG engine, package `rag`. Pure library: no FastAPI, no HTTP, no database.
   Contains `config/`, `conversation/` (memory + the `ConversationStore` protocol),
   `embeddings/`, `evaluation/`, `indexes/`, `ingestion/` (including the `ChunkSink` protocol),
-  `llm/`, `retrieval/`, `services/`, `utils/`, `vectorstore/`, plus its own `tests/`.
+  `llm/`, `rerankers/` (the `BaseReranker` implementations, kept alongside `retrieval/` rather
+  than inside it), `retrieval/`, `services/`, `utils/`, `vectorstore/`, plus its own `tests/`.
 - `backend/` — the FastAPI layer, package `backend`. Contains `app.py`, `dependencies.py`,
   `auth/` (password hashing, JWT/refresh tokens, `AuthService`), `db/` (SQLAlchemy models and
   repositories), `migrations/` (Alembic), `schemas/`, `routers/`, `services/` (upload handling,
@@ -137,7 +138,9 @@ conversation_id + question
        -> DenseRetriever -> PineconeVectorStore
        -> BM25Retriever  -> BM25Index (loaded from document_chunks at factory build time, refreshed in place after ingest/delete)
        (fused via Reciprocal Rank Fusion, see hybrid_retriever.py)
-  -> Reranker (Pinecone hosted by default, local cross-encoder as a fallback)
+  -> Reranker (Pinecone hosted by default; on failure, falls back to the same Gemini model used
+     for generation, then to unranked retrieval order; local cross-encoder only when hosted
+     inference is disabled entirely)
   -> PromptBuilder -> GeminiGenerator
   -> answer + structured RetrievedChunk sources
   -> ConversationMemory updated; summarized once message count hits HistoryAwareRAGService.SUMMARY_TRIGGER

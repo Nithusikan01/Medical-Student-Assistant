@@ -73,7 +73,7 @@ def build_query_service(corpus_path: Path, use_reranker: bool) -> QueryService:
     from rag.retrieval.dense_retriever import DenseRetriever
     from rag.retrieval.hybrid_retriever import HybridRetriever
     from rag.retrieval.query_service import QueryService
-    from rag.retrieval.reranker import Reranker
+    from rag.rerankers.local_reranker import Reranker
     from rag.vectorstore.pinecone_store import PineconeVectorStore
 
     settings = load_settings()
