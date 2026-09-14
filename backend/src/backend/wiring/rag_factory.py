@@ -13,13 +13,13 @@ from rag.ingestion.schemas import (
     DocumentChunk,
 )
 from rag.llm.generator import GeminiGenerator
+from rag.rerankers.fallback_reranker import FallbackReranker
+from rag.rerankers.gemini_reranker import GeminiReranker
+from rag.rerankers.pinecone_reranker import PineconeReranker
 from rag.retrieval.bm25_retriever import BM25Retriever
 from rag.retrieval.dense_retriever import DenseRetriever
 from rag.retrieval.hybrid_retriever import HybridRetriever
 from rag.retrieval.query_service import QueryService
-from rag.rerankers.fallback_reranker import FallbackReranker
-from rag.rerankers.gemini_reranker import GeminiReranker
-from rag.rerankers.pinecone_reranker import PineconeReranker
 from rag.services.history_aware_rag_service import (
     HistoryAwareRAGService,
 )

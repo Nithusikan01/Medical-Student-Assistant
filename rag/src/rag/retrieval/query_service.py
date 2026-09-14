@@ -1,7 +1,7 @@
 import logging
 
-from rag.retrieval.base import BaseRetriever
 from rag.rerankers.base import BaseReranker
+from rag.retrieval.base import BaseRetriever
 from rag.retrieval.schemas import RetrievedChunk
 
 logger = logging.getLogger(__name__)
