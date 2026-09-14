@@ -1,18 +1,22 @@
 import logging
 
 from rag.config.component_configs import PineconeRerankConfig
+from rag.rerankers.base import BaseReranker
 from rag.retrieval.schemas import RetrievedChunk
 
 logger = logging.getLogger(__name__)
 
 
-class PineconeReranker:
+class PineconeReranker(BaseReranker):
     """
     Cross-encoder reranking through Pinecone's hosted inference API.
 
     Same contract as the local Reranker, so the query service is unaware of
     which one it holds - but with no model weights to download and a
     stronger model than the local default.
+
+    Raises on failure rather than degrading itself: it is expected to be
+    wrapped by FallbackReranker, which owns the decision of what to try next.
     """
 
     def __init__(self, config: PineconeRerankConfig) -> None:
@@ -31,20 +35,13 @@ class PineconeReranker:
             logger.warning("No candidates provided to reranker.")
             return []
 
-        try:
-            response = self._client.inference.rerank(
-                model=self.model_name,
-                query=query,
-                documents=[{"text": chunk.text} for chunk in candidates],
-                top_n=min(top_k, len(candidates)),
-                return_documents=False,
-            )
-        except Exception:
-            # Reranking is a refinement, not a requirement: falling back to
-            # the fused order keeps the question answerable when the hosted
-            # model is unreachable or the quota is spent.
-            logger.exception("Reranking failed; falling back to the retrieval order.")
-            return candidates[:top_k]
+        response = self._client.inference.rerank(
+            model=self.model_name,
+            query=query,
+            documents=[{"text": chunk.text} for chunk in candidates],
+            top_n=min(top_k, len(candidates)),
+            return_documents=False,
+        )
 
         results = [
             candidates[item.index].with_rerank_score(

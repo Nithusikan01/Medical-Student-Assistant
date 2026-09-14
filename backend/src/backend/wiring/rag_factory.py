@@ -13,10 +13,12 @@ from rag.ingestion.schemas import (
     DocumentChunk,
 )
 from rag.llm.generator import GeminiGenerator
+from rag.rerankers.fallback_reranker import FallbackReranker
+from rag.rerankers.gemini_reranker import GeminiReranker
+from rag.rerankers.pinecone_reranker import PineconeReranker
 from rag.retrieval.bm25_retriever import BM25Retriever
 from rag.retrieval.dense_retriever import DenseRetriever
 from rag.retrieval.hybrid_retriever import HybridRetriever
-from rag.retrieval.pinecone_reranker import PineconeReranker
 from rag.retrieval.query_service import QueryService
 from rag.services.history_aware_rag_service import (
     HistoryAwareRAGService,
@@ -36,7 +38,6 @@ def _parse_chunk_index(
     chunk_id: str,
     fallback: int,
 ) -> int:
-
     marker = "_chunk_"
 
     if marker not in chunk_id:
@@ -51,7 +52,6 @@ def _parse_chunk_index(
 def _parse_document_id(
     chunk_id: str,
 ) -> str:
-
     marker = "_chunk_"
 
     if marker not in chunk_id:
@@ -63,9 +63,7 @@ def _parse_document_id(
 def load_bm25_corpus(
     corpus_path: Path,
 ) -> list[DocumentChunk]:
-
     if not corpus_path.exists():
-
         logger.warning(
             "BM25 corpus not found at %s.",
             corpus_path,
@@ -77,13 +75,11 @@ def load_bm25_corpus(
         "r",
         encoding="utf-8",
     ) as file:
-
         rows = json.load(file)
 
     chunks: list[DocumentChunk] = []
 
     for index, row in enumerate(rows):
-
         chunk_id = row["id"]
         metadata_row = row.get("metadata", row)
 
@@ -160,18 +156,32 @@ def build_embedder():
 
 
 @lru_cache
+def build_generator() -> GeminiGenerator:
+    """
+    One Gemini client for the whole process, shared by generation, query
+    rewriting, summarization, and the reranker fallback.
+    """
+
+    return GeminiGenerator(load_settings().generation_config())
+
+
+@lru_cache
 def build_reranker():
     """
-    Hosted reranking by default; the local cross-encoder on request.
+    Hosted reranking by default, with the shared Gemini model as a fallback
+    when the hosted call fails; the local cross-encoder only when hosted
+    inference is disabled entirely.
     """
 
     settings = load_settings()
 
     if settings.use_hosted_inference:
-        return PineconeReranker(settings.hosted_rerank_config())
+        primary = PineconeReranker(settings.hosted_rerank_config())
+        fallback = GeminiReranker(build_generator())
+        return FallbackReranker(primary=primary, fallback=fallback)
 
     # Imported lazily so the module loads without torch installed.
-    from rag.retrieval.reranker import Reranker
+    from rag.rerankers.local_reranker import Reranker
 
     return Reranker(model_name=DEFAULT_RERANKER_MODEL)
 
@@ -213,9 +223,6 @@ def refresh_bm25_index() -> int:
 
 @lru_cache
 def build_history_aware_rag_service() -> HistoryAwareRAGService:
-
-    settings = load_settings()
-
     #
     # Embedding Model and Vector Store (shared with the ingestion path)
     #
@@ -260,9 +267,7 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
     #
     # LLM
     #
-    llm = GeminiGenerator(
-        settings.generation_config(),
-    )
+    llm = build_generator()
 
     #
     # Conversation Components

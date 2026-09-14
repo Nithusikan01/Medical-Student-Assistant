@@ -1,11 +1,12 @@
 import logging
 
+from rag.rerankers.base import BaseReranker
 from rag.retrieval.schemas import RetrievedChunk
 
 logger = logging.getLogger(__name__)
 
 
-class Reranker:
+class Reranker(BaseReranker):
     """
     Cross-encoder based reranker.
 
