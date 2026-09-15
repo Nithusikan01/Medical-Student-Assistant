@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { ChatMessage } from "../hooks/useConversation";
+import type { GenerationModelInfo } from "../types";
 import { Send, Spinner } from "./Icons";
 import { SourceList } from "./SourceList";
 
@@ -11,6 +12,9 @@ interface ChatPanelProps {
   error: string | null;
   topK: number;
   onTopKChange: (value: number) => void;
+  models: GenerationModelInfo[];
+  selectedModel: string | null;
+  onModelChange: (id: string) => void;
   onSend: (question: string) => void;
 }
 
@@ -21,6 +25,9 @@ export function ChatPanel({
   error,
   topK,
   onTopKChange,
+  models,
+  selectedModel,
+  onModelChange,
   onSend,
 }: ChatPanelProps) {
   const [draft, setDraft] = useState("");
@@ -68,6 +75,12 @@ export function ChatPanel({
             </div>
           ) : (
             <article key={message.id} className="message-assistant">
+              {message.model && (
+                <span className="message-model">
+                  {models.find((option) => option.id === message.model)
+                    ?.label ?? message.model}
+                </span>
+              )}
               <p className="message-body">{message.content}</p>
               {message.sources && <SourceList sources={message.sources} />}
             </article>
@@ -110,6 +123,22 @@ export function ChatPanel({
         />
 
         <div className="composer-actions">
+          <label className="model-select">
+            Model
+            <select
+              value={selectedModel ?? ""}
+              disabled={models.length === 0}
+              onChange={(event) => onModelChange(event.target.value)}
+            >
+              {models.length === 0 && <option value="">Default</option>}
+              {models.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <label className="top-k">
             Sources
             <input

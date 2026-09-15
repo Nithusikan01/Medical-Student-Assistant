@@ -1,8 +1,10 @@
 import json
 import logging
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from rag.config.component_configs import GenerationConfig
 from rag.config.settings import load_settings
 from rag.conversation.query_rewriter import QueryRewriter
 from rag.conversation.summarizer import ConversationSummarizer
@@ -13,6 +15,8 @@ from rag.ingestion.schemas import (
     DocumentChunk,
 )
 from rag.llm.generator import GeminiGenerator
+from rag.llm.groq_generator import GroqGenerator
+from rag.llm.protocol import TextGenerator
 from rag.rerankers.fallback_reranker import FallbackReranker
 from rag.rerankers.gemini_reranker import GeminiReranker
 from rag.rerankers.pinecone_reranker import PineconeReranker
@@ -163,6 +167,91 @@ def build_generator() -> GeminiGenerator:
     """
 
     return GeminiGenerator(load_settings().generation_config())
+
+
+DEFAULT_GENERATION_MODEL_ID = "gemini-flash"
+
+# id -> (label, provider, model_name). model_name is None for the Gemini
+# entry, which generates through the shared build_generator() singleton
+# (settings.generation_model_name) rather than a fixed string here.
+_GENERATION_MODEL_SPECS: dict[str, tuple[str, str, str | None]] = {
+    DEFAULT_GENERATION_MODEL_ID: ("Gemini (default)", "gemini", None),
+    "groq-gpt-oss-120b": ("GPT-OSS 120B (Groq)", "groq", "openai/gpt-oss-120b"),
+    "groq-gpt-oss-20b": ("GPT-OSS 20B (Groq)", "groq", "openai/gpt-oss-20b"),
+    "groq-qwen3.8-27b": ("Qwen3.8 27B (Groq)", "groq", "qwen/qwen3.8-27b"),
+}
+
+
+@dataclass(frozen=True)
+class GenerationModelOption:
+    id: str
+    label: str
+    provider: str
+
+
+class UnknownGenerationModelError(ValueError):
+    """Raised for a model id that isn't currently offered."""
+
+
+def available_generation_models() -> list[GenerationModelOption]:
+    """
+    Models the UI may offer right now.
+
+    Groq entries are omitted entirely when GROQ_API_KEY isn't configured,
+    rather than being listed and failing on first use.
+    """
+
+    settings = load_settings()
+
+    models = []
+
+    for model_id, (label, provider, _) in _GENERATION_MODEL_SPECS.items():
+        if provider == "groq" and not settings.groq_api_key:
+            continue
+
+        models.append(
+            GenerationModelOption(id=model_id, label=label, provider=provider)
+        )
+
+    return models
+
+
+@lru_cache
+def _build_groq_generator(model_name: str) -> GroqGenerator:
+    settings = load_settings()
+
+    return GroqGenerator(
+        GenerationConfig(
+            model_name=model_name,
+            api_key=settings.groq_api_key,
+        )
+    )
+
+
+def resolve_generator(model_id: str | None) -> tuple[TextGenerator, str]:
+    """
+    Resolve a client-requested model id to a generator for one query call.
+
+    Defaults to DEFAULT_GENERATION_MODEL_ID when no id is given. Raises
+    UnknownGenerationModelError for an id that isn't currently offered
+    (unknown, or a Groq model with no key configured), so the router can
+    turn that into a 400 instead of silently substituting a different model
+    than the one the user asked for.
+    """
+
+    resolved_id = model_id or DEFAULT_GENERATION_MODEL_ID
+    spec = _GENERATION_MODEL_SPECS.get(resolved_id)
+    settings = load_settings()
+
+    if spec is None or (spec[1] == "groq" and not settings.groq_api_key):
+        raise UnknownGenerationModelError(resolved_id)
+
+    _, provider, model_name = spec
+
+    if provider == "gemini":
+        return build_generator(), resolved_id
+
+    return _build_groq_generator(model_name), resolved_id
 
 
 @lru_cache

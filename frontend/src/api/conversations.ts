@@ -1,6 +1,7 @@
 import type {
   ConversationDetail,
   ConversationSummary,
+  GenerationModelsResponse,
   QueryResponse,
 } from "../types";
 import { request } from "./client";
@@ -40,6 +41,7 @@ export function askQuestion(params: {
   conversationId: string;
   question: string;
   topK: number;
+  model?: string | null;
 }): Promise<QueryResponse> {
   return request<QueryResponse>("/api/query", {
     method: "POST",
@@ -47,6 +49,11 @@ export function askQuestion(params: {
       conversation_id: params.conversationId,
       question: params.question,
       top_k: params.topK,
+      model: params.model ?? null,
     },
   });
+}
+
+export function getGenerationModels(): Promise<GenerationModelsResponse> {
+  return request<GenerationModelsResponse>("/api/models");
 }

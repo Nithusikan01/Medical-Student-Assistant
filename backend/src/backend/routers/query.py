@@ -3,17 +3,45 @@ import logging
 from fastapi import APIRouter, HTTPException, status
 
 from backend.db.repositories import conversations
-from backend.dependencies import CurrentUser, DbSession, RagService
+from backend.dependencies import (
+    CurrentUser,
+    DbSession,
+    DefaultGenerationModelId,
+    GenerationModels,
+    GeneratorResolver,
+    RagService,
+)
 from backend.schemas import (
+    GenerationModelInfo,
+    GenerationModelsResponse,
     QueryRequest,
     QueryResponse,
     SourceChunk,
     SourceMetadata,
 )
+from backend.wiring.rag_factory import UnknownGenerationModelError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@router.get(
+    "/models",
+    response_model=GenerationModelsResponse,
+)
+def list_generation_models(
+    user: CurrentUser,
+    models: GenerationModels,
+    default_model_id: DefaultGenerationModelId,
+) -> GenerationModelsResponse:
+    return GenerationModelsResponse(
+        models=[
+            GenerationModelInfo(id=model.id, label=model.label, provider=model.provider)
+            for model in models
+        ],
+        default=default_model_id,
+    )
 
 
 @router.post(
@@ -25,7 +53,16 @@ def query_documents(
     session: DbSession,
     user: CurrentUser,
     rag_service: RagService,
+    resolve_generator: GeneratorResolver,
 ) -> QueryResponse:
+
+    try:
+        generator, resolved_model = resolve_generator(request.model)
+    except UnknownGenerationModelError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown or unavailable generation model: {exc}",
+        ) from exc
 
     conversation = conversations.get(session, request.conversation_id)
 
@@ -50,6 +87,7 @@ def query_documents(
             conversation_id=str(request.conversation_id),
             question=request.question,
             top_k=request.top_k,
+            generator=generator,
         )
     except Exception as exc:
         # The underlying message can carry Pinecone or Gemini detail,
@@ -96,5 +134,6 @@ def query_documents(
         conversation_id=str(conversation.id),
         question=request.question,
         answer=answer,
+        model=resolved_model,
         sources=sources,
     )

@@ -16,6 +16,7 @@ dependencies = [
     "pypdf",
     "python-dotenv",
     "google-genai",
+    "groq",
     "pinecone",
     "rank-bm25",
     "langchain-text-splitters",

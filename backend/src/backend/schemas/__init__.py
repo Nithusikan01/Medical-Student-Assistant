@@ -14,6 +14,8 @@ from backend.schemas.conversation import (
 )
 from backend.schemas.document import DocumentResponse, IngestResponse
 from backend.schemas.query import (
+    GenerationModelInfo,
+    GenerationModelsResponse,
     QueryRequest,
     QueryResponse,
     SourceChunk,
@@ -27,6 +29,8 @@ __all__ = [
     "ConversationSummaryResponse",
     "ConversationUpdateRequest",
     "DocumentResponse",
+    "GenerationModelInfo",
+    "GenerationModelsResponse",
     "IngestResponse",
     "LoginRequest",
     "QueryRequest",

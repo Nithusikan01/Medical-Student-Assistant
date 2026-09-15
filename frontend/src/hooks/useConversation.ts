@@ -8,6 +8,9 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   sources?: SourceChunk[];
+  // Only set for answers generated this session - conversation history
+  // loaded from the server doesn't carry which model answered.
+  model?: string;
 }
 
 export function useConversation(conversationId: string | null) {
@@ -65,7 +68,7 @@ export function useConversation(conversationId: string | null) {
   }, [conversationId]);
 
   const ask = useCallback(
-    async (question: string, topK: number) => {
+    async (question: string, topK: number, model?: string | null) => {
       if (!conversationId) {
         return;
       }
@@ -83,6 +86,7 @@ export function useConversation(conversationId: string | null) {
           conversationId,
           question,
           topK,
+          model,
         });
 
         setMessages((previous) => [
@@ -92,6 +96,7 @@ export function useConversation(conversationId: string | null) {
             role: "assistant",
             content: response.answer,
             sources: response.sources,
+            model: response.model,
           },
         ]);
       } catch (caught) {

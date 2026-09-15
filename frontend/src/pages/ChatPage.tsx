@@ -14,6 +14,7 @@ import { ConversationSidebar } from "../components/ConversationSidebar";
 import { BookMark, Document, SignOut } from "../components/Icons";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useConversation } from "../hooks/useConversation";
+import { useGenerationModels } from "../hooks/useGenerationModels";
 import type { ConversationSummary } from "../types";
 
 export function ChatPage() {
@@ -27,6 +28,7 @@ export function ChatPage() {
 
   const { messages, pending, loading, error, ask } =
     useConversation(conversationId);
+  const { models, selectedModel, selectModel } = useGenerationModels();
 
   const refreshConversations = useCallback(async () => {
     const rows = await listConversations().catch(() => []);
@@ -178,7 +180,10 @@ export function ChatPage() {
               Number.isFinite(value) ? Math.min(20, Math.max(1, value)) : 5,
             )
           }
-          onSend={(question) => void ask(question, topK)}
+          models={models}
+          selectedModel={selectedModel}
+          onModelChange={selectModel}
+          onSend={(question) => void ask(question, topK, selectedModel)}
         />
       </div>
     </div>

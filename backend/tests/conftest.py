@@ -25,7 +25,17 @@ from backend.auth.tokens import create_access_token
 from backend.db.base import Base
 from backend.db.models import ROLE_ADMIN, ROLE_USER, User
 from backend.db.session import get_db
-from backend.dependencies import get_auth_config, get_rag_service
+from backend.dependencies import (
+    get_auth_config,
+    get_default_generation_model_id,
+    get_generation_models,
+    get_generator_resolver,
+    get_rag_service,
+)
+from backend.wiring.rag_factory import (
+    GenerationModelOption,
+    UnknownGenerationModelError,
+)
 
 # Long enough to satisfy AuthConfig's minimum; obviously not a real key.
 TEST_SECRET_KEY = "test-secret-key-not-used-anywhere-real"
@@ -212,12 +222,13 @@ class StubRagService:
         self.sources: list = []
         self.error: Exception | None = None
 
-    def answer_with_sources(self, *, conversation_id, question, top_k):
+    def answer_with_sources(self, *, conversation_id, question, top_k, generator=None):
         self.calls.append(
             {
                 "conversation_id": conversation_id,
                 "question": question,
                 "top_k": top_k,
+                "generator": generator,
             }
         )
 
@@ -225,6 +236,28 @@ class StubRagService:
             raise self.error
 
         return self.answer, self.sources
+
+
+# Generation-model resolution is stubbed the same way as the RAG engine
+# itself: real resolution needs GEMINI_API_KEY/GROQ_API_KEY, which the
+# hermetic suite deliberately never sets.
+STUB_DEFAULT_MODEL_ID = "stub-default"
+STUB_ALT_MODEL_ID = "stub-alt"
+STUB_GENERATION_MODELS = [
+    GenerationModelOption(
+        id=STUB_DEFAULT_MODEL_ID, label="Stub Default", provider="stub"
+    ),
+    GenerationModelOption(id=STUB_ALT_MODEL_ID, label="Stub Alt", provider="stub"),
+]
+
+
+def _stub_resolve_generator(model_id: str | None):
+    resolved = model_id or STUB_DEFAULT_MODEL_ID
+
+    if resolved not in {model.id for model in STUB_GENERATION_MODELS}:
+        raise UnknownGenerationModelError(resolved)
+
+    return object(), resolved
 
 
 class StubDocumentService:
@@ -243,6 +276,13 @@ class StubDocumentService:
 @pytest.fixture
 def rag_service() -> StubRagService:
     return StubRagService()
+
+
+@pytest.fixture
+def generation_model_ids() -> tuple[str, str]:
+    """(default id, an alternate id) as wired up by the `client` fixture."""
+
+    return STUB_DEFAULT_MODEL_ID, STUB_ALT_MODEL_ID
 
 
 @pytest.fixture
@@ -282,6 +322,11 @@ def client(
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_auth_config] = lambda: auth_config
     app.dependency_overrides[get_rag_service] = lambda: rag_service
+    app.dependency_overrides[get_generation_models] = lambda: STUB_GENERATION_MODELS
+    app.dependency_overrides[get_default_generation_model_id] = (
+        lambda: STUB_DEFAULT_MODEL_ID
+    )
+    app.dependency_overrides[get_generator_resolver] = lambda: _stub_resolve_generator
 
     # Deliberately not used as a context manager: entering it would run the
     # lifespan, which connects to the real database and builds the real RAG

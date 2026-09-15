@@ -127,6 +127,23 @@ def test_answer_calls_generator():
     assert mock_generator.generate.call_count == 1
 
 
+def test_answer_with_sources_uses_override_generator_when_given():
+    service, _, mock_generator, *_ = build_service(generated_text="Default answer")
+
+    override_generator = Mock()
+    override_generator.generate.return_value = LLMResponse(text="Override answer")
+
+    answer, _ = service.answer_with_sources(
+        conversation_id="conversation_1",
+        question="question",
+        generator=override_generator,
+    )
+
+    assert answer == "Override answer"
+    override_generator.generate.assert_called_once()
+    mock_generator.generate.assert_not_called()
+
+
 def test_answer_updates_summary_after_trigger():
     service, *_, mock_summarizer, mock_memory = build_service(
         generated_text="Answer",
