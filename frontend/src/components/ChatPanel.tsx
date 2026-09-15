@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "../hooks/useConversation";
 import type { GenerationModelInfo } from "../types";
 import { Send, Spinner } from "./Icons";
+import { ModelSelect } from "./ModelSelect";
 import { SourceList } from "./SourceList";
 
 interface ChatPanelProps {
@@ -125,21 +126,11 @@ export function ChatPanel({
         />
 
         <div className="composer-actions">
-          <label className="model-select">
-            Model
-            <select
-              value={selectedModel ?? ""}
-              disabled={models.length === 0}
-              onChange={(event) => onModelChange(event.target.value)}
-            >
-              {models.length === 0 && <option value="">Default</option>}
-              {models.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <ModelSelect
+            models={models}
+            selectedModel={selectedModel}
+            onModelChange={onModelChange}
+          />
 
           {showTopK && (
             <label className="top-k">
