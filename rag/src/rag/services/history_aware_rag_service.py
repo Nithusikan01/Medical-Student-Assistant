@@ -3,8 +3,8 @@ import logging
 from rag.conversation.query_rewriter import QueryRewriter
 from rag.conversation.store import ConversationStore
 from rag.conversation.summarizer import ConversationSummarizer
-from rag.llm.generator import GeminiGenerator
 from rag.llm.prompt_builder import PromptBuilder
+from rag.llm.protocol import TextGenerator
 from rag.retrieval.query_service import QueryService
 from rag.retrieval.schemas import RetrievedChunk
 
@@ -41,7 +41,7 @@ class HistoryAwareRAGService:
     def __init__(
         self,
         query_service: QueryService,
-        generator: GeminiGenerator,
+        generator: TextGenerator,
         session_manager: ConversationStore,
         query_rewriter: QueryRewriter,
         summarizer: ConversationSummarizer,
@@ -59,9 +59,14 @@ class HistoryAwareRAGService:
         question: str,
         top_k: int = 5,
         candidate_k: int = 30,
+        generator: TextGenerator | None = None,
     ) -> tuple[str, list[RetrievedChunk]]:
         """
         Generate an answer together with the retrieved supporting chunks.
+
+        `generator` overrides the service's default LLM for this call only
+        (e.g. a user-selected model), leaving query rewriting and
+        summarization on the default.
         """
 
         logger.info(
@@ -132,7 +137,7 @@ class HistoryAwareRAGService:
         #
         # 5. Generate answer
         #
-        response = self.generator.generate(prompt)
+        response = (generator or self.generator).generate(prompt)
 
         if not response.text:
             raise ValueError("LLM returned an empty response.")
@@ -165,6 +170,7 @@ class HistoryAwareRAGService:
         conversation_id: str,
         question: str,
         top_k: int = 5,
+        generator: TextGenerator | None = None,
     ) -> str:
         """
         Generate an answer without returning the retrieved chunks.
@@ -174,6 +180,7 @@ class HistoryAwareRAGService:
             conversation_id=conversation_id,
             question=question,
             top_k=top_k,
+            generator=generator,
         )
 
         return answer

@@ -42,8 +42,20 @@ export interface QueryResponse {
   conversation_id: string;
   question: string;
   answer: string;
+  model: string;
   sources: SourceChunk[];
   processing_time_ms: number | null;
+}
+
+export interface GenerationModelInfo {
+  id: string;
+  label: string;
+  provider: string;
+}
+
+export interface GenerationModelsResponse {
+  models: GenerationModelInfo[];
+  default: string;
 }
 
 export interface ConversationSummary {

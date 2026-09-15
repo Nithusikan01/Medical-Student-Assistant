@@ -694,6 +694,15 @@ a:hover {
   word-break: break-word;
 }
 
+.message-model {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
 .thinking {
   display: flex;
   align-items: center;
@@ -827,7 +836,8 @@ a:hover {
   gap: 14px;
 }
 
-.top-k {
+.top-k,
+.model-select {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -835,8 +845,8 @@ a:hover {
   color: var(--muted);
 }
 
-.top-k input {
-  width: 58px;
+.top-k input,
+.model-select select {
   padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -846,7 +856,12 @@ a:hover {
   font-size: 13px;
 }
 
-[data-theme="dark"] .top-k input {
+.top-k input {
+  width: 58px;
+}
+
+[data-theme="dark"] .top-k input,
+[data-theme="dark"] .model-select select {
   background: var(--bg);
 }
 

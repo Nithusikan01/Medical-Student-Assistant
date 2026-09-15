@@ -14,6 +14,12 @@ from backend.auth.tokens import decode_access_token
 from backend.db.models import User
 from backend.db.repositories import users
 from backend.db.session import get_db
+from backend.wiring.rag_factory import (
+    DEFAULT_GENERATION_MODEL_ID,
+    GenerationModelOption,
+    available_generation_models,
+    resolve_generator,
+)
 
 # auto_error=False so a missing header produces our own 401 shape rather than
 # FastAPI's, and so optional-auth routes stay possible later.
@@ -38,6 +44,26 @@ def get_auth_config() -> AuthConfig:
 
 def get_rag_service(request: Request):
     return request.app.state.rag_service
+
+
+def get_generation_models() -> list[GenerationModelOption]:
+    return available_generation_models()
+
+
+def get_default_generation_model_id() -> str:
+    return DEFAULT_GENERATION_MODEL_ID
+
+
+def get_generator_resolver():
+    """
+    Returns resolve_generator itself, not a call to it - the model id to
+    resolve is only known once the request body is parsed. Going through
+    Depends (rather than the router importing rag_factory directly) is what
+    lets API tests override this with a stub instead of needing real
+    provider credentials.
+    """
+
+    return resolve_generator
 
 
 def get_auth_service(
@@ -89,3 +115,8 @@ AdminUser = Annotated[User, Depends(require_admin)]
 DbSession = Annotated[Session, Depends(get_db)]
 Auth = Annotated[AuthService, Depends(get_auth_service)]
 Config = Annotated[AuthConfig, Depends(get_auth_config)]
+GenerationModels = Annotated[
+    list[GenerationModelOption], Depends(get_generation_models)
+]
+DefaultGenerationModelId = Annotated[str, Depends(get_default_generation_model_id)]
+GeneratorResolver = Annotated[Any, Depends(get_generator_resolver)]

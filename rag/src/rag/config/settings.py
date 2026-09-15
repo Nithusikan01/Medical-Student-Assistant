@@ -21,6 +21,9 @@ class Settings:
     pinecone_api_key: str
     pinecone_index_name: str
     gemini_api_key: str
+    # Optional: enables the Groq-backed generation models. Left empty, those
+    # models are simply not offered rather than the app failing to start.
+    groq_api_key: str = ""
 
     # ------------------------------------------------------------------
     # Storage
@@ -129,6 +132,7 @@ def load_settings() -> Settings:
     pinecone_api_key = os.getenv("PINECONE_API_KEY")
     pinecone_index_name = os.getenv("PINECONE_INDEX_NAME")
     gemini_api_key = os.getenv("GEMINI_API_KEY")
+    groq_api_key = os.getenv("GROQ_API_KEY", "")
 
     if not pinecone_api_key:
         raise ValueError("PINECONE_API_KEY environment variable is not set.")
@@ -145,6 +149,7 @@ def load_settings() -> Settings:
         pinecone_api_key=pinecone_api_key,
         pinecone_index_name=pinecone_index_name,
         gemini_api_key=gemini_api_key,
+        groq_api_key=groq_api_key,
         storage_path=storage_path,
         bm25_corpus_path=storage_path / "bm25_corpus.json",
         chunk_size=int(os.getenv("CHUNK_SIZE", "500")),

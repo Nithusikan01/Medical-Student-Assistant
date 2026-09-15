@@ -7,6 +7,7 @@ client is told when the engine fails.
 """
 
 import uuid
+from unittest import mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -98,8 +99,51 @@ def test_the_question_reaches_the_engine_with_its_conversation(
             "conversation_id": str(conversation_id),
             "question": QUESTION,
             "top_k": 7,
+            "generator": mock.ANY,
         }
     ]
+
+
+def test_listing_generation_models_returns_the_configured_options(
+    client: TestClient, user, auth_headers, generation_model_ids
+):
+    default_id, alt_id = generation_model_ids
+
+    response = client.get("/api/models", headers=auth_headers(user))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["default"] == default_id
+    assert {model["id"] for model in body["models"]} == {default_id, alt_id}
+
+
+def test_omitting_a_model_resolves_to_the_default(
+    client: TestClient, user, auth_headers, generation_model_ids
+):
+    default_id, _ = generation_model_ids
+
+    response = ask(client, user, auth_headers)
+
+    assert response.json()["model"] == default_id
+
+
+def test_selecting_a_model_is_used_and_echoed_back(
+    client: TestClient, user, auth_headers, generation_model_ids
+):
+    _, alt_id = generation_model_ids
+
+    response = ask(client, user, auth_headers, model=alt_id)
+
+    assert response.json()["model"] == alt_id
+
+
+def test_requesting_an_unknown_model_is_rejected(
+    client: TestClient, user, auth_headers, rag_service
+):
+    response = ask(client, user, auth_headers, model="not-a-real-model")
+
+    assert response.status_code == 400
+    assert rag_service.calls == [], "the engine must not run for a rejected model"
 
 
 def test_sources_are_returned_to_the_client(

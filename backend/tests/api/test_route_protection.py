@@ -36,6 +36,7 @@ AUTHENTICATED = {
     ("PATCH", "/api/conversations/{conversation_id}"),
     ("DELETE", "/api/conversations/{conversation_id}"),
     ("POST", "/api/query"),
+    ("GET", "/api/models"),
 }
 
 ADMIN_ONLY = {

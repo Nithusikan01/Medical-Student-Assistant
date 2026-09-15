@@ -7,6 +7,10 @@ class QueryRequest(BaseModel):
     conversation_id: uuid.UUID
     question: str = Field(min_length=1, max_length=4000)
     top_k: int = Field(default=5, ge=1, le=20)
+    # None picks the server's default model. Validated against the live
+    # registry in the router, not here, since availability depends on which
+    # provider keys are configured.
+    model: str | None = None
 
 
 class SourceMetadata(BaseModel):
@@ -54,6 +58,21 @@ class QueryResponse(BaseModel):
 
     answer: str
 
+    # The model id that actually generated the answer, which can differ from
+    # the request when none was specified (falls back to the default).
+    model: str
+
     sources: list[SourceChunk] = Field(default_factory=list)
 
     processing_time_ms: int | None = None
+
+
+class GenerationModelInfo(BaseModel):
+    id: str
+    label: str
+    provider: str
+
+
+class GenerationModelsResponse(BaseModel):
+    models: list[GenerationModelInfo]
+    default: str
