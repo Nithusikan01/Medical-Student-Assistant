@@ -413,7 +413,10 @@ a:hover {
   padding: 20px 16px;
   background: var(--surface);
   border-right: 1px solid var(--border);
-  overflow-y: auto;
+  /* A grid item's default min-height is auto (at least content size), which
+     would let this column grow past 100vh instead of letting .conversation-list
+     scroll internally. */
+  min-height: 0;
 }
 
 .status {
@@ -446,6 +449,9 @@ a:hover {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  /* Grows to fill the space between the fixed header (logo/status/new chat)
+     and footer (account), so it - not the whole sidebar - is what scrolls. */
+  flex: 1;
   min-height: 0;
 }
 
@@ -456,6 +462,8 @@ a:hover {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -618,6 +626,10 @@ a:hover {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /* Same grid-item constraint as .sidebar: without this, .messages' flex
+     basis has no bounded height to grow/shrink against, so the whole page
+     scrolls instead of just the messages list. */
+  min-height: 0;
 }
 
 .chat-head {
@@ -627,6 +639,7 @@ a:hover {
   gap: 16px;
   padding: 16px 28px;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .chat-title {
@@ -639,6 +652,7 @@ a:hover {
 
 .messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 28px;
   display: flex;
@@ -811,6 +825,7 @@ a:hover {
   padding: 16px 28px 22px;
   border-top: 1px solid var(--border);
   background: var(--surface);
+  flex-shrink: 0;
 }
 
 .composer textarea {
