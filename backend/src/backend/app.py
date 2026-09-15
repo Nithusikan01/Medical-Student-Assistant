@@ -17,6 +17,7 @@ from backend.routers.documents import router as documents_router
 from backend.routers.health import router as health_router
 from backend.routers.ingest import router as ingest_router
 from backend.routers.query import router as query_router
+from backend.routers.users import router as users_router
 from backend.wiring.rag_factory import build_history_aware_rag_service
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
@@ -118,6 +119,12 @@ def create_app() -> FastAPI:
         query_router,
         prefix="/api",
         tags=["Query"],
+    )
+
+    app.include_router(
+        users_router,
+        prefix="/api",
+        tags=["Users"],
     )
 
     return app

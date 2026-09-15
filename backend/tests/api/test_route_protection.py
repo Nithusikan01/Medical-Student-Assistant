@@ -44,6 +44,9 @@ ADMIN_ONLY = {
     ("GET", "/api/documents"),
     ("DELETE", "/api/documents/{document_id}"),
     ("POST", "/api/documents/{document_id}/purge"),
+    ("GET", "/api/users"),
+    ("DELETE", "/api/users/{user_id}"),
+    ("PATCH", "/api/users/{user_id}/role"),
 }
 
 # Bodies that satisfy each route's schema, so a rejection is about
@@ -52,6 +55,7 @@ BODIES: dict[str, dict] = {
     "/api/auth/password": {"new_password": "a-long-enough-password"},
     "/api/conversations": {"title": "Cardiology"},
     "/api/conversations/{conversation_id}": {"title": "Renamed"},
+    "/api/users/{user_id}/role": {"role": "admin"},
     "/api/query": {
         "conversation_id": "00000000-0000-0000-0000-000000000001",
         "question": "What is the dose?",
@@ -83,8 +87,10 @@ def _documented_routes() -> set[tuple[str, str]]:
 
 
 def _call(client: TestClient, method: str, path: str, **kwargs):
-    concrete = path.replace("{conversation_id}", SAMPLE_ID).replace(
-        "{document_id}", SAMPLE_ID
+    concrete = (
+        path.replace("{conversation_id}", SAMPLE_ID)
+        .replace("{document_id}", SAMPLE_ID)
+        .replace("{user_id}", SAMPLE_ID)
     )
 
     body = BODIES.get(path)

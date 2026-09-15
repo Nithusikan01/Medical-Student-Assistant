@@ -82,6 +82,15 @@ export interface ConversationDetail {
   messages: ConversationMessage[];
 }
 
+export interface AdminUserSummary {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: "user" | "admin";
+  is_active: boolean;
+  created_at: string;
+}
+
 export interface DocumentSummary {
   id: string;
   filename: string;
