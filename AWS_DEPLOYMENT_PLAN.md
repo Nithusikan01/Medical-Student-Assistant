@@ -44,7 +44,7 @@ flowchart TB
         end
 
         Task -->|"pulls image at deploy time"| ECR[("ECR repository")]
-        Task -->|"reads 7 env vars at container start"| SM[("Secrets Manager<br/>one JSON secret")]
+        Task -->|"reads 7 required env vars (+ optional GROQ_API_KEY) at container start"| SM[("Secrets Manager<br/>one JSON secret")]
     end
 
     Task -->|"hosted embedding + rerank"| Pinecone[["Pinecone (external)"]]
@@ -317,6 +317,15 @@ per variable.
    | `SECRET_KEY` | a random 48-byte token — generate with `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
    | `ADMIN_EMAIL` | the address for the first admin account |
    | `ADMIN_PASSWORD` | 12+ characters — the app refuses to seed the admin otherwise |
+   | `GROQ_API_KEY` | your Groq key, or an empty string if you don't want Groq models offered |
+
+   The task definition's `secrets` array (Phase 10.3) always references this key, so it must
+   **exist** in the secret even when you don't want Groq — ECS resolves every `valueFrom` at
+   task startup and fails the deployment (`ResourceInitializationError`, no new tasks start) if
+   a referenced key is missing from the secret's JSON, as opposed to merely empty. An empty
+   value is fine and is exactly what makes `backend/wiring/rag_factory.py::available_generation_models()`
+   omit Groq entries and fall back to Gemini-only — that's the supported way to keep Groq off,
+   not removing the key.
 
 3. **Secret name**: `medical-student-assistant/backend` — this exact prefix is what the IAM
    policy in 4.1 is scoped to.
@@ -403,16 +412,48 @@ security → Review and create, in this deployment's case):
 **General** tab → **Settings** → confirm **Default root object** is `index.html`. Set it if
 blank.
 
-### 8.3 SPA routing — custom error responses
+### 8.3 SPA routing — CloudFront Function, not custom error responses
 
 This is a client-side-routed React app; a direct load of e.g. `/c/some-id` must still serve
 `index.html` so React Router can take over, rather than S3 returning a 404 for a path that
 isn't a real file.
 
-**Error pages** tab → **Create custom error response**, twice:
-- HTTP error code **403** → Customize: Yes → Response page path `/index.html` → Response code
-  `200`
-- HTTP error code **404** → same settings
+**Do not use the Error pages tab / custom error responses for this** (403/404 → `/index.html` →
+200). That setting is distribution-wide, not scoped to a single behavior — it intercepts *every*
+origin in the distribution, including the ALB behaviors added in 8.5. Once those exist, any
+genuine 403/404 the backend returns (e.g. `query.py`'s "conversation not found" — 404 by design,
+see CLAUDE.md's Auth section, so a `409`/`403` can't be used to enumerate ids) gets silently
+replaced with the SPA's `index.html` at HTTP 200. The frontend then calls `response.json()` on
+an HTML body and throws `Unexpected token '<', "<!doctype "... is not valid JSON` — this
+actually happened; see Troubleshooting Notes.
+
+Use a CloudFront Function scoped to only the default (`/*` → S3) behavior instead:
+
+1. **CloudFront** → **Functions** → **Create function**, name `spa-index-rewrite`, runtime
+   `cloudfront-js-2.0`.
+2. Paste this and **Save**:
+
+   ```js
+   function handler(event) {
+     var request = event.request;
+     if (!request.uri.includes('.')) {
+       request.uri = '/index.html';
+     }
+     return request;
+   }
+   ```
+
+3. **Publish** the function (it must be published, not just saved, before a distribution can
+   use it).
+4. Back on the distribution: **Behaviors** tab → edit the default (`*`) behavior → **Function
+   associations** → **Viewer request** → **CloudFront Functions** → `spa-index-rewrite`. Save.
+5. **Error pages** tab → if either a 403 or 404 custom error response exists from an earlier
+   attempt, delete both — leaving them in place re-introduces the interception even with the
+   function attached.
+
+This keeps the SPA-fallback rewrite entirely inside the default behavior; the `/api/*` and
+`/health*` behaviors (8.5) never run the function and their real status codes reach the browser
+unmodified.
 
 ### 8.4 Add the ALB as a second origin
 
@@ -511,7 +552,8 @@ which the CI workflow renders a new image tag into on every deploy):
         { "name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:ap-south-1:519035820911:secret:medical-student-assistant/backend-q62Rkn:DATABASE_URL::" },
         { "name": "SECRET_KEY", "valueFrom": "arn:aws:secretsmanager:ap-south-1:519035820911:secret:medical-student-assistant/backend-q62Rkn:SECRET_KEY::" },
         { "name": "ADMIN_EMAIL", "valueFrom": "arn:aws:secretsmanager:ap-south-1:519035820911:secret:medical-student-assistant/backend-q62Rkn:ADMIN_EMAIL::" },
-        { "name": "ADMIN_PASSWORD", "valueFrom": "arn:aws:secretsmanager:ap-south-1:519035820911:secret:medical-student-assistant/backend-q62Rkn:ADMIN_PASSWORD::" }
+        { "name": "ADMIN_PASSWORD", "valueFrom": "arn:aws:secretsmanager:ap-south-1:519035820911:secret:medical-student-assistant/backend-q62Rkn:ADMIN_PASSWORD::" },
+        { "name": "GROQ_API_KEY", "valueFrom": "arn:aws:secretsmanager:ap-south-1:519035820911:secret:medical-student-assistant/backend-q62Rkn:GROQ_API_KEY::" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
@@ -528,6 +570,12 @@ which the CI workflow renders a new image tag into on every deploy):
 
 Because CloudFront already exists by this point (Phase 8), `CORS_ORIGINS` above is the *real*
 domain from the start — no placeholder, no second revision needed just to fix it.
+
+**Groq support**: the `secrets` array above includes `GROQ_API_KEY` by default, which requires
+a matching key in the Phase 5 secret. If that key is absent from the secret,
+`GetSecretValue`/task startup fails closed — ECS never starts the container, rather than
+starting it with the variable silently missing — so an empty `GROQ_API_KEY` in the secret's JSON
+(not an absent key) is what "no Groq models" looks like. See the note in Phase 5.
 
 **Deliberately no container-level `HEALTHCHECK`** — the base image (`python:3.11-slim`) has no
 `curl`, so a health check that shells out to it would always fail and ECS would kill a
@@ -810,6 +858,22 @@ down, or you're debugging something interactively):
 - **PowerShell's `curl` is an alias for `Invoke-WebRequest`**, not the real `curl.exe` — it
   prompts with a "Script Execution Risk" warning for any HTML-ish response. Use `curl.exe`
   explicitly to get the real binary and skip the prompt.
+- **Chat window showed `Unexpected token '<', "<!doctype "... is not valid JSON`** — CloudFront
+  custom error responses (403/404 → `/index.html`, 200) from an earlier version of Phase 8.3
+  apply distribution-wide, not just to the S3 default behavior. A genuine 404 from the backend
+  (e.g. `query.py`'s "conversation not found" case) got rewritten to the SPA's `index.html` at
+  HTTP 200, and the frontend's `response.json()` choked on the HTML body. Fixed by switching to
+  a CloudFront Function scoped to only the default behavior (current Phase 8.3) and deleting the
+  distribution-wide custom error responses. Confirm in DevTools → Network: a broken response
+  looks like status `200` with a body starting `<!doctype html>` on an `/api/...` request.
+- **Model picker only ever showed Gemini** — `backend/deploy/task-definition.json` now wires
+  `GROQ_API_KEY` in by default (Phase 10.3), so this means the Secrets Manager secret is missing
+  that key entirely. Two different failure modes look similar but aren't: a missing key fails
+  the ECS deployment outright (`ResourceInitializationError`, new tasks never start, the old
+  revision keeps serving); an *empty* value deploys fine and `available_generation_models()`
+  just omits Groq, same as before. Add the key (Phase 5) — value can be a real Groq key or an
+  empty string — then force a new deployment (no task definition edit needed, it's already
+  templated in) if Groq models should appear.
 
 ---
 
