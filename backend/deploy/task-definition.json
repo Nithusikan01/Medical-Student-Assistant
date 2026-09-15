@@ -26,7 +26,8 @@
         { "name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:ap-south-1:519035820911:secret:medical-student-assistant/backend-q62Rkn:DATABASE_URL::" },
         { "name": "SECRET_KEY", "valueFrom": "arn:aws:secretsmanager:ap-south-1:519035820911:secret:medical-student-assistant/backend-q62Rkn:SECRET_KEY::" },
         { "name": "ADMIN_EMAIL", "valueFrom": "arn:aws:secretsmanager:ap-south-1:519035820911:secret:medical-student-assistant/backend-q62Rkn:ADMIN_EMAIL::" },
-        { "name": "ADMIN_PASSWORD", "valueFrom": "arn:aws:secretsmanager:ap-south-1:519035820911:secret:medical-student-assistant/backend-q62Rkn:ADMIN_PASSWORD::" }
+        { "name": "ADMIN_PASSWORD", "valueFrom": "arn:aws:secretsmanager:ap-south-1:519035820911:secret:medical-student-assistant/backend-q62Rkn:ADMIN_PASSWORD::" },
+        { "name": "GROQ_API_KEY", "valueFrom": "arn:aws:secretsmanager:ap-south-1:519035820911:secret:medical-student-assistant/backend-q62Rkn:GROQ_API_KEY::" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
