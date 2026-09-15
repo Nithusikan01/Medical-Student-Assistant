@@ -21,8 +21,10 @@ from backend.schemas.query import (
     SourceChunk,
     SourceMetadata,
 )
+from backend.schemas.user import AdminUserResponse, UpdateUserRoleRequest
 
 __all__ = [
+    "AdminUserResponse",
     "ConversationCreateRequest",
     "ConversationDetailResponse",
     "ConversationMessageResponse",
@@ -40,5 +42,6 @@ __all__ = [
     "SourceChunk",
     "SourceMetadata",
     "TokenResponse",
+    "UpdateUserRoleRequest",
     "UserResponse",
 ]

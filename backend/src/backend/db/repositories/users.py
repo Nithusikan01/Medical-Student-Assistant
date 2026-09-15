@@ -14,6 +14,10 @@ def get_by_id(session: Session, user_id: uuid.UUID) -> User | None:
     return session.get(User, user_id)
 
 
+def list_all(session: Session) -> list[User]:
+    return list(session.scalars(sa.select(User).order_by(User.created_at.desc())))
+
+
 def get_by_email(session: Session, email: str) -> User | None:
     return session.scalar(sa.select(User).where(User.email == normalize_email(email)))
 
@@ -54,3 +58,22 @@ def create(
     session.flush()
 
     return user
+
+
+def count_by_role(session: Session, role: str) -> int:
+    return session.scalar(
+        sa.select(sa.func.count()).select_from(User).where(User.role == role)
+    )
+
+
+def set_role(session: Session, user: User, role: str) -> User:
+    user.role = role
+    session.flush()
+
+    return user
+
+
+def delete(session: Session, user: User) -> None:
+    # users.id cascades to conversations/refresh_tokens/oauth_accounts and
+    # SET NULLs documents.uploaded_by (see the FK ondelete on each model).
+    session.delete(user)
