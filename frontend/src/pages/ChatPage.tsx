@@ -180,6 +180,7 @@ export function ChatPage() {
               Number.isFinite(value) ? Math.min(20, Math.max(1, value)) : 5,
             )
           }
+          showTopK={user?.role === "admin"}
           models={models}
           selectedModel={selectedModel}
           onModelChange={selectModel}

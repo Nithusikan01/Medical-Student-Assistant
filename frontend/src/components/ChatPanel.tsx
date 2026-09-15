@@ -12,6 +12,7 @@ interface ChatPanelProps {
   error: string | null;
   topK: number;
   onTopKChange: (value: number) => void;
+  showTopK: boolean;
   models: GenerationModelInfo[];
   selectedModel: string | null;
   onModelChange: (id: string) => void;
@@ -25,6 +26,7 @@ export function ChatPanel({
   error,
   topK,
   onTopKChange,
+  showTopK,
   models,
   selectedModel,
   onModelChange,
@@ -139,16 +141,18 @@ export function ChatPanel({
             </select>
           </label>
 
-          <label className="top-k">
-            Sources
-            <input
-              type="number"
-              min={1}
-              max={20}
-              value={topK}
-              onChange={(event) => onTopKChange(Number(event.target.value))}
-            />
-          </label>
+          {showTopK && (
+            <label className="top-k">
+              Sources
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={topK}
+                onChange={(event) => onTopKChange(Number(event.target.value))}
+              />
+            </label>
+          )}
 
           <span className="composer-hint">
             Enter to send · Shift+Enter for a new line
