@@ -174,7 +174,13 @@ def build_telemetry_sink() -> BackgroundTelemetrySink | None:
         logger.info("Telemetry is disabled (TELEMETRY_ENABLED).")
         return None
 
-    return BackgroundTelemetrySink(get_session_factory(), config)
+    try:
+        return BackgroundTelemetrySink(get_session_factory(), config)
+    except Exception:
+        # No database URL, no engine, no telemetry - but still a working
+        # application. The same rule as everywhere else in this layer.
+        logger.exception("Telemetry could not be initialised; continuing without it.")
+        return None
 
 
 @lru_cache

@@ -12,6 +12,7 @@ from backend.auth.bootstrap import ensure_admin_user
 from backend.db.session import get_engine, session_scope
 from backend.db.startup import verify_connectivity, warn_if_schema_outdated
 from backend.dependencies import get_auth_config
+from backend.observability.middleware import TelemetryMiddleware
 from backend.routers.auth import router as auth_router
 from backend.routers.conversations import router as conversations_router
 from backend.routers.documents import router as documents_router
@@ -101,12 +102,20 @@ def create_app() -> FastAPI:
     # name its own frontend. Credentials are allowed, which forbids the "*"
     # wildcard, so every permitted origin must be listed explicitly.
     # ------------------------------------------------------------------
+    # Added before CORS so that CORS ends up the outer of the two: a
+    # preflight is then answered without ever reaching telemetry, and a
+    # browser can read the trace id because CORS exposes it explicitly.
+    app.add_middleware(TelemetryMiddleware)
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # Without this the browser hides both headers from application
+        # code, and a user could not quote the id of a bad answer.
+        expose_headers=["X-Trace-ID", "X-Request-ID"],
     )
 
     # ------------------------------------------------------------------

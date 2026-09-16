@@ -14,6 +14,7 @@ import pytest
 import sqlalchemy as sa
 from fastapi.testclient import TestClient
 from rag.llm.schemas import TokenUsage
+from rag.observability import Tracer
 from sqlalchemy import create_engine, event
 from sqlalchemy.dialects import sqlite
 from sqlalchemy.engine import Engine
@@ -336,6 +337,11 @@ def client(
         lambda: STUB_DEFAULT_MODEL_ID
     )
     app.dependency_overrides[get_generator_resolver] = lambda: _stub_resolve_generator
+
+    # A no-op tracer, installed the way the lifespan installs the real one.
+    # Without it the middleware would fall back to the factory, which reads
+    # the developer's .env and would build a sink against the real database.
+    app.state.tracer = Tracer()
 
     # Deliberately not used as a context manager: entering it would run the
     # lifespan, which connects to the real database and builds the real RAG

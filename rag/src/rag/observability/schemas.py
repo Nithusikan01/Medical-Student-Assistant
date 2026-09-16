@@ -23,9 +23,6 @@ class Stage(str, Enum):
     in a trace means "did not happen", never "not instrumented".
     """
 
-    # Request level
-    REQUEST = "request"
-
     # Query path
     MEMORY_LOAD = "memory_load"
     QUERY_REWRITE = "query_rewrite"

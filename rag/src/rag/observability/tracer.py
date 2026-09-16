@@ -206,6 +206,25 @@ class TraceHandle(_Handle):
             sampled=self.context.sampled,
         )
 
+    def set_user(self, user_id: str | None) -> None:
+        """
+        Attach the authenticated user once the request has been authorised.
+
+        Like the conversation, this is known only after the trace has
+        already started - authentication is a dependency, not middleware.
+        """
+
+        if self.context is None or user_id is None:
+            return
+
+        self.context = TraceContext(
+            trace_id=self.context.trace_id,
+            request_id=self.context.request_id,
+            conversation_id=self.context.conversation_id,
+            user_id=str(user_id),
+            sampled=self.context.sampled,
+        )
+
     def to_record(self) -> TraceRecord:
         ended_at = datetime.now(UTC)
         context = self.context
