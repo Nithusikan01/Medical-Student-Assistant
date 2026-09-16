@@ -46,9 +46,25 @@ def _coerce_uuid(value: str | None):
         return None
 
 
+# Metadata keys the application stores as columns instead. Promoted here
+# rather than added to TraceRecord, so the engine stays free of HTTP
+# concepts - it records what happened, the application decides which of
+# those facts deserve an index.
+_PROMOTED_TRACE_KEYS = ("status_code", "route")
+
+
 def _to_trace_row(record: TraceRecord) -> RagTrace:
+    meta = dict(record.metadata or {})
+
+    # Removed rather than copied, so a value never disagrees with itself.
+    promoted = {key: meta.pop(key, None) for key in _PROMOTED_TRACE_KEYS}
+
+    status_code = promoted["status_code"]
+
     return RagTrace(
         id=record.trace_id,
+        status_code=status_code if isinstance(status_code, int) else None,
+        route=str(promoted["route"])[:256] if promoted["route"] else None,
         request_id=record.request_id,
         conversation_id=_coerce_uuid(record.conversation_id),
         user_id=_coerce_uuid(record.user_id),
@@ -59,7 +75,7 @@ def _to_trace_row(record: TraceRecord) -> RagTrace:
         duration_ms=record.duration_ms,
         environment=record.environment,
         app_version=record.app_version,
-        meta=record.metadata or None,
+        meta=meta or None,
     )
 
 

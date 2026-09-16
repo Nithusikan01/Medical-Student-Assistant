@@ -22,6 +22,7 @@ from rag.observability import Tracer, new_id
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from backend.observability.inflight import IN_FLIGHT
 from backend.wiring.rag_factory import build_tracer
 
 logger = logging.getLogger(__name__)
@@ -131,6 +132,23 @@ class TelemetryMiddleware:
         path = scope.get("path", "")
         method = scope.get("method", "")
 
+        IN_FLIGHT.enter()
+
+        try:
+            await self._traced(tracer, scope, receive, send, request_id, method, path)
+        finally:
+            IN_FLIGHT.leave()
+
+    async def _traced(
+        self,
+        tracer: Tracer,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+        request_id: str,
+        method: str,
+        path: str,
+    ) -> None:
         with tracer.trace(
             request_id=request_id,
             method=method,

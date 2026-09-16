@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from backend.db.models import RagSpan, RagTrace
 from backend.observability.config import TelemetryConfig, load_telemetry_config
+from backend.observability.inflight import InFlightGauge
 from backend.observability.recorder import PersistentTraceRecorder
 from backend.observability.sink import BackgroundTelemetrySink
 
@@ -255,3 +256,43 @@ def test_submit_never_raises_on_a_broken_queue(sink, monkeypatch):
 
 def test_stopping_a_sink_that_never_started_is_harmless(sink):
     sink.stop()
+
+
+# ----------------------------------------------------------------------
+# In-flight requests
+# ----------------------------------------------------------------------
+
+
+def test_the_gauge_tracks_current_and_peak():
+    gauge = InFlightGauge()
+
+    gauge.enter()
+    gauge.enter()
+
+    assert gauge.current == 2
+    assert gauge.peak == 2
+
+    gauge.leave()
+
+    assert gauge.current == 1
+
+    # The peak is the high-water mark, not the current value.
+    assert gauge.peak == 2
+
+
+def test_the_gauge_cannot_go_negative():
+    """
+    An unbalanced leave() would otherwise poison the number for the life of
+    the process, and the gauge has no way to recover it.
+    """
+
+    gauge = InFlightGauge()
+
+    gauge.leave()
+    gauge.leave()
+
+    assert gauge.current == 0
+
+    gauge.enter()
+
+    assert gauge.current == 1
