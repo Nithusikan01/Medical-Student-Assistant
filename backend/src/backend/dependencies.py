@@ -5,6 +5,7 @@ from typing import Annotated, Any
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from rag.config.settings import load_settings
+from rag.observability import Tracer
 from sqlalchemy.orm import Session
 
 from backend.auth.config import AuthConfig, load_auth_config
@@ -19,6 +20,7 @@ from backend.wiring.rag_factory import (
     GenerationModelOption,
     all_generation_models,
     available_generation_models,
+    build_tracer,
     resolve_generator,
 )
 
@@ -45,6 +47,20 @@ def get_auth_config() -> AuthConfig:
 
 def get_rag_service(request: Request):
     return request.app.state.rag_service
+
+
+def get_tracer(request: Request) -> Tracer:
+    """
+    The process-wide tracer.
+
+    Read off app.state when the lifespan has run, so tests that build the
+    app without it still get a working (no-op) tracer rather than an
+    AttributeError.
+    """
+
+    tracer = getattr(request.app.state, "tracer", None)
+
+    return tracer if tracer is not None else build_tracer()
 
 
 def get_generation_models() -> list[GenerationModelOption]:
@@ -115,6 +131,7 @@ def require_admin(
 
 
 RagService = Annotated[Any, Depends(get_rag_service)]
+Telemetry = Annotated[Tracer, Depends(get_tracer)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 AdminUser = Annotated[User, Depends(require_admin)]
 DbSession = Annotated[Session, Depends(get_db)]

@@ -17,6 +17,7 @@ from rag.ingestion.schemas import (
 from rag.llm.generator import GeminiGenerator
 from rag.llm.groq_generator import GroqGenerator
 from rag.llm.protocol import TextGenerator
+from rag.observability import Tracer
 from rag.rerankers.fallback_reranker import FallbackReranker
 from rag.rerankers.gemini_reranker import GeminiReranker
 from rag.rerankers.pinecone_reranker import PineconeReranker
@@ -30,6 +31,12 @@ from rag.services.history_aware_rag_service import (
 from rag.vectorstore.pinecone_store import PineconeVectorStore
 
 from backend.db.session import get_session_factory
+from backend.observability import (
+    BackgroundTelemetrySink,
+    PersistentTraceRecorder,
+    TelemetryConfig,
+    load_telemetry_config,
+)
 from backend.services.conversation_store import PersistentConversationStore
 from backend.wiring.bm25_loader import load_bm25_documents
 
@@ -135,6 +142,52 @@ def load_bm25_corpus(
     )
 
     return chunks
+
+
+# ----------------------------------------------------------------------
+# Telemetry
+#
+# Built here with everything else, so there is still exactly one place that
+# decides how the live query path is assembled. The tracer is safe to hold
+# unconditionally: with telemetry disabled it has no recorder and every span
+# it opens is a no-op.
+# ----------------------------------------------------------------------
+
+
+@lru_cache
+def build_telemetry_config() -> TelemetryConfig:
+    return load_telemetry_config()
+
+
+@lru_cache
+def build_telemetry_sink() -> BackgroundTelemetrySink | None:
+    """
+    The one background writer, or None when telemetry is switched off.
+
+    None rather than a disabled sink, so a disabled deployment starts no
+    thread and allocates no queue.
+    """
+
+    config = build_telemetry_config()
+
+    if not config.enabled:
+        logger.info("Telemetry is disabled (TELEMETRY_ENABLED).")
+        return None
+
+    return BackgroundTelemetrySink(get_session_factory(), config)
+
+
+@lru_cache
+def build_tracer() -> Tracer:
+    config = build_telemetry_config()
+    sink = build_telemetry_sink()
+
+    return Tracer(
+        PersistentTraceRecorder(sink) if sink is not None else None,
+        sample_rate=config.sample_rate,
+        environment=config.environment,
+        app_version=config.app_version,
+    )
 
 
 @lru_cache
