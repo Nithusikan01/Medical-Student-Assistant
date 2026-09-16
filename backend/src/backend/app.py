@@ -1,3 +1,4 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -11,6 +12,7 @@ from backend.auth.bootstrap import ensure_admin_user
 from backend.db.session import get_engine, session_scope
 from backend.db.startup import verify_connectivity, warn_if_schema_outdated
 from backend.dependencies import get_auth_config
+from backend.observability.middleware import TelemetryMiddleware
 from backend.routers.auth import router as auth_router
 from backend.routers.conversations import router as conversations_router
 from backend.routers.documents import router as documents_router
@@ -19,12 +21,18 @@ from backend.routers.ingest import router as ingest_router
 from backend.routers.query import router as query_router
 from backend.routers.usage import router as usage_router
 from backend.routers.users import router as users_router
-from backend.wiring.rag_factory import build_history_aware_rag_service
+from backend.wiring.rag_factory import (
+    build_history_aware_rag_service,
+    build_telemetry_sink,
+    build_tracer,
+)
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 # Initialize logging once when the application starts
 setup_logging()
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_CORS_ORIGINS = (
@@ -57,7 +65,26 @@ async def lifespan(app: FastAPI):
         ensure_admin_user(session, get_auth_config())
 
     app.state.rag_service = build_history_aware_rag_service()
-    yield
+
+    # Telemetry is started last and guarded on both ends: the application
+    # must boot, and must shut down, whether or not monitoring works.
+    app.state.tracer = build_tracer()
+    telemetry_sink = build_telemetry_sink()
+
+    if telemetry_sink is not None:
+        try:
+            telemetry_sink.start()
+        except Exception:
+            logger.exception("Could not start the telemetry writer.")
+
+    try:
+        yield
+    finally:
+        if telemetry_sink is not None:
+            try:
+                telemetry_sink.stop()
+            except Exception:
+                logger.exception("Could not stop the telemetry writer cleanly.")
 
 
 def create_app() -> FastAPI:
@@ -75,12 +102,20 @@ def create_app() -> FastAPI:
     # name its own frontend. Credentials are allowed, which forbids the "*"
     # wildcard, so every permitted origin must be listed explicitly.
     # ------------------------------------------------------------------
+    # Added before CORS so that CORS ends up the outer of the two: a
+    # preflight is then answered without ever reaching telemetry, and a
+    # browser can read the trace id because CORS exposes it explicitly.
+    app.add_middleware(TelemetryMiddleware)
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # Without this the browser hides both headers from application
+        # code, and a user could not quote the id of a bad answer.
+        expose_headers=["X-Trace-ID", "X-Request-ID"],
     )
 
     # ------------------------------------------------------------------

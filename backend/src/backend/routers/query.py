@@ -1,4 +1,5 @@
 import logging
+import time
 
 from fastapi import APIRouter, HTTPException, status
 from rag.llm.schemas import TokenUsage
@@ -6,6 +7,7 @@ from rag.llm.schemas import TokenUsage
 from backend.db.repositories import conversations
 from backend.db.repositories import usage as usage_repo
 from backend.dependencies import (
+    CurrentTrace,
     CurrentUser,
     DbSession,
     DefaultGenerationModelId,
@@ -57,7 +59,10 @@ def query_documents(
     rag_service: RagService,
     resolve_generator: GeneratorResolver,
     models: GenerationModels,
+    trace: CurrentTrace,
 ) -> QueryResponse:
+
+    started_at = time.perf_counter()
 
     try:
         generator, resolved_model = resolve_generator(request.model)
@@ -89,6 +94,8 @@ def query_documents(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Conversation not found.",
         )
+
+    trace.set_conversation(str(conversation.id))
 
     def _record_usage(token_usage: TokenUsage) -> None:
         usage_repo.record(
@@ -147,10 +154,23 @@ def query_documents(
 
     session.commit()
 
+    # Declared on the response model (and mirrored in the frontend types)
+    # since the schema was written, but never populated until now.
+    processing_time_ms = int((time.perf_counter() - started_at) * 1000)
+
+    trace.set(
+        model=resolved_model,
+        provider=resolved_provider,
+        top_k=request.top_k,
+        source_count=len(sources),
+        processing_time_ms=processing_time_ms,
+    )
+
     return QueryResponse(
         conversation_id=str(conversation.id),
         question=request.question,
         answer=answer,
         model=resolved_model,
         sources=sources,
+        processing_time_ms=processing_time_ms,
     )

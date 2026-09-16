@@ -5,6 +5,7 @@ from typing import Annotated, Any
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from rag.config.settings import load_settings
+from rag.observability import NULL_TRACE, TraceHandle, Tracer
 from sqlalchemy.orm import Session
 
 from backend.auth.config import AuthConfig, load_auth_config
@@ -14,11 +15,13 @@ from backend.auth.tokens import decode_access_token
 from backend.db.models import User
 from backend.db.repositories import users
 from backend.db.session import get_db
+from backend.observability.middleware import SCOPE_KEY
 from backend.wiring.rag_factory import (
     DEFAULT_GENERATION_MODEL_ID,
     GenerationModelOption,
     all_generation_models,
     available_generation_models,
+    build_tracer,
     resolve_generator,
 )
 
@@ -47,6 +50,20 @@ def get_rag_service(request: Request):
     return request.app.state.rag_service
 
 
+def get_tracer(request: Request) -> Tracer:
+    """
+    The process-wide tracer.
+
+    Read off app.state when the lifespan has run, so tests that build the
+    app without it still get a working (no-op) tracer rather than an
+    AttributeError.
+    """
+
+    tracer = getattr(request.app.state, "tracer", None)
+
+    return tracer if tracer is not None else build_tracer()
+
+
 def get_generation_models() -> list[GenerationModelOption]:
     return available_generation_models()
 
@@ -71,6 +88,20 @@ def get_generator_resolver():
     return resolve_generator
 
 
+def get_trace(request: Request) -> TraceHandle:
+    """
+    The trace opened for this request by TelemetryMiddleware.
+
+    Falls back to the shared non-recording handle, so a caller can always
+    call set_conversation()/set_user() without checking first - and so
+    routes still work when telemetry is off or the middleware is absent.
+    """
+
+    handle = request.scope.get(SCOPE_KEY)
+
+    return handle if handle is not None else NULL_TRACE
+
+
 def get_auth_service(
     session: Annotated[Session, Depends(get_db)],
     config: Annotated[AuthConfig, Depends(get_auth_config)],
@@ -79,6 +110,7 @@ def get_auth_service(
 
 
 def get_current_user(
+    request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
     session: Annotated[Session, Depends(get_db)],
     config: Annotated[AuthConfig, Depends(get_auth_config)],
@@ -99,6 +131,8 @@ def get_current_user(
     if user is None or not user.is_active:
         raise CREDENTIALS_EXCEPTION
 
+    get_trace(request).set_user(str(user.id))
+
     return user
 
 
@@ -115,6 +149,8 @@ def require_admin(
 
 
 RagService = Annotated[Any, Depends(get_rag_service)]
+Telemetry = Annotated[Tracer, Depends(get_tracer)]
+CurrentTrace = Annotated[TraceHandle, Depends(get_trace)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 AdminUser = Annotated[User, Depends(require_admin)]
 DbSession = Annotated[Session, Depends(get_db)]
