@@ -47,6 +47,7 @@ ADMIN_ONLY = {
     ("GET", "/api/users"),
     ("DELETE", "/api/users/{user_id}"),
     ("PATCH", "/api/users/{user_id}/role"),
+    ("GET", "/api/usage/models"),
 }
 
 # Bodies that satisfy each route's schema, so a rejection is about

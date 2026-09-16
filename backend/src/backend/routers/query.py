@@ -1,8 +1,10 @@
 import logging
 
 from fastapi import APIRouter, HTTPException, status
+from rag.llm.schemas import TokenUsage
 
 from backend.db.repositories import conversations
+from backend.db.repositories import usage as usage_repo
 from backend.dependencies import (
     CurrentUser,
     DbSession,
@@ -54,6 +56,7 @@ def query_documents(
     user: CurrentUser,
     rag_service: RagService,
     resolve_generator: GeneratorResolver,
+    models: GenerationModels,
 ) -> QueryResponse:
 
     try:
@@ -63,6 +66,11 @@ def query_documents(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown or unavailable generation model: {exc}",
         ) from exc
+
+    resolved_provider = next(
+        (model.provider for model in models if model.id == resolved_model),
+        "unknown",
+    )
 
     conversation = conversations.get(session, request.conversation_id)
 
@@ -82,12 +90,21 @@ def query_documents(
             detail="Conversation not found.",
         )
 
+    def _record_usage(token_usage: TokenUsage) -> None:
+        usage_repo.record(
+            session,
+            model_id=resolved_model,
+            provider=resolved_provider,
+            usage=token_usage,
+        )
+
     try:
         answer, chunks = rag_service.answer_with_sources(
             conversation_id=str(request.conversation_id),
             question=request.question,
             top_k=request.top_k,
             generator=generator,
+            on_usage=_record_usage,
         )
     except Exception as exc:
         # The underlying message can carry Pinecone or Gemini detail,

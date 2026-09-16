@@ -21,6 +21,7 @@ from backend.schemas.query import (
     SourceChunk,
     SourceMetadata,
 )
+from backend.schemas.usage import ModelUsageInfo, ModelUsageResponse
 from backend.schemas.user import AdminUserResponse, UpdateUserRoleRequest
 
 __all__ = [
@@ -35,6 +36,8 @@ __all__ = [
     "GenerationModelsResponse",
     "IngestResponse",
     "LoginRequest",
+    "ModelUsageInfo",
+    "ModelUsageResponse",
     "QueryRequest",
     "QueryResponse",
     "RegisterRequest",

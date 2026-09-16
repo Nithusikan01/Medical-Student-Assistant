@@ -8,6 +8,7 @@ from backend.db.models.document import (
     Document,
     DocumentChunkRecord,
 )
+from backend.db.models.generation_usage import GenerationUsageEvent
 from backend.db.models.invite_code import InviteCode
 from backend.db.models.oauth_account import PROVIDER_GOOGLE, OAuthAccount
 from backend.db.models.refresh_token import RefreshToken
@@ -26,6 +27,7 @@ __all__ = [
     "ConversationMessage",
     "Document",
     "DocumentChunkRecord",
+    "GenerationUsageEvent",
     "InviteCode",
     "OAuthAccount",
     "RefreshToken",

@@ -1,10 +1,12 @@
 import logging
+from collections.abc import Callable
 
 from rag.conversation.query_rewriter import QueryRewriter
 from rag.conversation.store import ConversationStore
 from rag.conversation.summarizer import ConversationSummarizer
 from rag.llm.prompt_builder import PromptBuilder
 from rag.llm.protocol import TextGenerator
+from rag.llm.schemas import TokenUsage
 from rag.retrieval.query_service import QueryService
 from rag.retrieval.schemas import RetrievedChunk
 
@@ -60,13 +62,18 @@ class HistoryAwareRAGService:
         top_k: int = 5,
         candidate_k: int = 30,
         generator: TextGenerator | None = None,
+        on_usage: Callable[[TokenUsage], None] | None = None,
     ) -> tuple[str, list[RetrievedChunk]]:
         """
         Generate an answer together with the retrieved supporting chunks.
 
         `generator` overrides the service's default LLM for this call only
         (e.g. a user-selected model), leaving query rewriting and
-        summarization on the default.
+        summarization on the default. `on_usage`, if given, is called once
+        with the generation call's token usage - it is the caller's hook for
+        persisting/metering usage, since this service has no storage of its
+        own; it is not called when the retrieval short-circuit below skips
+        generation entirely, or when the provider reports no usage data.
         """
 
         logger.info(
@@ -144,6 +151,9 @@ class HistoryAwareRAGService:
 
         answer = response.text
 
+        if on_usage is not None and response.usage is not None:
+            on_usage(response.usage)
+
         #
         # 6. Update conversation memory
         #
@@ -171,6 +181,7 @@ class HistoryAwareRAGService:
         question: str,
         top_k: int = 5,
         generator: TextGenerator | None = None,
+        on_usage: Callable[[TokenUsage], None] | None = None,
     ) -> str:
         """
         Generate an answer without returning the retrieved chunks.
@@ -181,6 +192,7 @@ class HistoryAwareRAGService:
             question=question,
             top_k=top_k,
             generator=generator,
+            on_usage=on_usage,
         )
 
         return answer

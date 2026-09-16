@@ -104,6 +104,14 @@ export function Users({ size = 15, strokeWidth = 1.7 }: IconProps) {
   );
 }
 
+export function Activity({ size = 15, strokeWidth = 1.7 }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth)}>
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+    </svg>
+  );
+}
+
 export function SignOut({ size = 15, strokeWidth = 1.7 }: IconProps) {
   return (
     <svg {...base(size, strokeWidth)}>

@@ -109,3 +109,18 @@ export interface IngestResponse {
   message: string;
   document: DocumentSummary | null;
 }
+
+export interface ModelUsageInfo {
+  id: string;
+  label: string;
+  provider: string;
+  daily_tokens_used: number;
+  daily_token_limit: number | null;
+  monthly_tokens_used: number;
+  monthly_token_limit: number | null;
+}
+
+export interface ModelUsageResponse {
+  models: ModelUsageInfo[];
+  generated_at: string;
+}

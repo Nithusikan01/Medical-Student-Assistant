@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 import pytest
 import sqlalchemy as sa
 from fastapi.testclient import TestClient
+from rag.llm.schemas import TokenUsage
 from sqlalchemy import create_engine, event
 from sqlalchemy.dialects import sqlite
 from sqlalchemy.engine import Engine
@@ -26,6 +27,7 @@ from backend.db.base import Base
 from backend.db.models import ROLE_ADMIN, ROLE_USER, User
 from backend.db.session import get_db
 from backend.dependencies import (
+    get_all_generation_models,
     get_auth_config,
     get_default_generation_model_id,
     get_generation_models,
@@ -221,8 +223,11 @@ class StubRagService:
         self.answer = "Paracetamol is an analgesic."
         self.sources: list = []
         self.error: Exception | None = None
+        self.usage: TokenUsage | None = None
 
-    def answer_with_sources(self, *, conversation_id, question, top_k, generator=None):
+    def answer_with_sources(
+        self, *, conversation_id, question, top_k, generator=None, on_usage=None
+    ):
         self.calls.append(
             {
                 "conversation_id": conversation_id,
@@ -234,6 +239,9 @@ class StubRagService:
 
         if self.error is not None:
             raise self.error
+
+        if on_usage is not None and self.usage is not None:
+            on_usage(self.usage)
 
         return self.answer, self.sources
 
@@ -323,6 +331,7 @@ def client(
     app.dependency_overrides[get_auth_config] = lambda: auth_config
     app.dependency_overrides[get_rag_service] = lambda: rag_service
     app.dependency_overrides[get_generation_models] = lambda: STUB_GENERATION_MODELS
+    app.dependency_overrides[get_all_generation_models] = lambda: STUB_GENERATION_MODELS
     app.dependency_overrides[get_default_generation_model_id] = (
         lambda: STUB_DEFAULT_MODEL_ID
     )

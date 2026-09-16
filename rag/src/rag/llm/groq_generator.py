@@ -4,9 +4,22 @@ import time
 from groq import Groq
 
 from rag.config.component_configs import GenerationConfig
-from rag.llm.schemas import LLMResponse
+from rag.llm.schemas import LLMResponse, TokenUsage
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_usage(response) -> TokenUsage | None:
+    usage = getattr(response, "usage", None)
+
+    if usage is None:
+        return None
+
+    return TokenUsage(
+        prompt_tokens=usage.prompt_tokens or 0,
+        completion_tokens=usage.completion_tokens or 0,
+        total_tokens=usage.total_tokens or 0,
+    )
 
 
 class GroqGenerator:
@@ -85,6 +98,7 @@ class GroqGenerator:
                         "attempt": attempt,
                         "provider": "groq",
                     },
+                    usage=_extract_usage(response),
                 )
 
             # Deliberately broad: this is a retry wrapper around a third-party
