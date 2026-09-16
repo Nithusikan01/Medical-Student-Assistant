@@ -15,6 +15,8 @@
   --on-accent-weight: 500;
   --ok: #1c7a4f;
   --ok-soft: #e4f3ec;
+  --warning: #9a6700;
+  --warning-soft: #fbf0dc;
   --danger: #b3261e;
   --danger-soft: #fdeceb;
   --shadow-card: 0 1px 3px rgba(19, 24, 25, 0.04),
@@ -46,6 +48,8 @@
   --on-accent-weight: 600;
   --ok: #63d69e;
   --ok-soft: #122b20;
+  --warning: #e0a634;
+  --warning-soft: #322408;
   --danger: #ff9b93;
   --danger-soft: #33191a;
   --shadow-card: none;
@@ -1022,6 +1026,68 @@ a:hover {
   font-size: 18px;
   font-weight: 600;
   letter-spacing: -0.01em;
+}
+
+.usage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.usage-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.usage-card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.usage-card-header strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.usage-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.usage-meter-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.usage-meter-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--raised);
+  overflow: hidden;
+}
+
+.usage-meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.usage-meter-fill[data-level="warning"] {
+  background: var(--warning);
+}
+
+.usage-meter-fill[data-level="danger"] {
+  background: var(--danger);
 }
 
 .dropzone {

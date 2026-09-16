@@ -181,6 +181,22 @@ _GENERATION_MODEL_SPECS: dict[str, tuple[str, str, str | None]] = {
     "groq-qwen3.8-27b": ("Qwen3.8 27B (Groq)", "groq", "qwen/qwen3.8-27b"),
 }
 
+# Daily token quotas for the admin usage dashboard. Gemini is billed, not
+# quota-limited on our plan, so it has no ceiling here. The Groq numbers are
+# Groq's free-tier per-model daily token limits (console.groq.com/docs/rate-
+# limits) at the time this was written - Groq can and does change these, and
+# "qwen3.8-27b" in particular is a newer catalog entry whose published limit
+# is less certain than the gpt-oss pair's, so treat these as a starting point
+# to verify against the console rather than a guarantee. There is
+# deliberately no env var override: change the constant here if a limit
+# turns out to be wrong.
+_DAILY_TOKEN_LIMITS: dict[str, int | None] = {
+    DEFAULT_GENERATION_MODEL_ID: None,
+    "groq-gpt-oss-120b": 200_000,
+    "groq-gpt-oss-20b": 200_000,
+    "groq-qwen3.8-27b": 200_000,
+}
+
 
 @dataclass(frozen=True)
 class GenerationModelOption:
@@ -214,6 +230,29 @@ def available_generation_models() -> list[GenerationModelOption]:
         )
 
     return models
+
+
+def all_generation_models() -> list[GenerationModelOption]:
+    """
+    Every model in the catalog, regardless of whether it is currently
+    configured.
+
+    Unlike available_generation_models(), this doesn't call load_settings()
+    or filter on GROQ_API_KEY - it's for the admin usage dashboard, where a
+    Groq model's historical usage should stay visible even if the key is
+    later removed, and it needs no credentials to answer.
+    """
+
+    return [
+        GenerationModelOption(id=model_id, label=label, provider=provider)
+        for model_id, (label, provider, _) in _GENERATION_MODEL_SPECS.items()
+    ]
+
+
+def daily_token_limit(model_id: str) -> int | None:
+    """None means no configured limit (usage is still tracked, just not capped)."""
+
+    return _DAILY_TOKEN_LIMITS.get(model_id)
 
 
 @lru_cache

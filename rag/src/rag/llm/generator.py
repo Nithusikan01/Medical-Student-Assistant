@@ -4,9 +4,22 @@ import time
 from google import genai
 
 from rag.config.component_configs import GenerationConfig
-from rag.llm.schemas import LLMResponse
+from rag.llm.schemas import LLMResponse, TokenUsage
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_usage(response) -> TokenUsage | None:
+    usage_metadata = getattr(response, "usage_metadata", None)
+
+    if usage_metadata is None:
+        return None
+
+    return TokenUsage(
+        prompt_tokens=usage_metadata.prompt_token_count or 0,
+        completion_tokens=usage_metadata.candidates_token_count or 0,
+        total_tokens=usage_metadata.total_token_count or 0,
+    )
 
 
 class GeminiGenerator:
@@ -94,6 +107,7 @@ class GeminiGenerator:
                         "attempt": attempt,
                         "provider": "gemini",
                     },
+                    usage=_extract_usage(response),
                 )
 
             # Deliberately broad: this is a retry wrapper around a third-party

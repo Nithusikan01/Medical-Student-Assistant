@@ -6,9 +6,11 @@ import {
   listDocuments,
   uploadDocument,
 } from "../api/documents";
+import { getModelUsage } from "../api/usage";
 import { deleteUser, listUsers, updateUserRole } from "../api/users";
 import { useAuth } from "../auth/useAuth";
 import {
+  Activity,
   ArrowLeft,
   Document,
   Spinner,
@@ -17,7 +19,11 @@ import {
   Users,
 } from "../components/Icons";
 import { ThemeToggle } from "../components/ThemeToggle";
-import type { AdminUserSummary, DocumentSummary } from "../types";
+import type {
+  AdminUserSummary,
+  DocumentSummary,
+  ModelUsageInfo,
+} from "../types";
 
 function formatSize(bytes: number | null): string {
   if (bytes === null) {
@@ -39,6 +45,64 @@ function formatDate(iso: string): string {
   });
 }
 
+function formatTokens(n: number): string {
+  return n.toLocaleString();
+}
+
+function meterLevel(used: number, limit: number | null): "ok" | "warning" | "danger" {
+  if (limit === null || limit <= 0) {
+    return "ok";
+  }
+
+  const ratio = used / limit;
+
+  if (ratio >= 1) {
+    return "danger";
+  }
+
+  if (ratio >= 0.8) {
+    return "warning";
+  }
+
+  return "ok";
+}
+
+function UsageMeter({
+  label,
+  used,
+  limit,
+}: {
+  label: string;
+  used: number;
+  limit: number | null;
+}) {
+  const level = meterLevel(used, limit);
+  const width = limit === null || limit <= 0
+    ? 0
+    : Math.min(100, (used / limit) * 100);
+
+  return (
+    <div className="usage-meter">
+      <div className="usage-meter-label">
+        <span>{label}</span>
+        <span>
+          {formatTokens(used)}
+          {limit !== null && ` / ${formatTokens(limit)}`}
+        </span>
+      </div>
+      {limit !== null && (
+        <div className="usage-meter-track">
+          <div
+            className="usage-meter-fill"
+            data-level={level === "ok" ? undefined : level}
+            style={{ width: `${width}%` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AdminDocumentsPage() {
   const { user: currentUser } = useAuth();
 
@@ -50,6 +114,9 @@ export function AdminDocumentsPage() {
 
   const [users, setUsers] = useState<AdminUserSummary[]>([]);
   const [usersError, setUsersError] = useState<string | null>(null);
+
+  const [modelUsage, setModelUsage] = useState<ModelUsageInfo[]>([]);
+  const [usageError, setUsageError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -71,6 +138,16 @@ export function AdminDocumentsPage() {
       .catch((caught) => {
         setUsersError(
           caught instanceof Error ? caught.message : "Could not load users.",
+        );
+      });
+  }, []);
+
+  useEffect(() => {
+    getModelUsage()
+      .then((response) => setModelUsage(response.models))
+      .catch((caught) => {
+        setUsageError(
+          caught instanceof Error ? caught.message : "Could not load model usage.",
         );
       });
   }, []);
@@ -428,6 +505,54 @@ export function AdminDocumentsPage() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+
+          <div className="admin-section">
+            <h2>Model usage</h2>
+            <p className="tagline">
+              Tokens spent per model, today and this month. Groq's daily
+              limits are its published free-tier quotas; Gemini has no
+              configured limit.
+            </p>
+
+            {usageError && (
+              <p className="upload-status upload-error">{usageError}</p>
+            )}
+
+            {modelUsage.length === 0 ? (
+              !usageError && (
+                <div className="empty-state">
+                  <span className="empty-state-icon">
+                    <Activity size={24} strokeWidth={1.5} />
+                  </span>
+                  <div>
+                    <strong>No usage yet</strong>
+                    <p>Token usage will show up here once questions are asked.</p>
+                  </div>
+                </div>
+              )
+            ) : (
+              <div className="usage-grid">
+                {modelUsage.map((model) => (
+                  <div className="usage-card" key={model.id}>
+                    <div className="usage-card-header">
+                      <strong>{model.label}</strong>
+                      <span className="cell-sub">{model.provider}</span>
+                    </div>
+                    <UsageMeter
+                      label="Today"
+                      used={model.daily_tokens_used}
+                      limit={model.daily_token_limit}
+                    />
+                    <UsageMeter
+                      label="This month"
+                      used={model.monthly_tokens_used}
+                      limit={model.monthly_token_limit}
+                    />
+                  </div>
+                ))}
               </div>
             )}
           </div>

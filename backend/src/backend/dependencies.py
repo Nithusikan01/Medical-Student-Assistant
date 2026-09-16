@@ -17,6 +17,7 @@ from backend.db.session import get_db
 from backend.wiring.rag_factory import (
     DEFAULT_GENERATION_MODEL_ID,
     GenerationModelOption,
+    all_generation_models,
     available_generation_models,
     resolve_generator,
 )
@@ -48,6 +49,10 @@ def get_rag_service(request: Request):
 
 def get_generation_models() -> list[GenerationModelOption]:
     return available_generation_models()
+
+
+def get_all_generation_models() -> list[GenerationModelOption]:
+    return all_generation_models()
 
 
 def get_default_generation_model_id() -> str:
@@ -117,6 +122,9 @@ Auth = Annotated[AuthService, Depends(get_auth_service)]
 Config = Annotated[AuthConfig, Depends(get_auth_config)]
 GenerationModels = Annotated[
     list[GenerationModelOption], Depends(get_generation_models)
+]
+AllGenerationModels = Annotated[
+    list[GenerationModelOption], Depends(get_all_generation_models)
 ]
 DefaultGenerationModelId = Annotated[str, Depends(get_default_generation_model_id)]
 GeneratorResolver = Annotated[Any, Depends(get_generator_resolver)]
