@@ -19,6 +19,7 @@ from rag.observability import (
 )
 
 from backend.dependencies import get_rag_service
+from backend.observability.inflight import IN_FLIGHT
 
 
 class RecordingRecorder:
@@ -280,6 +281,29 @@ def test_spans_from_the_endpoint_join_the_request_trace(
 
     assert span.trace_id == recorder.traces[0].trace_id
     assert span.trace_id == response.headers["x-trace-id"]
+
+
+def test_the_in_flight_gauge_is_balanced(traced_client, user, auth_headers):
+    """
+    Incremented and decremented around every request, including ones that
+    fail - a leak here would make the dashboard report phantom load that
+    only a restart clears.
+    """
+
+    before = IN_FLIGHT.current
+
+    traced_client.get("/api/conversations", headers=auth_headers(user))
+    traced_client.get("/api/conversations")
+
+    with pytest.raises(RuntimeError):
+
+        @traced_client.app.get("/api/_explode_for_gauge")
+        def explode():
+            raise RuntimeError("kaboom")
+
+        traced_client.get("/api/_explode_for_gauge")
+
+    assert IN_FLIGHT.current == before
 
 
 # ----------------------------------------------------------------------
