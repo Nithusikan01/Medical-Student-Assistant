@@ -365,7 +365,11 @@ def build_reranker():
     if settings.use_hosted_inference:
         primary = PineconeReranker(settings.hosted_rerank_config())
         fallback = GeminiReranker(build_generator())
-        return FallbackReranker(primary=primary, fallback=fallback)
+        return FallbackReranker(
+            primary=primary,
+            fallback=fallback,
+            tracer=build_tracer(),
+        )
 
     # Imported lazily so the module loads without torch installed.
     from rag.rerankers.local_reranker import Reranker
@@ -416,11 +420,22 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
     embedder = build_embedder()
 
     #
+    # Telemetry
+    #
+    # One tracer, handed to every component that reports a stage. Each
+    # takes it as a keyword-only argument defaulting to a no-op, so the
+    # engine stays runnable - and its unit tests stay unchanged - without
+    # one.
+    #
+    tracer = build_tracer()
+
+    #
     # Dense Retriever
     #
     dense_retriever = DenseRetriever(
         vector_store=build_vector_store(),
         embedding_model=embedder,
+        tracer=tracer,
     )
 
     #
@@ -428,6 +443,7 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
     #
     bm25_retriever = BM25Retriever(
         bm25_index=build_bm25_index(),
+        tracer=tracer,
     )
 
     #
@@ -436,6 +452,7 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
     hybrid_retriever = HybridRetriever(
         dense_retriever=dense_retriever,
         bm25_retriever=bm25_retriever,
+        tracer=tracer,
     )
 
     #
@@ -449,6 +466,7 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
     query_service = QueryService(
         retriever=hybrid_retriever,
         reranker=reranker,
+        tracer=tracer,
     )
 
     #
@@ -461,9 +479,9 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
     #
     session_manager = PersistentConversationStore(get_session_factory())
 
-    query_rewriter = QueryRewriter(llm)
+    query_rewriter = QueryRewriter(llm, tracer=tracer)
 
-    summarizer = ConversationSummarizer(llm)
+    summarizer = ConversationSummarizer(llm, tracer=tracer)
 
     #
     # RAG Service
@@ -474,6 +492,7 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
         session_manager=session_manager,
         query_rewriter=query_rewriter,
         summarizer=summarizer,
+        tracer=tracer,
     )
 
     logger.info("History-aware RAG system initialized successfully.")

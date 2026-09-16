@@ -1,5 +1,11 @@
 import logging
 
+from rag.observability import (
+    Stage,
+    Tracer,
+    rank_change,
+    summarize_scores,
+)
 from rag.rerankers.base import BaseReranker
 from rag.retrieval.base import BaseRetriever
 from rag.retrieval.schemas import RetrievedChunk
@@ -24,9 +30,12 @@ class QueryService:
         self,
         retriever: BaseRetriever,
         reranker: BaseReranker | None = None,
+        *,
+        tracer: Tracer | None = None,
     ) -> None:
         self.retriever = retriever
         self.reranker = reranker
+        self.tracer = tracer if tracer is not None else Tracer()
 
     def search(
         self,
@@ -60,45 +69,84 @@ class QueryService:
             query,
         )
 
-        #
-        # Candidate retrieval
-        #
-        candidates = self.retriever.retrieve(
-            query=query,
-            top_k=candidate_k,
-        )
+        with self.tracer.span(
+            Stage.RETRIEVAL,
+            top_k=top_k,
+            candidate_k=candidate_k,
+            use_reranker=use_reranker and self.reranker is not None,
+        ) as span:
 
-        if not candidates:
-            logger.warning("No retrieval results found.")
-            return []
-
-        logger.debug(
-            "Retrieved %d candidate chunks.",
-            len(candidates),
-        )
-
-        #
-        # Optional reranking
-        #
-        if use_reranker and self.reranker is not None:
-
-            logger.debug("Applying cross-encoder reranker.")
-
-            results = self.reranker.rerank(
+            #
+            # Candidate retrieval
+            #
+            candidates = self.retriever.retrieve(
                 query=query,
-                candidates=candidates,
-                top_k=top_k,
+                top_k=candidate_k,
             )
 
-        else:
+            if not candidates:
+                logger.warning("No retrieval results found.")
 
-            logger.debug("Skipping reranker.")
+                span.set(candidate_count=0, final_count=0)
 
-            results = candidates[:top_k]
+                return []
 
-        logger.info(
-            "Returning %d retrieved chunks.",
-            len(results),
-        )
+            logger.debug(
+                "Retrieved %d candidate chunks.",
+                len(candidates),
+            )
 
-        return results
+            #
+            # Optional reranking
+            #
+            if use_reranker and self.reranker is not None:
+
+                logger.debug("Applying cross-encoder reranker.")
+
+                # The span is opened here rather than inside the reranker,
+                # so it covers whichever implementation is wired up.
+                # FallbackReranker annotates it with which one actually
+                # answered.
+                with self.tracer.span(
+                    Stage.RERANKING,
+                    reranker=type(self.reranker).__name__,
+                    candidate_count=len(candidates),
+                    top_k=top_k,
+                ) as rerank_span:
+
+                    results = self.reranker.rerank(
+                        query=query,
+                        candidates=candidates,
+                        top_k=top_k,
+                    )
+
+                    rerank_span.set(
+                        final_count=len(results),
+                        **rank_change(
+                            [chunk.id for chunk in candidates[:top_k]],
+                            [chunk.id for chunk in results],
+                        ),
+                        **summarize_scores(
+                            chunk.rerank_score
+                            for chunk in results
+                            if chunk.rerank_score is not None
+                        ),
+                    )
+
+            else:
+
+                logger.debug("Skipping reranker.")
+
+                results = candidates[:top_k]
+
+            logger.info(
+                "Returning %d retrieved chunks.",
+                len(results),
+            )
+
+            span.set(
+                candidate_count=len(candidates),
+                final_count=len(results),
+            )
+
+            return results

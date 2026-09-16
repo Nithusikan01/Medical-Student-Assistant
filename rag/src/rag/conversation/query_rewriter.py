@@ -1,10 +1,12 @@
 from rag.llm.generator import GeminiGenerator
+from rag.observability import Stage, Tracer, generation_metadata
 
 
 class QueryRewriter:
 
-    def __init__(self, generator: GeminiGenerator):
+    def __init__(self, generator: GeminiGenerator, *, tracer: Tracer | None = None):
         self.generator = generator
+        self.tracer = tracer if tracer is not None else Tracer()
 
     def rewrite(self, query: str, summary: str, recent_messages: list) -> str:
 
@@ -36,5 +38,23 @@ class QueryRewriter:
         - Do NOT explain
         """
 
-        response = self.generator.generate(prompt)
-        return response.text.strip()
+        with self.tracer.span(
+            Stage.QUERY_REWRITE,
+            original_length=len(query),
+            recent_message_count=len(recent_messages),
+            has_summary=bool(summary),
+        ) as span:
+
+            response = self.generator.generate(prompt)
+            rewritten = response.text.strip()
+
+            span.set(
+                rewritten_length=len(rewritten),
+                # Whether the rewrite did anything at all. A conversational
+                # follow-up that comes back unchanged is the first thing to
+                # check when retrieval looks wrong.
+                changed=rewritten != query.strip(),
+                **generation_metadata(response),
+            )
+
+            return rewritten

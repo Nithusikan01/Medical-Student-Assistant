@@ -31,12 +31,13 @@ from typing import Any
 
 from rag.observability.context import (
     TraceContext,
-    bind_span_id,
+    bind_span,
     bind_trace,
+    current_span,
     current_span_id,
     current_trace,
     new_id,
-    reset_span_id,
+    reset_span,
     reset_trace,
 )
 from rag.observability.protocol import TraceRecorder
@@ -378,7 +379,7 @@ class Tracer:
 
                 handle.set(**metadata)
 
-                token = bind_span_id(handle.span_id)
+                token = bind_span(handle)
         except Exception:
             logger.exception("Failed to start a telemetry span.")
             handle = NULL_SPAN
@@ -391,6 +392,27 @@ class Tracer:
         finally:
             self._close_span(handle, token)
 
+    def annotate(self, **fields: Any) -> None:
+        """
+        Attach metadata to the span that is currently open, if any.
+
+        For a component that has something worth recording but no business
+        opening a span of its own - FallbackReranker knows which reranker
+        answered, but the reranking span belongs to QueryService, and a
+        second span would duplicate its timing for no added information.
+
+        Silently does nothing outside a span, which is what makes it safe
+        to call from a component that may or may not be instrumented.
+        """
+
+        try:
+            span = current_span()
+
+            if span is not None:
+                span.set(**fields)
+        except Exception:
+            logger.exception("Failed to annotate the current telemetry span.")
+
     def _close_span(self, handle: SpanHandle, token: Any) -> None:
         try:
             if handle.recording:
@@ -400,6 +422,6 @@ class Tracer:
         finally:
             if token is not None:
                 try:
-                    reset_span_id(token)
+                    reset_span(token)
                 except Exception:
                     logger.exception("Failed to reset the span context.")

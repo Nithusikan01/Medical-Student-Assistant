@@ -233,6 +233,44 @@ def test_sensitive_keys_are_redacted():
     assert cleaned["model"] == "gemini-3.1-flash-lite"
 
 
+def test_token_counts_are_not_mistaken_for_credentials():
+    """
+    A bare "token" substring match redacted `prompt_tokens` and
+    `total_tokens`, which would have made token accounting - the one thing
+    this application already monitored - impossible to record.
+    """
+
+    cleaned = sanitize_metadata(
+        {
+            "prompt_tokens": 120,
+            "completion_tokens": 30,
+            "total_tokens": 150,
+            "max_output_tokens": 1024,
+        }
+    )
+
+    assert cleaned == {
+        "prompt_tokens": 120,
+        "completion_tokens": 30,
+        "total_tokens": 150,
+        "max_output_tokens": 1024,
+    }
+
+
+def test_singular_credential_names_are_still_caught():
+    cleaned = sanitize_metadata(
+        {
+            "user_token": "leaked",
+            "gemini_key": "leaked",
+            "token": "leaked",
+            "key": "leaked",
+            "session": "leaked",
+        }
+    )
+
+    assert set(cleaned.values()) == {REDACTED}
+
+
 def test_long_strings_are_truncated():
     cleaned = sanitize_metadata({"note": "x" * 5000})
 
