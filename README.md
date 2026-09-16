@@ -1,4 +1,4 @@
-# RAG Application
+# Medical Student Assistant
 
 A full-stack Retrieval Augmented Generation application for a class of students to ask
 questions against a shared library of documents: a Python RAG engine, a FastAPI backend with
@@ -8,20 +8,21 @@ their own private, resumable conversation history.
 
 Retrieval is hybrid (dense + BM25, fused with Reciprocal Rank Fusion) and reranked; both
 embedding and reranking run on Pinecone's hosted inference by default, so the deployed API
-needs no PyTorch and downloads no model weights. Answers come from Google Gemini.
-Conversation-aware query rewriting lets follow-up questions get folded into standalone
-retrieval queries, and a rolling summary keeps long chats bounded.
+needs no PyTorch and downloads no model weights. The final answer comes from a
+user-selectable model — Google Gemini by default, or one of the Groq-hosted open models when
+a Groq key is configured. Conversation-aware query rewriting lets follow-up questions get
+folded into standalone retrieval queries, and a rolling summary keeps long chats bounded.
 
 ## Current Capabilities
 
 - Email/password registration and login with JWT access tokens and rotating, httpOnly-cookie
   refresh tokens (reuse detection revokes the whole token family)
-- Two roles: `admin` (uploads and manages the shared document library) and `user` (asks
-  questions, manages only their own conversations)
+- Two roles: `admin` (manages the shared document library, the user roster, and sees token
+  usage) and `user` (asks questions, manages only their own conversations)
 - Registration gated by an open-registration flag or an invite code, either is sufficient
 - The first admin is seeded from environment variables on startup, idempotently
 - PostgreSQL persistence via SQLAlchemy 2.0 and Alembic: users, refresh tokens, invite codes,
-  conversations and messages, and the document/chunk registry
+  conversations and messages, the document/chunk registry, and per-call token usage
 - Conversations are private, persisted, and resumable across restarts and devices, with a
   checkpointed rolling summary so long chats don't re-summarize on every turn
 - PDF text extraction with `pypdf`, recursive chunking with LangChain text splitters
@@ -31,17 +32,26 @@ retrieval queries, and a rolling summary keeps long chats bounded.
 - BM25 lexical retrieval with `rank-bm25`, sourced from the same Postgres chunk table that
   backs Pinecone, so ingesting or deleting a document updates both retrieval paths together
 - Hybrid retrieval via Reciprocal Rank Fusion across dense and BM25 results
-- Gemini generation through `google-genai` with retry handling
+- Reranking that degrades instead of failing: Pinecone hosted reranking, falling back to the
+  Gemini model on a hosted failure, then to unranked retrieval order
+- Per-query model selection: Gemini through `google-genai`, or GPT-OSS 120B / GPT-OSS 20B /
+  Qwen3.8 27B through Groq. Groq options are only offered when `GROQ_API_KEY` is set, and the
+  response echoes back which model actually answered
+- Admin token-usage dashboard: tokens spent per model today and this calendar month, against
+  the provider's published daily quota
+- Admin user roster: list every registered user, promote/demote between `user` and `admin`,
+  and delete accounts (deleting an admin needs an extra confirmation; the last admin cannot
+  be demoted, and nobody can delete themselves)
 - Document lifecycle: admin-only upload (deduplicated by content hash), listing, deletion
   (BM25 refreshed before vectors are removed, so a document is never "delisted but still
   retrievable"), and an orphan-sweep purge endpoint for a delete that failed partway
-- FastAPI health, auth, conversation, document, and query endpoints, every one of them
-  deliberately classified as public, authenticated, or admin-only and enforced accordingly
+- Eight FastAPI routers, every route deliberately classified as public, authenticated, or
+  admin-only and enforced at `include_router()` level
 - React + TypeScript web app: light/dark theme (chosen on the login screen, persisted per
-  browser), login/register screens, a conversation sidebar, per-answer source inspection, and
-  an admin-only document management screen
+  browser), login/register screens, a conversation sidebar, a model picker, per-answer source
+  inspection, and an admin dashboard for documents, users, and model usage
 - Docker image and GitHub Actions CI/CD (lint, tests, image build, migration-then-deploy)
-- 260+ tests across the engine and backend, all hermetic (SQLite, no network)
+- 309 tests across the engine and backend, all hermetic (SQLite, no network)
 
 ## Architecture
 
@@ -66,17 +76,17 @@ in-memory BM25 index is rebuilt in place once ingestion finishes.
 The query path (`POST /api/query`, any signed-in user):
 
 ```text
-conversation_id + question
+conversation_id + question (+ optional model)
   -> PersistentConversationMemory (Postgres-backed, per conversation)
   -> QueryRewriter (LLM call: folds conversation history into a standalone query)
   -> HybridRetriever
        -> DenseRetriever -> Pinecone
        -> BM25Retriever  -> BM25Index (built from document_chunks)
        (fused via Reciprocal Rank Fusion)
-  -> Reranker (Pinecone hosted, or local cross-encoder)
-  -> PromptBuilder -> GeminiGenerator
+  -> Reranker (Pinecone hosted -> Gemini fallback -> unranked order)
+  -> PromptBuilder -> selected generator (Gemini or Groq)
   -> answer + structured sources
-  -> messages persisted; summarized once the trigger is reached
+  -> token usage recorded; messages persisted; summarized once the trigger is reached
 ```
 
 Conversation memory is deliberately split into two views: `messages` holds only the turns
@@ -94,6 +104,46 @@ document's id prefix but have no matching chunk row (Pinecone's serverless tier 
 support delete-by-metadata-filter, so this sweep — not a filtered delete — is the recovery
 path).
 
+### Generation model selection
+
+Only the final answer is user-selectable. Query rewriting, conversation summarization, and
+the reranker fallback always use the default Gemini generator, so switching models never
+changes how retrieval behaves.
+
+The catalog lives in `backend/wiring/rag_factory.py::_GENERATION_MODEL_SPECS`:
+
+| id                  | label               | provider | backing model           |
+| ------------------- | ------------------- | -------- | ----------------------- |
+| `gemini-flash`      | Gemini (default)    | gemini   | `GENERATION_MODEL_NAME` |
+| `groq-gpt-oss-120b` | GPT-OSS 120B (Groq) | groq     | `openai/gpt-oss-120b`   |
+| `groq-gpt-oss-20b`  | GPT-OSS 20B (Groq)  | groq     | `openai/gpt-oss-20b`    |
+| `groq-qwen3.8-27b`  | Qwen3.8 27B (Groq)  | groq     | `qwen/qwen3.8-27b`      |
+
+`available_generation_models()` omits the Groq entries entirely when `GROQ_API_KEY` is unset,
+rather than listing them and failing on first use, and `resolve_generator()` raises for an
+unknown or unavailable id (a 400) instead of silently substituting a different model than the
+one that was asked for. `rag/llm/protocol.py::TextGenerator` is the structural Protocol both
+`GeminiGenerator` and `GroqGenerator` satisfy — the same seam as `ConversationStore` and
+`ChunkSink`, which is why adding a provider touches nothing in the engine's service layer.
+
+Selection is not persisted server-side: like `top_k`, the client resends it on every request
+(the frontend remembers the last choice in `localStorage`).
+
+### Token usage tracking
+
+Each generator reports the provider's own token counts on `LLMResponse.usage`, and
+`HistoryAwareRAGService.answer_with_sources` takes an `on_usage` callback invoked once per
+generation call — the engine stays storage-agnostic, exactly like `ChunkSink`. The query
+router's callback writes one `generation_usage_events` row per query.
+
+One row per call, rather than a running counter, is what makes "today" and "this month" both
+a plain `SUM(total_tokens) WHERE created_at >= window_start`: no reset job, and no drift
+between the two windows. `GET /api/usage/models` (admin-only) reports every catalog model —
+including ones not currently available, so a Groq model's history stays visible if the key is
+later removed. Daily limits are hardcoded per provider (Groq's published free-tier quotas;
+Gemini is billed rather than quota-capped on this plan, so it has none), and the monthly
+figure is a derived reference ceiling (daily × days in month) since Groq's quotas reset daily.
+
 ## Project Structure
 
 The repository is a monorepo with three top-level parts, two of them installable Python
@@ -102,16 +152,18 @@ packages:
 ```text
 Medical-Student-Assistant/
 |-- rag/                          # RAG engine (importable library, no HTTP, no database)
-|   |-- pyproject.toml            # package: rag
+|   |-- pyproject.toml            # package: rag-engine
 |   |-- src/rag/
 |   |   |-- config/               # Settings + per-component config dataclasses
 |   |   |-- conversation/         # ConversationMemory, ConversationStore protocol,
-|   |   |                         # query rewriting, summarization
+|   |   |                         # SessionManager, query rewriting, summarization
 |   |   |-- embeddings/           # PineconeEmbedder (hosted) + TextEmbedder protocol
 |   |   |-- indexes/              # BM25Index (in-place .rebuild())
 |   |   |-- ingestion/            # loader, chunker, embedder, pipeline, ChunkSink protocol
-|   |   |-- llm/                  # Gemini generator + prompt builder
-|   |   |-- retrieval/            # dense, bm25, hybrid, reranker (local + Pinecone hosted)
+|   |   |-- llm/                  # GeminiGenerator, GroqGenerator, TextGenerator protocol,
+|   |   |                         # prompt builder, LLMResponse/TokenUsage
+|   |   |-- rerankers/            # pinecone (hosted), gemini, local cross-encoder, fallback
+|   |   |-- retrieval/            # dense, bm25, hybrid (RRF), QueryService
 |   |   |-- services/             # HistoryAwareRAGService
 |   |   |-- utils/
 |   |   `-- vectorstore/          # Pinecone store
@@ -120,21 +172,24 @@ Medical-Student-Assistant/
 |       |-- integration/          # touches real Pinecone/Gemini; skips without an env flag
 |       `-- unit/                 # no external services
 |-- backend/                      # FastAPI HTTP layer (runtime root)
-|   |-- pyproject.toml            # package: backend
+|   |-- pyproject.toml            # package: rag-backend
 |   |-- .env                      # credentials live here
-|   |-- alembic.ini, migrations/  # 3 revisions: auth tables, conversations, documents
+|   |-- alembic.ini, migrations/  # 4 revisions: auth, conversations, documents, usage
 |   |-- data/raw/                 # source PDFs
 |   |-- storage/                  # uploads/ (deleted after ingestion)
+|   |-- deploy/                   # task-definition.json: the ECS baseline CI renders
 |   |-- scripts/                  # ad-hoc smoke-test / maintenance scripts
 |   |-- src/backend/
 |   |   |-- app.py                # create_app + lifespan (db connectivity, admin seeding)
-|   |   |-- dependencies.py       # get_current_user, require_admin, DB session, etc.
+|   |   |-- dependencies.py       # current user, admin gate, DB session, model registry
 |   |   |-- auth/                 # password hashing, JWT + refresh tokens, AuthService
 |   |   |-- db/                   # SQLAlchemy models and repositories
-|   |   |-- routers/              # health, auth, conversations, ingest, documents, query
+|   |   |-- routers/              # health, auth, conversations, ingest, documents, query,
+|   |   |                         # users, usage
 |   |   |-- schemas/              # request/response models
-|   |   |-- services/             # upload handling, document lifecycle, conversation store
-|   |   `-- wiring/               # rag_factory: builds the live RAG service and BM25 index
+|   |   |-- services/             # upload handling, document lifecycle, conversation store,
+|   |   |                         # Postgres chunk sink
+|   |   `-- wiring/               # rag_factory: model catalog + the live RAG service
 |   `-- tests/
 |       |-- unit/                 # SQLite, no HTTP
 |       |-- api/                  # through TestClient against the real app
@@ -143,21 +198,23 @@ Medical-Student-Assistant/
     |-- package.json
     |-- vite.config.ts            # proxies /api and /health to the backend
     `-- src/
-        |-- api/                  # typed fetch client (client, auth, conversations, documents)
+        |-- api/                  # typed fetch client (client, auth, conversations,
+        |                         # documents, users, usage)
         |-- auth/                 # AuthContext, useAuth, single-flight token refresh
         |-- theme/                # ThemeContext, useTheme (light/dark, persisted)
-        |-- components/           # ChatPanel, ConversationSidebar, SourceList,
+        |-- components/           # ChatPanel, ConversationSidebar, ModelSelect, SourceList,
         |                         # RouteGuards (Protected/Admin), ThemeToggle, Icons
         |-- pages/                # LoginPage, RegisterPage, ChatPage, AdminDocumentsPage
-        `-- hooks/                # useConversation
+        `-- hooks/                # useConversation, useGenerationModels
 ```
 
 `backend` depends on `rag`; `rag` never imports `backend`, `fastapi`, or `sqlalchemy` — a
 ruff `TID251` rule enforces this at lint time. `backend/` is the runtime root: `.env`,
 `data/raw/`, and `storage/` are resolved relative to it, so run uvicorn, Alembic, and the
-scripts from inside `backend/`. Where the engine needs persistence (conversation memory, the
-BM25 corpus), it depends on a protocol defined in `rag/` (`ConversationStore`, `ChunkSink`)
-whose database-backed implementation lives in `backend/`.
+scripts from inside `backend/`. Where the engine needs persistence or storage (conversation
+memory, the BM25 corpus, token accounting), it depends on a protocol or callback defined in
+`rag/` (`ConversationStore`, `ChunkSink`, `on_usage`) whose database-backed implementation
+lives in `backend/`.
 
 ## Requirements
 
@@ -167,6 +224,7 @@ whose database-backed implementation lives in `backend/`.
   works for local development)
 - Pinecone API key and index name
 - Google Gemini API key
+- Optional: a Groq API key, to offer the Groq-hosted models in the picker
 - Network access for Pinecone, Gemini, and (only if `USE_HOSTED_INFERENCE=false`) model
   downloads
 
@@ -239,7 +297,9 @@ Required variables:
 
 - `PINECONE_API_KEY` / `PINECONE_INDEX_NAME`: Pinecone credentials; the index is created
   automatically if it doesn't exist, sized to the embedding model in use.
-- `GEMINI_API_KEY`: Google Gemini API key.
+- `GEMINI_API_KEY`: Google Gemini API key. It backs generation, query rewriting,
+  summarization, and the reranker fallback, so it is required even when users pick a Groq
+  model for their answers.
 - `DATABASE_URL`: a PostgreSQL connection string, `postgresql+psycopg://...`.
 - `SECRET_KEY`: signs access tokens. At least 32 characters; treat it like a password, since
   changing it invalidates every issued access token. Use a different value in production than
@@ -251,6 +311,9 @@ Required variables:
 
 Optional variables (see `backend/.env.example` for the complete, commented list):
 
+- `GROQ_API_KEY`: enables the Groq-backed generation models (GPT-OSS 120B/20B, Qwen3.8 27B) as
+  user-selectable alternatives to Gemini. Left unset, those options are simply not offered by
+  `GET /api/models`; any past usage still shows on the admin usage dashboard.
 - `ALLOW_OPEN_REGISTRATION` (default `false`): when false, `POST /api/auth/register` requires
   a valid invite code. There is currently no admin API for creating invite codes — insert a
   row into the `invite_codes` table directly, or leave open registration on for a small,
@@ -272,15 +335,23 @@ Optional variables (see `backend/.env.example` for the complete, commented list)
 - `CANDIDATE_K` / `DENSE_TOP_K` / `RERANKING_K` / `FINAL_CONTEXT_K` / `SIMILARITY_THRESHOLD`:
   retrieval tuning; note that `top_k` on the live query path comes from the request body, and
   `CANDIDATE_K` only applies to `DenseRetriever` calls that pass no explicit `top_k`.
-- `GENERATION_MODEL_NAME` (default `gemini-3.1-flash-lite`).
+- `GENERATION_MODEL_NAME` (default `gemini-3.1-flash-lite`): the model behind the
+  `gemini-flash` catalog entry, and the one used for rewriting and summarization.
+- `STORAGE_PATH` (default `storage`): holds `uploads/` before ingestion deletes them. Relative
+  paths resolve against the working directory, so run the API and scripts from `backend/`.
 - `GOOGLE_CLIENT_ID`: reserved for a future Google sign-in; not currently wired up (see
   Known Limitations).
 - `RUN_REAL_RAG_TESTS=1`: opts the integration test suites into hitting real Pinecone/Gemini.
 
+Per-model daily token limits are deliberately *not* environment variables — they are
+constants in `backend/wiring/rag_factory.py::_DAILY_TOKEN_LIMITS`, since they track what the
+provider publishes rather than anything deployment-specific.
+
 ## Database And Migrations
 
-Schema is managed with Alembic, three revisions: `0001_auth_tables`, `0002_conversations`,
-`0003_documents`. Apply them before starting the API for the first time:
+Schema is managed with Alembic, four revisions: `0001_auth_tables`, `0002_conversations`,
+`0003_documents`, `0004_generation_usage`. Apply them before starting the API for the first
+time:
 
 ```powershell
 cd backend
@@ -297,9 +368,9 @@ If you have an existing `storage/bm25_corpus.json` from before documents moved i
 ## Running Ingestion
 
 Ingestion is admin-only: `POST /api/ingest` (multipart PDF upload, requires an admin bearer
-token) or the admin document management screen in the frontend. Uploaded PDFs are written to
-`backend/storage/uploads/`, ingested, and then deleted. A PDF whose content hash matches an
-already-`ready` document is rejected with 409 rather than duplicated.
+token) or the admin dashboard in the frontend. Uploaded PDFs are written to
+`backend/storage/uploads/`, ingested, and then deleted in a `finally` block. A PDF whose
+content hash matches an already-`ready` document is rejected with 409 rather than duplicated.
 
 `backend/scripts/run_ingestion.py` is a BM25 corpus verification script rather than a general
 ingestion entry point — it chunks `backend/data/raw/cv.pdf` and asserts the records match the
@@ -320,8 +391,9 @@ cd backend
 uvicorn backend.app:app --reload
 ```
 
-On startup the app verifies database connectivity, seeds the administrator account if
-needed, and builds the RAG service (embedder, vector store, BM25 index, reranker).
+On startup the app verifies database connectivity, warns if the schema is behind the
+migrations, seeds the administrator account if needed, and builds the RAG service (embedder,
+vector store, BM25 index, reranker).
 
 Local URLs:
 
@@ -346,10 +418,20 @@ shell variable. Build for production with `npm run build` (runs `tsc -b` first, 
 type-checks).
 
 The login screen lets you choose a light or dark theme, which is remembered per browser.
-After signing in (or registering — with an optional invite code field), the app shows a
-conversation sidebar, a chat view with per-answer source citations (filename, page, chunk
-index, retrieval method, and score), and a `top_k` control. Admins additionally see a document
-management screen for uploading, listing, and deleting PDFs.
+After signing in (or registering — with an optional invite code field), the app shows:
+
+- a conversation sidebar (create, rename, delete), with the wordmark, API status, and account
+  row pinned so only the conversation list scrolls
+- a chat view with per-answer source citations — filename, page, chunk index, retrieval
+  method, and score — behind a collapsible "N sources" disclosure
+- a model picker in the composer, listing whatever `GET /api/models` currently offers and
+  remembering the last choice per browser (a custom dropdown rather than a native `<select>`,
+  so the option list opens upward instead of being clipped at the bottom of the viewport)
+- a "Sources" (`top_k`) control, visible to admins only
+- for admins, a dashboard at `/admin/documents` with three sections: **Library** (upload,
+  status, page/chunk counts, uploader, delete), **Users** (roster, promote/demote, delete —
+  deleting an admin requires typing their exact email), and **Model usage** (a meter per model
+  for today and this month, color-shifting as it approaches the daily limit)
 
 ## API Endpoints
 
@@ -403,16 +485,31 @@ to discover which conversation ids exist.
 ### Query — authenticated
 
 ```http
+GET  /api/models            # generation models on offer, plus the server's default id
 POST /api/query
 ```
 
-Request body:
+`GET /api/models` lists only what is usable right now:
+
+```json
+{
+  "models": [
+    { "id": "gemini-flash", "label": "Gemini (default)", "provider": "gemini" },
+    { "id": "groq-gpt-oss-120b", "label": "GPT-OSS 120B (Groq)", "provider": "groq" }
+  ],
+  "default": "gemini-flash"
+}
+```
+
+Query request body. `model` is optional — omitted or `null` uses the default; an unknown or
+unavailable id is a 400, never a silent substitution:
 
 ```json
 {
   "conversation_id": "5b1f2e3a-2222-4444-8888-0123456789ab",
   "question": "Who is Nithusikan?",
-  "top_k": 5
+  "top_k": 5,
+  "model": "groq-gpt-oss-120b"
 }
 ```
 
@@ -433,6 +530,7 @@ from the question. Response shape:
   "conversation_id": "5b1f2e3a-2222-4444-8888-0123456789ab",
   "question": "Who is Nithusikan?",
   "answer": "Generated answer from the retrieved document context.",
+  "model": "groq-gpt-oss-120b",
   "sources": [
     {
       "id": "cv.pdf_chunk_0",
@@ -452,10 +550,11 @@ from the question. Response shape:
 }
 ```
 
-The server-side upload path is deliberately absent from `metadata` — the API schema drops it
-so a client is never handed the filesystem layout of the server. Engine failures (Pinecone or
-Gemini errors, which can carry credentials in their message text) are logged server-side and
-returned to the client as a generic 502, never the raw exception text.
+`model` reports which model actually answered. The server-side upload path is deliberately
+absent from `metadata` — the API schema drops it so a client is never handed the filesystem
+layout of the server. Engine failures (Pinecone, Gemini, or Groq errors, which can carry
+credentials in their message text) are logged server-side and returned to the client as a
+generic 502, never the raw exception text.
 
 ### Documents — admin-only
 
@@ -465,6 +564,44 @@ GET    /api/documents
 DELETE /api/documents/{id}
 POST   /api/documents/{id}/purge          # retry a failed deletion; sweeps orphan vectors
 ```
+
+### Users — admin-only
+
+```http
+GET    /api/users
+DELETE /api/users/{id}?confirm=true       # confirm=true required to delete another admin
+PATCH  /api/users/{id}/role               # {"role": "admin"} or {"role": "user"}
+```
+
+An admin can never delete their own account, which is also what structurally guarantees a
+delete can never drop the system to zero admins: the caller always survives. Demotion has no
+such guarantee, so demoting the last remaining admin is rejected with 409.
+
+### Usage — admin-only
+
+```http
+GET /api/usage/models
+```
+
+```json
+{
+  "models": [
+    {
+      "id": "groq-gpt-oss-120b",
+      "label": "GPT-OSS 120B (Groq)",
+      "provider": "groq",
+      "daily_tokens_used": 18432,
+      "daily_token_limit": 200000,
+      "monthly_tokens_used": 204118,
+      "monthly_token_limit": 6000000
+    }
+  ],
+  "generated_at": "2026-09-16T09:30:00Z"
+}
+```
+
+A `null` limit means the model has no configured quota — usage is still tracked, there is just
+nothing to compare it against.
 
 ## Terminal Scripts
 
@@ -483,6 +620,9 @@ python scripts\smoke_rag.py
 python scripts\smoke_retrieval.py
 python scripts\smoke_reranker.py
 
+# BM25 corpus verification against backend/data/raw/cv.pdf
+python scripts\run_ingestion.py
+
 # One-time import of a legacy storage/bm25_corpus.json into Postgres
 python scripts\migrate_bm25_corpus.py
 
@@ -495,11 +635,11 @@ python scripts\reset_pinecone.py
 Three kinds of suite, split by directory:
 
 ```powershell
-# Engine — no external services
+# Engine — no external services (70 tests)
 cd rag
 python -m pytest tests\unit
 
-# Backend unit + API — SQLite, no network; this is exactly what CI runs
+# Backend unit + API — SQLite, no network; this is exactly what CI runs (239 tests)
 cd backend
 python -m pytest tests\unit tests\api
 
@@ -512,9 +652,15 @@ cd backend; python -m pytest
 `backend/tests/conftest.py` builds a throwaway SQLite database per test and overrides
 `get_db`, `get_auth_config`, and `get_rag_service` (stubbed) on the app; the `client` fixture
 deliberately never enters the `TestClient` context manager, since that would run the real
-lifespan and connect to the real database. `backend/tests/api/test_route_protection.py`
-compares a hand-written public/authenticated/admin table against the routes the app actually
-exposes, so adding an endpoint without deciding who may call it fails the build.
+lifespan and connect to the real database. The generation-model dependencies
+(`GenerationModels`, `DefaultGenerationModelId`, `GeneratorResolver`) are reachable only
+through `backend/dependencies.py` for the same reason — API tests override them with stubs
+instead of needing real Gemini or Groq credentials.
+
+`backend/tests/api/test_route_protection.py` compares a hand-written
+public/authenticated/admin table against the routes the app actually exposes, so adding an
+endpoint without deciding who may call it fails the build. Update that table in the same
+commit as the route.
 
 Frontend type-check and build:
 
@@ -525,32 +671,46 @@ npm run build
 
 ## Current Implementation Notes
 
-- The FastAPI app is built in `backend.app:create_app` and registers the health, auth,
-  conversations, ingest, documents, and query routers.
-- `backend.wiring.rag_factory` builds the embedder, vector store, reranker, and BM25 index as
-  cached singletons. Ingesting or deleting a document calls `.rebuild()` on the BM25 index in
-  place rather than tearing down and rebuilding the whole RAG service — the earlier design
-  re-instantiated the embedder and reranker on every upload.
+- The FastAPI app is built in `backend.app:create_app` and registers eight routers: health,
+  auth, conversations, ingest, documents, query, users, and usage.
+- `backend.wiring.rag_factory` builds the embedder, vector store, reranker, generator, and
+  BM25 index as cached singletons, and owns the generation-model catalog. Ingesting or
+  deleting a document calls `.rebuild()` on the BM25 index in place rather than tearing down
+  and rebuilding the whole RAG service — the earlier design re-instantiated the embedder and
+  reranker on every upload.
 - Pinecone indexes are created automatically with cosine similarity in AWS `us-east-1`.
 - Embedding and reranking use Pinecone's hosted inference by default
   (`USE_HOSTED_INFERENCE=true`); local Sentence Transformer / cross-encoder models are a
-  fallback behind the `local-models` extra.
-- `BM25Index` is loaded from the `document_chunks` table (via `PersistentConversationStore`'s
-  sibling, the BM25 loader), not from a JSON file, so it reflects the database rather than
-  whatever a file on disk happened to contain.
+  fallback behind the `local-models` extra. Heavy imports (`sentence-transformers`,
+  `langchain-text-splitters`) happen inside constructors, not at module import.
+- `BM25Index` is loaded from the `document_chunks` table via `backend/wiring/bm25_loader.py`,
+  not from a JSON file, so it reflects the database rather than whatever a file on disk
+  happened to contain.
 - Conversation memory is persisted in PostgreSQL per conversation and survives restarts.
-- `top_k` is accepted by the query API; `candidate_k` defaults to `30` inside
+- `top_k` is accepted by the query API (bounded 1..20); `candidate_k` defaults to `30` inside
   `HistoryAwareRAGService.answer_with_sources`.
+- `POST /api/ingest` is a plain `def`, not `async def`, so FastAPI runs the fully synchronous,
+  CPU-bound ingestion in a worker thread instead of blocking the event loop.
+- `fastapi` is pinned rather than left open-ended: the route-classification test depends on
+  how FastAPI exposes routes from included routers, and a major bump silently changed that.
 
 ## Known Limitations
 
 - Text-based PDFs are supported; scanned PDFs need OCR before ingestion.
 - There is no admin API for creating invite codes yet — insert a row into `invite_codes`
   directly, or run with `ALLOW_OPEN_REGISTRATION=true` for a small, trusted class.
-- Google sign-in is deferred: `GOOGLE_CLIENT_ID` is read but nothing in the API or frontend
-  uses it yet.
+- Token usage is reported but not enforced: exhausting a model's daily quota fills the meter
+  on the dashboard, it does not block queries or fail over to another model. Usage is
+  aggregated per model, not per user.
+- The Groq daily limits are hardcoded from Groq's published free-tier quotas and can drift if
+  Groq changes them (the Qwen entry is the least certain of the three); the monthly ceiling is
+  derived, not a real provider-side cap.
+- Google sign-in is deferred: `GOOGLE_CLIENT_ID` is read and an `oauth_accounts` table exists,
+  but nothing in the API or frontend uses either yet.
 - There is no password reset flow (no email provider is configured).
 - No rate limiting on `/api/auth/login` or `/api/query`.
+- Answers are returned whole rather than streamed, so a long generation shows a spinner for
+  its full duration.
 - Pinecone index name is not separated per environment, so a document deleted in a
   development deployment is also deleted in production if they share `PINECONE_INDEX_NAME`.
 - No custom domain yet — the live deployment is reachable only via CloudFront's default
@@ -558,6 +718,8 @@ npm run build
 - API startup builds the embedder, vector store, BM25 index, and reranker clients, so cold
   start time depends on Pinecone/Gemini reachability even though no model weights are
   downloaded by default.
+- No frontend test runner is configured; `npm run build` (via `tsc -b`) is the only automated
+  frontend check.
 
 ## Useful Commands
 
@@ -606,7 +768,9 @@ Deploys are automated via GitHub Actions on every push to `main`:
   stale cached one. Triggers only on changes under `frontend/`.
 - **`backend/deploy/task-definition.json`**: the checked-in baseline task definition (roles,
   CPU/memory, port mapping, non-secret env vars, and references to the Secrets Manager secret
-  for credentials) that the backend workflow renders a new image tag into on every run.
+  for credentials) that the backend workflow renders a new image tag into on every run. Every
+  provider key the app offers has to be listed here — a missing `GROQ_API_KEY` entry is why
+  the deployed model picker once showed Gemini only while local development showed all four.
 
 Both workflows authenticate to AWS via **OIDC** (a GitHub Actions-specific IAM role,
 `medical-student-assistant-github-actions`, trusted only for pushes to `main` in this exact
@@ -619,18 +783,21 @@ What's already in the repository and stays true regardless of host:
   weights baked in — hosted inference means the image needs neither PyTorch nor
   sentence-transformers. Reads `$PORT` at runtime.
 - **`.github/workflows/pr-checks.yml`**: on every PR — lint (ruff + black), engine tests,
-  backend unit + API tests, a Docker build (not pushed), and a frontend build. This workflow
-  isn't tied to any deployment target and runs regardless of what's live.
+  backend unit + API tests, a Docker build (not pushed), and a frontend build. Each job is
+  skipped when its paths didn't change, and a skipped job still reports as a passing check, so
+  branch protection stays satisfied. This workflow isn't tied to any deployment target.
 
 ## Recommended Next Improvements
 
-1. Add an admin API for creating, listing, and revoking invite codes.
-2. Wire up Google sign-in (verify the ID token server-side, link by verified email).
-3. Add a password reset flow once an email provider is available.
-4. Add rate limiting on `/api/auth/login` and `/api/query`.
-5. Separate Pinecone indexes per environment.
-6. Stream answers to the frontend instead of waiting for the full generation.
-7. Add frontend tests (no runner is configured yet).
+1. Enforce token limits rather than only reporting them — refuse or fail over when a model's
+   daily quota is exhausted, and track usage per user as well as per model.
+2. Add an admin API for creating, listing, and revoking invite codes.
+3. Wire up Google sign-in (verify the ID token server-side, link by verified email).
+4. Add a password reset flow once an email provider is available.
+5. Add rate limiting on `/api/auth/login` and `/api/query`.
+6. Separate Pinecone indexes per environment.
+7. Stream answers to the frontend instead of waiting for the full generation.
+8. Add frontend tests (no runner is configured yet).
 
 ## Future Direction: Structure-Aware Chunking (Proposed)
 
@@ -665,27 +832,27 @@ Ingestion Pipeline (proposed)
                              └──────────────┬─────────────────┘
                                             │
                                             ▼
-                                  ParsedDocument
+                                     ParsedDocument
                                             │
                                             ▼
-                     ┌────────────────────────────────────────┐
-                     │      2. Structure Resolver             │
-                     │----------------------------------------│
-                     │ Build semantic document hierarchy      │
-                     │                                        │
-                     │ Chapter                               │
-                     │   └── Section                         │
-                     │         └── Subsection                │
-                     │               └── Elements            │
-                     │                                        │
-                     │ Generate heading paths                │
-                     │ Resolve parent references             │
-                     └──────────────┬─────────────────────────┘
-                                    │
-                                    ▼
-                             StructuredDocument
-                                    │
-                                    ▼
+                          ┌────────────────────────────────────────┐
+                          │      2. Structure Resolver             │
+                          │----------------------------------------│
+                          │ Build semantic document hierarchy      │
+                          │                                        │
+                          │ Chapter                                │
+                          │   └── Section                          │
+                          │         └── Subsection                 │
+                          │               └── Elements             │
+                          │                                        │
+                          │ Generate heading paths                 │
+                          │ Resolve parent references              │
+                          └──────────────┬─────────────────────────┘
+                                         │ 
+                                         ▼
+                                  StructuredDocument
+                                         │
+                                         ▼
                  ┌────────────────────────────────────────────┐
                  │        3. Semantic Chunk Builder           │
                  │--------------------------------------------│
@@ -707,16 +874,16 @@ Ingestion Pipeline (proposed)
         │          4. Parent-Child Chunk Generator                 │
         │----------------------------------------------------------│
         │ If block is small                                        │
-        │      → one chunk                                          │
+        │      → one chunk                                         │
         │                                                          │
-        │ If block is large                                         │
-        │      → Parent chunk                                       │
-        │      → Child chunks                                       │
+        │ If block is large                                        │
+        │      → Parent chunk                                      │
+        │      → Child chunks                                      │
         │                                                          │
-        │ Every child inherits                                      │
-        │ Chapter                                                   │
-        │ Section                                                   │
-        │ Heading Path                                              │
+        │ Every child inherits                                     │
+        │ Chapter                                                  │
+        │ Section                                                  │
+        │ Heading Path                                             │
         └──────────────┬───────────────────────────────────────────┘
                        │
                        ▼
