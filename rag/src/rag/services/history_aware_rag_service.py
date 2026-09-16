@@ -7,6 +7,7 @@ from rag.conversation.summarizer import ConversationSummarizer
 from rag.llm.prompt_builder import PromptBuilder
 from rag.llm.protocol import TextGenerator
 from rag.llm.schemas import TokenUsage
+from rag.observability import Stage, Tracer, generation_metadata
 from rag.retrieval.query_service import QueryService
 from rag.retrieval.schemas import RetrievedChunk
 
@@ -47,6 +48,8 @@ class HistoryAwareRAGService:
         session_manager: ConversationStore,
         query_rewriter: QueryRewriter,
         summarizer: ConversationSummarizer,
+        *,
+        tracer: Tracer | None = None,
     ) -> None:
         self.query_service = query_service
         self.generator = generator
@@ -54,6 +57,11 @@ class HistoryAwareRAGService:
         self.session_manager = session_manager
         self.query_rewriter = query_rewriter
         self.summarizer = summarizer
+
+        # The stages this service owns directly. Retrieval, reranking,
+        # rewriting and summarisation are instrumented by the components
+        # that perform them, and nest under whatever trace is open.
+        self.tracer = tracer if tracer is not None else Tracer()
 
     def answer_with_sources(
         self,
@@ -84,12 +92,24 @@ class HistoryAwareRAGService:
         #
         # 1. Conversation memory
         #
-        memory = self.session_manager.get_memory(conversation_id)
+        with self.tracer.span(Stage.MEMORY_LOAD) as span:
 
-        memory.add_message(
-            role="user",
-            content=question,
-        )
+            memory = self.session_manager.get_memory(conversation_id)
+
+            span.set(
+                # Turns since the last summary checkpoint - this is what
+                # SUMMARY_TRIGGER counts, not the whole history.
+                pending_message_count=len(memory.messages),
+                recent_message_count=len(memory.get_recent_messages()),
+                has_summary=bool(memory.get_summary()),
+            )
+
+        with self.tracer.span(Stage.MEMORY_WRITE, role="user"):
+
+            memory.add_message(
+                role="user",
+                content=question,
+            )
 
         #
         # 2. Rewrite query
@@ -119,11 +139,16 @@ class HistoryAwareRAGService:
 
             answer = "I couldn't find relevant information " "in the documents."
 
-            memory.add_message(
-                role="assistant",
-                content=answer,
-            )
+            with self.tracer.span(Stage.MEMORY_WRITE, role="assistant"):
 
+                memory.add_message(
+                    role="assistant",
+                    content=answer,
+                )
+
+            # No generation span is emitted here, deliberately: the absence
+            # of one, next to the trace's source_count of 0, is precisely
+            # the record that retrieval short-circuited the LLM call.
             return answer, []
 
         logger.debug(
@@ -134,22 +159,42 @@ class HistoryAwareRAGService:
         #
         # 4. Build prompt
         #
-        prompt = PromptBuilder.build_prompt(
-            question=question,
-            chunks=chunks,
-            summary=memory.get_summary(),
-            recent_messages=memory.get_recent_messages(),
-        )
+        with self.tracer.span(Stage.CONTEXT_BUILD) as span:
+
+            prompt = PromptBuilder.build_prompt(
+                question=question,
+                chunks=chunks,
+                summary=memory.get_summary(),
+                recent_messages=memory.get_recent_messages(),
+            )
+
+            # The funnel the spec asks to be able to follow: how many
+            # chunks retrieval and reranking settled on, how much text that
+            # is, and how much prompt it turned into once the summary and
+            # recent turns were added around it.
+            span.set(
+                chunk_count=len(chunks),
+                context_chars=sum(len(chunk.text) for chunk in chunks),
+                prompt_chars=len(prompt),
+                document_count=len({chunk.metadata.document_id for chunk in chunks}),
+            )
 
         #
         # 5. Generate answer
         #
-        response = (generator or self.generator).generate(prompt)
+        with self.tracer.span(Stage.GENERATION) as span:
 
-        if not response.text:
-            raise ValueError("LLM returned an empty response.")
+            response = (generator or self.generator).generate(prompt)
 
-        answer = response.text
+            if not response.text:
+                raise ValueError("LLM returned an empty response.")
+
+            answer = response.text
+
+            span.set(
+                answer_chars=len(answer),
+                **generation_metadata(response),
+            )
 
         if on_usage is not None and response.usage is not None:
             on_usage(response.usage)
@@ -157,10 +202,12 @@ class HistoryAwareRAGService:
         #
         # 6. Update conversation memory
         #
-        memory.add_message(
-            role="assistant",
-            content=answer,
-        )
+        with self.tracer.span(Stage.MEMORY_WRITE, role="assistant"):
+
+            memory.add_message(
+                role="assistant",
+                content=answer,
+            )
 
         #
         # 7. Update conversation summary

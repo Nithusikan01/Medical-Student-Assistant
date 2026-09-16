@@ -17,18 +17,51 @@ logger = logging.getLogger(__name__)
 REDACTED = "[redacted]"
 TRUNCATED_SUFFIX = "...[truncated]"
 
-# Substring match on the key, lowercased. Broad on purpose: a false positive
-# costs one unreadable debugging field, a false negative leaks a credential.
+# Matching is deliberately three-part rather than one broad substring list.
+# A bare "token" substring looks safer but redacts `prompt_tokens` and
+# `total_tokens` - which would quietly make token accounting, the one thing
+# this application already monitored, impossible to record. So: exact names
+# that are always credentials, compound names that are always credentials,
+# and singular suffixes. `user_token` is caught by the suffix rule;
+# `total_tokens` is not, because it is plural.
+SENSITIVE_EXACT_KEYS = frozenset(
+    {
+        "auth",
+        "authorization",
+        "cookie",
+        "credential",
+        "credentials",
+        "key",
+        "password",
+        "passwd",
+        "secret",
+        "session",
+        "token",
+    }
+)
+
 SENSITIVE_KEY_MARKERS = (
     "api_key",
     "apikey",
-    "auth",
-    "cookie",
-    "credential",
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "auth_token",
+    "bearer",
+    "private_key",
+    "secret_key",
+    "session_id",
     "password",
-    "secret",
-    "session",
-    "token",
+    "credential",
+    "authorization",
+)
+
+SENSITIVE_KEY_SUFFIXES = (
+    "_token",
+    "_key",
+    "_secret",
+    "_password",
+    "_credential",
 )
 
 MAX_STRING_LENGTH = 256
@@ -40,7 +73,13 @@ MAX_DEPTH = 3
 def _is_sensitive(key: str) -> bool:
     lowered = key.lower()
 
-    return any(marker in lowered for marker in SENSITIVE_KEY_MARKERS)
+    if lowered in SENSITIVE_EXACT_KEYS:
+        return True
+
+    if any(marker in lowered for marker in SENSITIVE_KEY_MARKERS):
+        return True
+
+    return lowered.endswith(SENSITIVE_KEY_SUFFIXES)
 
 
 def _truncate(text: str) -> str:

@@ -1,9 +1,15 @@
 from rag.observability.context import (
     TraceContext,
+    current_span,
     current_span_id,
     current_trace,
     current_trace_id,
     new_id,
+)
+from rag.observability.metrics import (
+    generation_metadata,
+    rank_change,
+    summarize_scores,
 )
 from rag.observability.protocol import TraceRecorder
 from rag.observability.sanitize import sanitize_metadata
@@ -35,9 +41,13 @@ __all__ = [
     "TraceRecord",
     "TraceRecorder",
     "Tracer",
+    "current_span",
     "current_span_id",
     "current_trace",
     "current_trace_id",
+    "generation_metadata",
     "new_id",
+    "rank_change",
     "sanitize_metadata",
+    "summarize_scores",
 ]
