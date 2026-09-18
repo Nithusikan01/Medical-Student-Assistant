@@ -13,6 +13,14 @@ from backend.schemas.conversation import (
     ConversationUpdateRequest,
 )
 from backend.schemas.document import DocumentResponse, IngestResponse
+from backend.schemas.monitoring import (
+    OverviewResponse,
+    PerformanceResponse,
+    RetrievalResponse,
+    TokensResponse,
+    TraceDetailResponse,
+    TraceListResponse,
+)
 from backend.schemas.query import (
     GenerationModelInfo,
     GenerationModelsResponse,
@@ -42,14 +50,20 @@ __all__ = [
     "LoginRequest",
     "ModelUsageInfo",
     "ModelUsageResponse",
+    "OverviewResponse",
+    "PerformanceResponse",
     "QueryRequest",
     "QueryResponse",
     "RegisterRequest",
+    "RetrievalResponse",
     "SetPasswordRequest",
     "SourceChunk",
     "SourceMetadata",
     "StageUsageInfo",
     "TokenResponse",
+    "TokensResponse",
+    "TraceDetailResponse",
+    "TraceListResponse",
     "UpdateUserRoleRequest",
     "UserResponse",
 ]

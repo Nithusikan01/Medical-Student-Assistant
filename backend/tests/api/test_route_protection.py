@@ -48,6 +48,15 @@ ADMIN_ONLY = {
     ("DELETE", "/api/users/{user_id}"),
     ("PATCH", "/api/users/{user_id}/role"),
     ("GET", "/api/usage/models"),
+    # Monitoring exposes every user's traffic, conversation ids and spend,
+    # so it is admin-only in its entirety - there is no per-user view of it.
+    ("GET", "/api/monitoring/overview"),
+    ("GET", "/api/monitoring/performance"),
+    ("GET", "/api/monitoring/tokens"),
+    ("GET", "/api/monitoring/retrieval"),
+    ("GET", "/api/monitoring/errors"),
+    ("GET", "/api/monitoring/traces"),
+    ("GET", "/api/monitoring/traces/{trace_id}"),
 }
 
 # Bodies that satisfy each route's schema, so a rejection is about

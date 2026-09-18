@@ -16,7 +16,9 @@ ever changes; `count_traces` exists so a caller can see the size of a
 window before asking for it.
 """
 
+import uuid
 from collections.abc import Sequence
+from datetime import datetime
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
@@ -195,3 +197,96 @@ def span_metadata(
     )
 
     return [(stage, meta or {}) for stage, meta in rows]
+
+
+# ----------------------------------------------------------------------
+# The trace explorer's reads
+# ----------------------------------------------------------------------
+
+
+def list_traces(
+    session: Session,
+    window: TimeWindow,
+    *,
+    limit: int = 50,
+    before: datetime | None = None,
+    route: str | None = None,
+    failed_only: bool = False,
+    conversation_id: uuid.UUID | None = None,
+) -> list[RagTrace]:
+    """
+    Recent traces, newest first.
+
+    Paged by a `before` cursor on started_at rather than by OFFSET: traces
+    arrive continuously, and an offset would skip or repeat rows as the
+    table grows underneath the reader.
+
+    `failed_only` covers the same three cases the metric layer treats as a
+    failure - an errored trace, a trace with no status at all, and a 5xx -
+    because the subtle one is a handled 502, where the trace's own status
+    is still "ok".
+    """
+
+    query = sa.select(RagTrace).where(_within(window))
+
+    if before is not None:
+        query = query.where(RagTrace.started_at < before)
+
+    if route is not None:
+        query = query.where(RagTrace.route == route)
+
+    if conversation_id is not None:
+        query = query.where(RagTrace.conversation_id == conversation_id)
+
+    if failed_only:
+        query = query.where(
+            sa.or_(
+                RagTrace.status != "ok",
+                RagTrace.status_code.is_(None),
+                RagTrace.status_code >= 500,
+            )
+        )
+
+    return list(
+        session.scalars(query.order_by(RagTrace.started_at.desc()).limit(limit)).all()
+    )
+
+
+def get_trace(session: Session, trace_id: str) -> RagTrace | None:
+    return session.get(RagTrace, trace_id)
+
+
+def spans_for_trace(session: Session, trace_id: str) -> list[RagSpan]:
+    """
+    One trace's spans in waterfall order.
+
+    Ordered by `sequence`, not `started_at`: the wall clock ties between a
+    parent span and the child it opens, so ordering by time renders the
+    waterfall scrambled.
+    """
+
+    return list(
+        session.scalars(
+            sa.select(RagSpan)
+            .where(RagSpan.trace_id == trace_id)
+            .order_by(RagSpan.sequence, RagSpan.started_at)
+        ).all()
+    )
+
+
+def find_trace_ids_for_conversation(
+    session: Session,
+    conversation_id: uuid.UUID,
+    *,
+    limit: int = 50,
+) -> list[str]:
+    """Every trace belonging to one conversation, newest first."""
+
+    return list(
+        session.scalars(
+            sa.select(RagTrace.id)
+            .where(RagTrace.conversation_id == conversation_id)
+            .order_by(RagTrace.started_at.desc())
+            .limit(limit)
+        ).all()
+    )
