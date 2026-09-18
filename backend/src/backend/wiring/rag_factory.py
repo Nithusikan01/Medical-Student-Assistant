@@ -16,6 +16,7 @@ from rag.ingestion.schemas import (
 )
 from rag.llm.generator import GeminiGenerator
 from rag.llm.groq_generator import GroqGenerator
+from rag.llm.metering import MeteredGenerator
 from rag.llm.protocol import TextGenerator
 from rag.observability import Tracer
 from rag.rerankers.fallback_reranker import FallbackReranker
@@ -219,13 +220,18 @@ def build_embedder():
 
 
 @lru_cache
-def build_generator() -> GeminiGenerator:
+def build_generator() -> TextGenerator:
     """
     One Gemini client for the whole process, shared by generation, query
     rewriting, summarization, and the reranker fallback.
+
+    Wrapped in MeteredGenerator, which is what makes all four of those call
+    sites appear in token accounting. Wrapping here rather than threading a
+    callback through each component means a call site added later is metered
+    by default instead of by remembering to.
     """
 
-    return GeminiGenerator(load_settings().generation_config())
+    return MeteredGenerator(GeminiGenerator(load_settings().generation_config()))
 
 
 DEFAULT_GENERATION_MODEL_ID = "gemini-flash"
@@ -315,13 +321,15 @@ def daily_token_limit(model_id: str) -> int | None:
 
 
 @lru_cache
-def _build_groq_generator(model_name: str) -> GroqGenerator:
+def _build_groq_generator(model_name: str) -> TextGenerator:
     settings = load_settings()
 
-    return GroqGenerator(
-        GenerationConfig(
-            model_name=model_name,
-            api_key=settings.groq_api_key,
+    return MeteredGenerator(
+        GroqGenerator(
+            GenerationConfig(
+                model_name=model_name,
+                api_key=settings.groq_api_key,
+            )
         )
     )
 

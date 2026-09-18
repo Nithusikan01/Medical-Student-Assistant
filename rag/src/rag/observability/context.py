@@ -11,9 +11,10 @@ Nothing here is imported by the rest of the engine except the tracer, so a
 caller that wants explicit propagation can still pass a Tracer around.
 """
 
+import itertools
 import uuid
 from contextvars import ContextVar, Token
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -43,6 +44,16 @@ class TraceContext:
     # unsampled request costs one random() call and nothing else.
     sampled: bool = True
 
+    # Hands out a monotonic position to each span in this trace.
+    #
+    # Ordering a waterfall by started_at does not work: the wall clock is
+    # coarser than the gap between a parent span and the child it opens, so
+    # retrieval, dense_retrieval and query_embedding routinely share one
+    # timestamp to the microsecond and render scrambled. itertools.count is
+    # not thread-safe in general, but next() on it is a single bytecode step
+    # under CPython, and a trace is in any case confined to one request.
+    sequence: Any = field(default_factory=lambda: itertools.count(1))
+
 
 _current_trace: ContextVar[TraceContext | None] = ContextVar(
     "rag_current_trace",
@@ -56,6 +67,14 @@ _current_trace: ContextVar[TraceContext | None] = ContextVar(
 # the handle lives in tracer.py, which imports this module.
 _current_span: ContextVar[Any | None] = ContextVar(
     "rag_current_span",
+    default=None,
+)
+
+# The stage name of the innermost open span, bound whether or not the trace
+# is being recorded. Token metering attributes spend by stage, and billing
+# must not change depending on whether a request happened to be sampled.
+_current_stage: ContextVar[str | None] = ContextVar(
+    "rag_current_stage",
     default=None,
 )
 
@@ -94,3 +113,30 @@ def bind_span(span: Any | None) -> Token:
 
 def reset_span(token: Token) -> None:
     _current_span.reset(token)
+
+
+def current_stage() -> str | None:
+    return _current_stage.get()
+
+
+def bind_stage(stage: str | None) -> Token:
+    return _current_stage.set(stage)
+
+
+def reset_stage(token: Token) -> None:
+    _current_stage.reset(token)
+
+
+def next_sequence(trace: TraceContext | None) -> int:
+    """The next span position within a trace, or 0 outside one."""
+
+    if trace is None or trace.sequence is None:
+        return 0
+
+    try:
+        return next(trace.sequence)
+    except (TypeError, StopIteration):
+        # TypeError if something other than a counter ended up in the field;
+        # StopIteration is unreachable for itertools.count but costs nothing
+        # to guard. Either way an unnumbered span beats a failed request.
+        return 0

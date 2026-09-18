@@ -260,7 +260,7 @@ def test_spans_from_the_endpoint_join_the_request_trace(
 
     class SpanningRagService:
         def answer_with_sources(
-            self, *, conversation_id, question, top_k, generator=None, on_usage=None
+            self, *, conversation_id, question, top_k, generator=None
         ):
             with tracer.span(Stage.GENERATION) as span:
                 span.set(ran_in="worker thread")

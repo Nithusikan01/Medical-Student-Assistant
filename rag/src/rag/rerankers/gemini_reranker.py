@@ -2,7 +2,7 @@ import json
 import logging
 import re
 
-from rag.llm.generator import GeminiGenerator
+from rag.llm.protocol import TextGenerator
 from rag.rerankers.base import BaseReranker
 from rag.retrieval.schemas import RetrievedChunk
 
@@ -21,7 +21,7 @@ class GeminiReranker(BaseReranker):
     FallbackReranker is what decides the final resort (retrieval order).
     """
 
-    def __init__(self, generator: GeminiGenerator) -> None:
+    def __init__(self, generator: TextGenerator) -> None:
         self.generator = generator
 
     def rerank(

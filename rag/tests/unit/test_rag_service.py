@@ -1,6 +1,6 @@
 from unittest.mock import Mock
 
-from rag.llm.schemas import LLMResponse, TokenUsage
+from rag.llm.schemas import LLMResponse
 from rag.services.history_aware_rag_service import HistoryAwareRAGService
 from tests.unit.helpers import make_retrieved_chunk
 
@@ -142,36 +142,6 @@ def test_answer_with_sources_uses_override_generator_when_given():
     assert answer == "Override answer"
     override_generator.generate.assert_called_once()
     mock_generator.generate.assert_not_called()
-
-
-def test_answer_with_sources_reports_usage_when_provider_returns_it():
-    service, _, mock_generator, *_ = build_service(generated_text="Answer")
-    usage = TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15)
-    mock_generator.generate.return_value = LLMResponse(text="Answer", usage=usage)
-
-    reported: list[TokenUsage] = []
-
-    service.answer_with_sources(
-        conversation_id="conversation_1",
-        question="question",
-        on_usage=reported.append,
-    )
-
-    assert reported == [usage]
-
-
-def test_answer_with_sources_skips_on_usage_when_provider_reports_none():
-    service, *_ = build_service(generated_text="Answer")
-
-    reported: list[TokenUsage] = []
-
-    service.answer_with_sources(
-        conversation_id="conversation_1",
-        question="question",
-        on_usage=reported.append,
-    )
-
-    assert reported == []
 
 
 def test_answer_updates_summary_after_trigger():

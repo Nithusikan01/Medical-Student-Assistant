@@ -1,11 +1,11 @@
 from rag.conversation.memory import ConversationMemory
-from rag.llm.generator import GeminiGenerator
+from rag.llm.protocol import TextGenerator
 from rag.observability import Stage, Tracer, generation_metadata
 
 
 class ConversationSummarizer:
 
-    def __init__(self, generator: GeminiGenerator, *, tracer: Tracer | None = None):
+    def __init__(self, generator: TextGenerator, *, tracer: Tracer | None = None):
         self.generator = generator
         self.tracer = tracer if tracer is not None else Tracer()
 
