@@ -138,6 +138,18 @@ class RerankingSummary:
     reordered_count: Distribution = field(default_factory=Distribution)
     top_score: Distribution = field(default_factory=Distribution)
 
+    # How deep into the candidate pool reranking actually reached.
+    #
+    # The tuning signal for candidate_k. Retrieval fetches candidate_k
+    # chunks and reranking scores all of them; if max_promoted_rank sits
+    # far below candidate_k across a window, the remainder were retrieved
+    # and scored for nothing, and the pool can shrink. If it presses
+    # against candidate_k, good chunks are being cut off before the
+    # reranker sees them and the pool should grow.
+    max_promoted_rank: Distribution = field(default_factory=Distribution)
+    mean_promoted_rank: Distribution = field(default_factory=Distribution)
+    unused_candidate_depth: Distribution = field(default_factory=Distribution)
+
 
 @dataclass(frozen=True, slots=True)
 class RetrievalReport:
@@ -243,6 +255,9 @@ def summarize_reranking(rows: Sequence[dict]) -> RerankingSummary | None:
         introduced_count=summarize(_field(rows, "introduced_count")),
         reordered_count=summarize(_field(rows, "reordered_count")),
         top_score=summarize(_field(rows, "top_score")),
+        max_promoted_rank=summarize(_field(rows, "max_promoted_rank")),
+        mean_promoted_rank=summarize(_field(rows, "mean_promoted_rank")),
+        unused_candidate_depth=summarize(_field(rows, "unused_candidate_depth")),
     )
 
 

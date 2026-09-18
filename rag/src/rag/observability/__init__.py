@@ -8,6 +8,7 @@ from rag.observability.context import (
 )
 from rag.observability.metrics import (
     generation_metadata,
+    promotion_profile,
     rank_change,
     summarize_scores,
 )
@@ -47,6 +48,7 @@ __all__ = [
     "current_trace_id",
     "generation_metadata",
     "new_id",
+    "promotion_profile",
     "rank_change",
     "sanitize_metadata",
     "summarize_scores",

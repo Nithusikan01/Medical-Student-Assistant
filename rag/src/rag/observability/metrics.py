@@ -91,3 +91,46 @@ def generation_metadata(response: Any) -> dict[str, Any]:
         fields["total_tokens"] = getattr(usage, "total_tokens", None)
 
     return {name: value for name, value in fields.items() if value is not None}
+
+
+def promotion_profile(
+    candidates: Sequence[str],
+    selected: Sequence[str],
+) -> dict[str, Any]:
+    """
+    Where in the candidate list the reranked selection came from.
+
+    Section 21 asks whether reranking earns its place, and warns against
+    assuming it does. Counting how much it *changed* the selection answers
+    half of that; this answers the other half - how deep into the candidate
+    pool it had to reach.
+
+    The actionable number is `max_promoted_rank`. Retrieval fetches
+    candidate_k chunks and reranking scores every one of them, so if the
+    final selection is consistently drawn from the first handful, the rest
+    were retrieved, transferred and scored for nothing. A max that sits far
+    below candidate_k is a latency and cost saving waiting to be taken; one
+    that pushes against candidate_k says the pool is too small and good
+    chunks are being cut off before the reranker ever sees them.
+
+    Ranks are 1-based positions in the pre-rerank order. A selected chunk
+    that is not in the candidate list at all is skipped rather than guessed
+    at - it should not happen, and inventing a rank for it would quietly
+    corrupt the average.
+    """
+
+    positions = {chunk_id: index for index, chunk_id in enumerate(candidates, start=1)}
+
+    ranks = [positions[chunk_id] for chunk_id in selected if chunk_id in positions]
+
+    if not ranks:
+        return {}
+
+    return {
+        "promoted_from_ranks": ranks,
+        "max_promoted_rank": max(ranks),
+        "mean_promoted_rank": sum(ranks) / len(ranks),
+        # How much of the pool went unused. Reported alongside the max so a
+        # reader does not have to know candidate_k to interpret it.
+        "unused_candidate_depth": max(len(candidates) - max(ranks), 0),
+    }
