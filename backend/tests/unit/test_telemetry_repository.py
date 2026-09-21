@@ -23,6 +23,7 @@ from backend.observability.aggregation import (
 )
 from backend.observability.config import TelemetryConfig
 from backend.observability.recorder import PersistentTraceRecorder
+from backend.observability.retrieval_metrics import RETRIEVAL_STAGES, build_report
 from backend.observability.sink import BackgroundTelemetrySink
 
 NOW = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
@@ -265,3 +266,99 @@ def test_metrics_can_be_computed_from_what_the_tracer_actually_writes(
     assert stored.status_code in {200, 502}
     assert "status_code" not in (stored.meta or {})
     assert "route" not in (stored.meta or {})
+
+
+# ----------------------------------------------------------------------
+# Retrieval metadata
+# ----------------------------------------------------------------------
+
+
+def add_span_with_meta(db, *, span_id, stage, meta, minutes_ago=30.0):
+    started = NOW - timedelta(minutes=minutes_ago)
+
+    db.add(
+        RagSpan(
+            id=span_id,
+            trace_id="trace-1",
+            stage=stage,
+            status="ok",
+            started_at=started,
+            ended_at=started + timedelta(milliseconds=5),
+            duration_ms=5.0,
+            meta=meta,
+        )
+    )
+    db.commit()
+
+
+def test_span_metadata_is_fetched_for_the_named_stages(db, window):
+    add_span_with_meta(
+        db,
+        span_id="d1",
+        stage="dense_retrieval",
+        meta={"result_count": 30, "top_score": 0.9},
+    )
+    add_span_with_meta(
+        db, span_id="b1", stage="bm25_retrieval", meta={"result_count": 0}
+    )
+    add_span_with_meta(db, span_id="g1", stage="generation", meta={"total_tokens": 100})
+
+    rows = repo.span_metadata(db, window, stages=RETRIEVAL_STAGES)
+
+    assert {stage for stage, _ in rows} == {"dense_retrieval", "bm25_retrieval"}
+
+
+def test_asking_for_no_stages_queries_nothing(db, window):
+    add_span_with_meta(db, span_id="d1", stage="dense_retrieval", meta={})
+
+    assert repo.span_metadata(db, window, stages=[]) == []
+
+
+def test_a_span_with_no_metadata_comes_back_as_an_empty_dict(db, window):
+    add_span_with_meta(db, span_id="d1", stage="dense_retrieval", meta=None)
+
+    assert repo.span_metadata(db, window, stages=["dense_retrieval"]) == [
+        ("dense_retrieval", {})
+    ]
+
+
+def test_a_retrieval_report_can_be_built_from_stored_spans(db, window):
+    """The whole path: spans in the database out to a retrieval report."""
+
+    add_span_with_meta(
+        db,
+        span_id="d1",
+        stage="dense_retrieval",
+        meta={"result_count": 30, "top_score": 0.9, "average_score": 0.5},
+    )
+    add_span_with_meta(
+        db, span_id="b1", stage="bm25_retrieval", meta={"result_count": 0}
+    )
+    add_span_with_meta(
+        db,
+        span_id="f1",
+        stage="fusion",
+        meta={"dense_count": 30, "bm25_count": 0, "dense_only_count": 30},
+    )
+    add_span_with_meta(
+        db,
+        span_id="r1",
+        stage="reranking",
+        meta={
+            "candidate_count": 30,
+            "final_count": 5,
+            "reranker_used": "PineconeReranker",
+            "reranker_degraded": False,
+            "introduced_count": 3,
+            "reordered_count": 5,
+        },
+    )
+
+    report = build_report(repo.span_metadata(db, window, stages=RETRIEVAL_STAGES))
+
+    by_stage = {r.stage: r for r in report.retrievers}
+
+    assert by_stage["bm25_retrieval"].empty_rate == 1.0
+    assert report.fusion.single_retriever_rate == 1.0
+    assert report.reranking.change_rate == 1.0
+    assert report.reranking.degraded_rate == 0.0

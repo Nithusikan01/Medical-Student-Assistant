@@ -16,6 +16,8 @@ ever changes; `count_traces` exists so a caller can see the size of a
 window before asking for it.
 """
 
+from collections.abc import Sequence
+
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
@@ -156,3 +158,40 @@ def route_counts(
     )
 
     return [(route or "unmatched", int(total)) for route, total in rows]
+
+
+def span_metadata(
+    session: Session,
+    window: TimeWindow,
+    *,
+    stages: Sequence[str],
+) -> list[tuple[str, dict]]:
+    """
+    (stage, metadata) for the named stages within the window.
+
+    The retrieval numbers - counts, scores, overlap, rank change - live in
+    each span's JSON metadata rather than in columns, so unlike the latency
+    paths this cannot be a GROUP BY. Fetching stage and metadata only, and
+    summarising in Python, keeps one portable code path the SQLite suite
+    genuinely exercises; promoting a dozen retrieval fields to columns to
+    aggregate them in SQL would be a lot of schema for numbers nobody
+    filters on.
+
+    The same volume ceiling as the percentile paths applies, and the same
+    answer: section 46's rollups, if it ever matters.
+    """
+
+    if not stages:
+        return []
+
+    rows = session.execute(
+        sa.select(RagSpan.stage, RagSpan.meta).where(
+            sa.and_(
+                RagSpan.started_at >= window.start,
+                RagSpan.started_at < window.end,
+                RagSpan.stage.in_(list(stages)),
+            )
+        )
+    )
+
+    return [(stage, meta or {}) for stage, meta in rows]
