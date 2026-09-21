@@ -162,3 +162,76 @@ def sum_tokens_by_stage_since(session: Session, since: datetime) -> dict[str, in
     )
 
     return {stage: int(total) for stage, total in rows}
+
+
+def totals_between(
+    session: Session,
+    start: datetime,
+    end: datetime,
+) -> dict[str, list[tuple]]:
+    """
+    Token and cost totals over a window, grouped three ways.
+
+    Window-bounded rather than open-ended `since`, because the monitoring
+    dashboard compares periods and an unbounded tail would make every
+    window include everything before it.
+
+    Cost sums count how many rows were actually priced alongside the total,
+    so the caller can tell "cost nothing" from "nothing was priced" - the
+    distinction the whole pricing design turns on.
+    """
+
+    def _window(query):
+        return query.where(
+            sa.and_(
+                GenerationUsageEvent.created_at >= start,
+                GenerationUsageEvent.created_at < end,
+            )
+        )
+
+    by_model = session.execute(
+        _window(
+            sa.select(
+                GenerationUsageEvent.model_id,
+                GenerationUsageEvent.provider,
+                sa.func.sum(GenerationUsageEvent.prompt_tokens),
+                sa.func.sum(GenerationUsageEvent.completion_tokens),
+                sa.func.sum(GenerationUsageEvent.total_tokens),
+                sa.func.sum(GenerationUsageEvent.estimated_cost_usd),
+                sa.func.count(GenerationUsageEvent.estimated_cost_usd),
+                sa.func.count(),
+            )
+        ).group_by(GenerationUsageEvent.model_id, GenerationUsageEvent.provider)
+    ).all()
+
+    by_stage = session.execute(
+        _window(
+            sa.select(
+                GenerationUsageEvent.stage,
+                sa.func.sum(GenerationUsageEvent.total_tokens),
+                sa.func.sum(GenerationUsageEvent.estimated_cost_usd),
+                sa.func.count(),
+            )
+        ).group_by(GenerationUsageEvent.stage)
+    ).all()
+
+    return {"by_model": list(by_model), "by_stage": list(by_stage)}
+
+
+def tokens_for_trace(session: Session, trace_id: str) -> list[tuple]:
+    """(stage, model_id, prompt, completion, total, cost) for one request."""
+
+    return list(
+        session.execute(
+            sa.select(
+                GenerationUsageEvent.stage,
+                GenerationUsageEvent.model_id,
+                GenerationUsageEvent.prompt_tokens,
+                GenerationUsageEvent.completion_tokens,
+                GenerationUsageEvent.total_tokens,
+                GenerationUsageEvent.estimated_cost_usd,
+            )
+            .where(GenerationUsageEvent.trace_id == trace_id)
+            .order_by(GenerationUsageEvent.created_at)
+        ).all()
+    )

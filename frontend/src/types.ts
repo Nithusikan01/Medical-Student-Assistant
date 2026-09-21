@@ -138,3 +138,251 @@ export interface ModelUsageResponse {
   pricing_configured: boolean;
   generated_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// Monitoring
+//
+// Mirrors backend/src/backend/schemas/monitoring.py by hand, like the rest of
+// this file. Two conventions carry through and change how these render:
+//
+//   - null is not zero. An absent percentile means nothing ran, not that it
+//     was instant; a null cost means the model is not priced, not free.
+//   - nothing here is a quality claim. Recall@K, faithfulness and the rest
+//     need ground truth the API does not have.
+//
+// Decimal fields arrive as strings, so they survive the JSON round trip
+// without losing precision to a float.
+// ---------------------------------------------------------------------------
+
+export type MonitoringRange = "15m" | "1h" | "6h" | "24h" | "7d" | "30d";
+
+export interface WindowInfo {
+  start: string;
+  end: string;
+  range: string | null;
+  bucket_seconds: number;
+}
+
+export interface LatencyInfo {
+  count: number;
+  p50_ms: number | null;
+  p75_ms: number | null;
+  p90_ms: number | null;
+  p95_ms: number | null;
+  p99_ms: number | null;
+}
+
+export interface RequestInfo {
+  total: number;
+  succeeded: number;
+  client_errors: number;
+  failed: number;
+  success_rate: number;
+  client_error_rate: number;
+  failure_rate: number;
+  requests_per_minute: number;
+  latency: LatencyInfo;
+}
+
+export interface StageLatencyInfo {
+  stage: string;
+  count: number;
+  errors: number;
+  error_rate: number;
+  latency: LatencyInfo;
+}
+
+export interface SeriesPointInfo {
+  start: string;
+  total: number;
+  succeeded: number;
+  client_errors: number;
+  failed: number;
+  p95_ms: number | null;
+}
+
+export interface InFlightInfo {
+  current: number;
+  peak: number;
+  // Always true: a trace row is written only when a request finishes, so
+  // this comes from the process, not the database. With several tasks
+  // running it is one task's share - say so rather than imply a total.
+  per_process: boolean;
+}
+
+export interface RouteCountInfo {
+  route: string;
+  count: number;
+}
+
+export interface OverviewResponse {
+  window: WindowInfo;
+  requests: RequestInfo;
+  slowest_stages: StageLatencyInfo[];
+  in_flight: InFlightInfo;
+  total_tokens: number;
+  estimated_cost_usd: string | null;
+  pricing_configured: boolean;
+  error_count: number;
+}
+
+export interface PerformanceResponse {
+  window: WindowInfo;
+  requests: RequestInfo;
+  stages: StageLatencyInfo[];
+  series: SeriesPointInfo[];
+  routes: RouteCountInfo[];
+}
+
+export interface ModelSpendInfo {
+  model_id: string;
+  provider: string;
+  calls: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: string | null;
+  priced_calls: number;
+}
+
+export interface StageSpendInfo {
+  stage: string;
+  calls: number;
+  total_tokens: number;
+  estimated_cost_usd: string | null;
+}
+
+export interface TokensResponse {
+  window: WindowInfo;
+  total_tokens: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  estimated_cost_usd: string | null;
+  pricing_configured: boolean;
+  by_model: ModelSpendInfo[];
+  by_stage: StageSpendInfo[];
+}
+
+export interface DistributionInfo {
+  count: number;
+  mean: number | null;
+  p50: number | null;
+  p95: number | null;
+  minimum: number | null;
+  maximum: number | null;
+}
+
+export interface RetrieverInfo {
+  stage: string;
+  calls: number;
+  empty_calls: number;
+  empty_rate: number;
+  result_count: DistributionInfo;
+  top_score: DistributionInfo;
+  average_score: DistributionInfo;
+}
+
+export interface FusionInfo {
+  calls: number;
+  dense_only_share: number | null;
+  bm25_only_share: number | null;
+  overlap_share: number | null;
+  single_retriever_calls: number;
+  single_retriever_rate: number;
+  overlap_count: DistributionInfo;
+  unique_count: DistributionInfo;
+}
+
+export interface RerankingInfo {
+  calls: number;
+  reranker_usage: Record<string, number>;
+  degraded_calls: number;
+  degraded_rate: number;
+  changed_calls: number;
+  change_rate: number;
+  candidate_count: DistributionInfo;
+  final_count: DistributionInfo;
+  introduced_count: DistributionInfo;
+  reordered_count: DistributionInfo;
+  top_score: DistributionInfo;
+  max_promoted_rank: DistributionInfo;
+  mean_promoted_rank: DistributionInfo;
+  unused_candidate_depth: DistributionInfo;
+}
+
+export interface RetrievalResponse {
+  window: WindowInfo;
+  retrievers: RetrieverInfo[];
+  // null means the stage did not run, which is not the same as running and
+  // finding nothing.
+  fusion: FusionInfo | null;
+  reranking: RerankingInfo | null;
+  offline_metrics_available: boolean;
+  offline_metrics_note: string;
+}
+
+export interface ErrorCountInfo {
+  stage: string;
+  error_type: string;
+  count: number;
+}
+
+export interface ErrorsResponse {
+  window: WindowInfo;
+  failed_requests: number;
+  failure_rate: number;
+  by_stage: ErrorCountInfo[];
+}
+
+export interface TraceSummaryInfo {
+  trace_id: string;
+  request_id: string | null;
+  route: string | null;
+  status: string;
+  status_code: number | null;
+  error_type: string | null;
+  started_at: string;
+  duration_ms: number;
+  conversation_id: string | null;
+  user_id: string | null;
+  environment: string | null;
+  app_version: string | null;
+}
+
+export interface TraceListResponse {
+  window: WindowInfo;
+  traces: TraceSummaryInfo[];
+  // Pass back as `before` for the next page. null on the last page.
+  next_before: string | null;
+}
+
+export interface SpanInfo {
+  span_id: string;
+  parent_span_id: string | null;
+  // Waterfall position. Order by this, never by started_at - the wall clock
+  // ties between a parent span and the child it opens.
+  sequence: number;
+  stage: string;
+  status: string;
+  error_type: string | null;
+  started_at: string;
+  duration_ms: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface TraceTokenInfo {
+  stage: string;
+  model_id: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: string | null;
+}
+
+export interface TraceDetailResponse {
+  trace: TraceSummaryInfo;
+  spans: SpanInfo[];
+  tokens: TraceTokenInfo[];
+  total_tokens: number;
+  estimated_cost_usd: string | null;
+}

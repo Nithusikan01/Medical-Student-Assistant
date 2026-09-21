@@ -18,6 +18,7 @@ from backend.routers.conversations import router as conversations_router
 from backend.routers.documents import router as documents_router
 from backend.routers.health import router as health_router
 from backend.routers.ingest import router as ingest_router
+from backend.routers.monitoring import router as monitoring_router
 from backend.routers.query import router as query_router
 from backend.routers.usage import router as usage_router
 from backend.routers.users import router as users_router
@@ -167,6 +168,12 @@ def create_app() -> FastAPI:
         usage_router,
         prefix="/api",
         tags=["Usage"],
+    )
+
+    app.include_router(
+        monitoring_router,
+        prefix="/api",
+        tags=["Monitoring"],
     )
 
     return app
