@@ -1655,3 +1655,273 @@ a:hover {
   color: var(--muted);
   font-size: 13px;
 }
+
+/* --------------------------------------------------- trace explorer */
+
+.wf-lookup {
+  display: flex;
+  gap: 8px;
+}
+
+.wf-lookup input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.wf-lookup input:focus-visible,
+.wf-route:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.wf-lookup-go {
+  padding: 9px 18px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: var(--on-accent-weight);
+  color: var(--on-accent);
+  background: var(--accent);
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.wf-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.wf-filters label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+}
+
+.wf-route {
+  flex: 1;
+  min-width: 180px;
+  padding: 7px 11px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.wf-list td {
+  vertical-align: middle;
+}
+
+.wf-id {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* Status is a number and a word; the colour only reinforces it. */
+.wf-status[data-failed="true"] {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.wf-more {
+  margin-top: 14px;
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.wf-more:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.wf-trace-id {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  word-break: break-all;
+}
+
+/* ---- the timeline ---- */
+
+.wf-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-left: 148px;
+  padding-bottom: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.wf-row + .wf-row {
+  border-top: 1px solid var(--border);
+}
+
+/* The whole row is the hit target, not the bar - a 0.4%-wide span would
+   otherwise be unclickable. */
+.wf-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 34px;
+  padding: 4px 0;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.wf-bar-row:hover {
+  background: var(--raised);
+}
+
+.wf-label {
+  flex: 0 0 136px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.wf-label[data-nested="true"] {
+  padding-left: 14px;
+}
+
+.wf-track {
+  position: relative;
+  flex: 1;
+  height: 12px;
+  background: var(--raised);
+  border-radius: 3px;
+}
+
+.wf-bar {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 3px;
+  background: var(--chart-series-1);
+}
+
+.wf-bar[data-status="error"] {
+  background: var(--chart-failed);
+}
+
+.wf-duration {
+  flex: 0 0 76px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.wf-detail {
+  padding: 10px 0 14px 148px;
+}
+
+.wf-error {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  color: var(--danger);
+}
+
+.wf-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px 22px;
+  margin: 0;
+}
+
+.wf-meta div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wf-meta dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.wf-meta dd {
+  margin: 0;
+  font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+
+@media (max-width: 720px) {
+  .wf-axis,
+  .wf-detail {
+    margin-left: 0;
+    padding-left: 0;
+  }
+
+  .wf-label {
+    flex-basis: 96px;
+  }
+}
+
+/* A route or an environment name is a word, not a quantity: the numeric
+   size clips the tile as soon as the string is more than a few
+   characters. */
+.mon-tile-value[data-variant="text"] {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+/* Ids are long and the tile is not the place to read one in full. */
+.mon-tile-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-scope {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 12.5px;
+  color: var(--muted);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  width: fit-content;
+}
+
+.wf-scope button {
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--accent-ink);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}

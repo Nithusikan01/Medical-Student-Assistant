@@ -51,16 +51,26 @@ export function StatTile({
   value,
   detail,
   tone = "default",
+  variant = "number",
 }: {
   label: string;
   value: ReactNode;
   detail?: ReactNode;
   tone?: "default" | "warning" | "danger";
+  /**
+   * "text" for values that are words rather than quantities - a route, an
+   * environment name. The numeric size overflows a tile as soon as the
+   * string is longer than a few characters, and a clipped route is worse
+   * than a smaller one.
+   */
+  variant?: "number" | "text";
 }) {
   return (
     <div className="mon-tile" data-tone={tone}>
       <span className="mon-tile-label">{label}</span>
-      <span className="mon-tile-value">{value}</span>
+      <span className="mon-tile-value" data-variant={variant}>
+        {value}
+      </span>
       {detail !== undefined && <span className="mon-tile-detail">{detail}</span>}
     </div>
   );

@@ -124,6 +124,8 @@ export function AdminMonitoringPage() {
           </div>
 
           <p className="mon-links">
+            <Link to="/admin/traces">Trace explorer &rarr;</Link>
+            {" · "}
             <Link to="/admin/documents">Library, users and quotas &rarr;</Link>
           </p>
 
