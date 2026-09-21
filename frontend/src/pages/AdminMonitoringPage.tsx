@@ -36,9 +36,11 @@ import type {
   ErrorsResponse,
   FeedbackSummaryResponse,
   IngestionResponse,
+  KnowledgeBaseInfo,
   MonitoringRange,
   OverviewResponse,
   PerformanceResponse,
+  RequestInfo,
   RetrievalResponse,
   TokensResponse,
 } from "../types";
@@ -184,7 +186,10 @@ export function AdminMonitoringPage() {
         <div className="admin-inner mon-page" data-stale={loading && data !== null}>
           <div className="mon-header">
             <div>
-              <h1>Monitoring</h1>
+              {/* Named for the sidebar entry that leads here. A link and
+                  the page it opens calling themselves different things is
+                  a small cost paid on every single visit. */}
+              <h1>Admin dashboard</h1>
               <p className="tagline">
                 What the RAG pipeline did, measured from real requests.
               </p>
@@ -237,7 +242,53 @@ function Dashboard({ data }: { data: Data }) {
 
   return (
     <>
+      <StatusStrip
+        requests={requests}
+        knowledgeBase={ingestion.knowledge_base}
+        alerts={alerts}
+      />
+
+      <Band
+        number={1}
+        tone="danger"
+        title="Is something wrong right now?"
+        note="Everything here is a reason to stop reading and act."
+      />
+
       <AlertBanner alerts={alerts} />
+
+      {ingestion.knowledge_base.healthy ? (
+        <QuietPanel
+          title="Knowledge base"
+          summary={
+            ingestion.knowledge_base.total_documents === 0
+              ? "Nothing has been ingested yet, so there is nothing to retrieve."
+              : `All ${formatNumber(
+                  ingestion.knowledge_base.chunks_retrievable,
+                )} chunks across ${formatNumber(
+                  ingestion.knowledge_base.ready_documents,
+                )} documents are searchable`
+          }
+        />
+      ) : (
+        <KnowledgeBasePanel ingestion={ingestion} />
+      )}
+
+      {errors.failed_requests === 0 && errors.by_category.length === 0 ? (
+        <QuietPanel
+          title="Errors"
+          summary="Nothing has failed in this window."
+        />
+      ) : (
+        <ErrorsPanel errors={errors} />
+      )}
+
+      <Band
+        number={2}
+        tone="accent"
+        title="Is it healthy?"
+        note="Vital signs. Scanned, not read."
+      />
 
       <div className="mon-tiles">
         <StatTile
@@ -261,14 +312,6 @@ function Dashboard({ data }: { data: Data }) {
           label="p95 latency"
           value={formatMs(requests.latency.p95_ms)}
           detail={`p50 ${formatMs(requests.latency.p50_ms)}`}
-        />
-        <StatTile label="Tokens" value={formatNumber(overview.total_tokens)} />
-        <StatTile
-          label="Estimated cost"
-          value={formatCost(overview.estimated_cost_usd)}
-          detail={
-            overview.pricing_configured ? undefined : "no pricing configured"
-          }
         />
         <StatTile
           label="In flight"
@@ -371,10 +414,28 @@ function Dashboard({ data }: { data: Data }) {
         </details>
       </Panel>
 
+      <Band
+        number={3}
+        tone="muted"
+        title="Is it behaving well, and what does it cost?"
+        note="Read weekly, not hourly."
+      />
+
       <Panel
         title="Tokens and cost"
         description="Every LLM call a request makes, not just the answer."
       >
+        <div className="mon-tiles">
+          <StatTile label="Tokens" value={formatNumber(overview.total_tokens)} />
+          <StatTile
+            label="Estimated cost"
+            value={formatCost(overview.estimated_cost_usd)}
+            detail={
+              overview.pricing_configured ? undefined : "no pricing configured"
+            }
+          />
+        </div>
+
         <TokensByStageChart data={tokens.by_stage} />
 
         <table className="data-table mon-table">
@@ -502,93 +563,6 @@ function Dashboard({ data }: { data: Data }) {
       </Panel>
 
       <Panel
-        title="Knowledge base"
-        description={`${formatNumber(
-          ingestion.knowledge_base.ready_documents,
-        )} of ${formatNumber(
-          ingestion.knowledge_base.total_documents,
-        )} documents searchable · last ingest ${formatWhen(
-          ingestion.knowledge_base.last_ingested_at,
-        )}`}
-      >
-        <div className="mon-tiles">
-          <StatTile
-            label="Chunks searchable"
-            value={formatNumber(ingestion.knowledge_base.chunks_retrievable)}
-            detail={`of ${formatNumber(ingestion.knowledge_base.chunks_stored)} stored`}
-          />
-          <StatTile
-            label="Unreachable chunks"
-            value={formatNumber(ingestion.knowledge_base.chunks_unreachable)}
-            detail="stored, but invisible to lexical search"
-            tone={
-              ingestion.knowledge_base.chunks_unreachable > 0 ? "danger" : "default"
-            }
-          />
-          <StatTile
-            label="Stalled ingestions"
-            value={formatNumber(ingestion.knowledge_base.stalled_documents)}
-            detail={`silent for over ${ingestion.stall_threshold_minutes}m`}
-            tone={
-              ingestion.knowledge_base.stalled_documents > 0 ? "danger" : "default"
-            }
-          />
-          <StatTile
-            label="Ingestions"
-            value={formatNumber(ingestion.ingestions)}
-            detail={
-              ingestion.failed_ingestions > 0
-                ? `${formatNumber(ingestion.failed_ingestions)} failed`
-                : "in this window"
-            }
-            tone={ingestion.failed_ingestions > 0 ? "warning" : "default"}
-          />
-        </div>
-
-        {ingestion.knowledge_base.chunks_unreachable > 0 && (
-          <p className="mon-note">
-            Chunks belonging to a document that is not ready keep their vectors
-            but drop out of lexical retrieval, so hybrid search quietly runs on
-            one retriever instead of two.{" "}
-            <Link to="/admin/documents">Review the documents</Link>.
-          </p>
-        )}
-
-        <div className="mon-grid">
-          <div>
-            <h3 className="mon-subhead">Documents by status</h3>
-            {Object.keys(ingestion.knowledge_base.documents_by_status).length === 0 ? (
-              <EmptyState message="Nothing has been uploaded yet." />
-            ) : (
-              <table className="data-table mon-table">
-                <thead>
-                  <tr>
-                    <th>Status</th>
-                    <th>Documents</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(ingestion.knowledge_base.documents_by_status).map(
-                    ([status, count]) => (
-                      <tr key={status}>
-                        <td>{status}</td>
-                        <td>{formatNumber(count)}</td>
-                      </tr>
-                    ),
-                  )}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          <div>
-            <h3 className="mon-subhead">Ingestion stages</h3>
-            <StageLatencyChart stages={ingestion.stages} />
-          </div>
-        </div>
-      </Panel>
-
-      <Panel
         title="What readers thought"
         description="The only judgement of quality here. Everything else on this page measures behaviour, not whether the behaviour was any good."
       >
@@ -652,61 +626,287 @@ function Dashboard({ data }: { data: Data }) {
           </table>
         )}
       </Panel>
-
-      <Panel
-        title="Errors"
-        description={`${formatNumber(errors.failed_requests)} failed requests · ${formatPercent(
-          errors.failure_rate,
-          1,
-        )}`}
-      >
-        {Object.keys(errors.category_totals).length > 0 && (
-          <div className="mon-tiles">
-            {CATEGORY_ORDER.filter(
-              (category) => errors.category_totals[category] !== undefined,
-            ).map((category) => (
-              <StatTile
-                key={category}
-                label={CATEGORY_LABELS[category] ?? category}
-                value={formatNumber(errors.category_totals[category])}
-                detail={CATEGORY_ADVICE[category]}
-                tone={CATEGORY_TONE[category] ?? "default"}
-              />
-            ))}
-          </div>
-        )}
-
-        {errors.max_retry_after_seconds !== null && (
-          <p className="mon-note">
-            A provider asked us to wait up to{" "}
-            {Math.round(errors.max_retry_after_seconds)}s before retrying.
-          </p>
-        )}
-
-        {errors.by_stage.length === 0 ? (
-          <EmptyState message="No stage errors in this window." />
-        ) : (
-          <table className="data-table mon-table">
-            <thead>
-              <tr>
-                <th>Stage</th>
-                <th>Error</th>
-                <th>Count</th>
-              </tr>
-            </thead>
-            <tbody>
-              {errors.by_stage.map((row) => (
-                <tr key={`${row.stage}-${row.error_type}`}>
-                  <td>{row.stage.replace(/_/g, " ")}</td>
-                  <td>{row.error_type}</td>
-                  <td>{formatNumber(row.count)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Panel>
     </>
+  );
+}
+
+function KnowledgeBasePanel({
+  ingestion,
+}: {
+  ingestion: IngestionResponse;
+}) {
+  return (
+    <Panel
+      title="Knowledge base"
+      description={`${formatNumber(
+        ingestion.knowledge_base.ready_documents,
+      )} of ${formatNumber(
+        ingestion.knowledge_base.total_documents,
+      )} documents searchable · last ingest ${formatWhen(
+        ingestion.knowledge_base.last_ingested_at,
+      )}`}
+    >
+      <div className="mon-tiles">
+        <StatTile
+          label="Chunks searchable"
+          value={formatNumber(ingestion.knowledge_base.chunks_retrievable)}
+          detail={`of ${formatNumber(ingestion.knowledge_base.chunks_stored)} stored`}
+        />
+        <StatTile
+          label="Unreachable chunks"
+          value={formatNumber(ingestion.knowledge_base.chunks_unreachable)}
+          detail="stored, but invisible to lexical search"
+          tone={
+            ingestion.knowledge_base.chunks_unreachable > 0 ? "danger" : "default"
+          }
+        />
+        <StatTile
+          label="Stalled ingestions"
+          value={formatNumber(ingestion.knowledge_base.stalled_documents)}
+          detail={`silent for over ${ingestion.stall_threshold_minutes}m`}
+          tone={
+            ingestion.knowledge_base.stalled_documents > 0 ? "danger" : "default"
+          }
+        />
+        <StatTile
+          label="Ingestions"
+          value={formatNumber(ingestion.ingestions)}
+          detail={
+            ingestion.failed_ingestions > 0
+              ? `${formatNumber(ingestion.failed_ingestions)} failed`
+              : "in this window"
+          }
+          tone={ingestion.failed_ingestions > 0 ? "warning" : "default"}
+        />
+      </div>
+
+      {ingestion.knowledge_base.chunks_unreachable > 0 && (
+        <p className="mon-note">
+          Chunks belonging to a document that is not ready keep their vectors
+          but drop out of lexical retrieval, so hybrid search quietly runs on
+          one retriever instead of two.{" "}
+          <Link to="/admin/documents">Review the documents</Link>.
+        </p>
+      )}
+
+      <div className="mon-grid">
+        <div>
+          <h3 className="mon-subhead">Documents by status</h3>
+          {Object.keys(ingestion.knowledge_base.documents_by_status).length === 0 ? (
+            <EmptyState message="Nothing has been uploaded yet." />
+          ) : (
+            <table className="data-table mon-table">
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Documents</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(ingestion.knowledge_base.documents_by_status).map(
+                  ([status, count]) => (
+                    <tr key={status}>
+                      <td>{status}</td>
+                      <td>{formatNumber(count)}</td>
+                    </tr>
+                  ),
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div>
+          <h3 className="mon-subhead">Ingestion stages</h3>
+          <StageLatencyChart stages={ingestion.stages} />
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function ErrorsPanel({ errors }: { errors: ErrorsResponse }) {
+  return (
+    <Panel
+      title="Errors"
+      description={`${formatNumber(errors.failed_requests)} failed requests · ${formatPercent(
+        errors.failure_rate,
+        1,
+      )}`}
+    >
+      {Object.keys(errors.category_totals).length > 0 && (
+        <div className="mon-tiles">
+          {CATEGORY_ORDER.filter(
+            (category) => errors.category_totals[category] !== undefined,
+          ).map((category) => (
+            <StatTile
+              key={category}
+              label={CATEGORY_LABELS[category] ?? category}
+              value={formatNumber(errors.category_totals[category])}
+              detail={CATEGORY_ADVICE[category]}
+              tone={CATEGORY_TONE[category] ?? "default"}
+            />
+          ))}
+        </div>
+      )}
+
+      {errors.max_retry_after_seconds !== null && (
+        <p className="mon-note">
+          A provider asked us to wait up to{" "}
+          {Math.round(errors.max_retry_after_seconds)}s before retrying.
+        </p>
+      )}
+
+      {errors.by_stage.length === 0 ? (
+        <EmptyState message="No stage errors in this window." />
+      ) : (
+        <table className="data-table mon-table">
+          <thead>
+            <tr>
+              <th>Stage</th>
+              <th>Error</th>
+              <th>Count</th>
+            </tr>
+          </thead>
+          <tbody>
+            {errors.by_stage.map((row) => (
+              <tr key={`${row.stage}-${row.error_type}`}>
+                <td>{row.stage.replace(/_/g, " ")}</td>
+                <td>{row.error_type}</td>
+                <td>{formatNumber(row.count)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Panel>
+  );
+}
+
+/**
+ * A band-1 panel with nothing to report.
+ *
+ * Not a collapsed panel and not a hidden one: the finding is still
+ * stated, in one line, because "no errors" is a real answer and the
+ * reader came here to get it. What it gives up is the vertical space of
+ * a problem, which on a healthy system pushed the vital signs off the
+ * first screen.
+ */
+function QuietPanel({ title, summary }: { title: string; summary: string }) {
+  return (
+    <section className="mon-quiet">
+      <span className="mon-quiet-mark" aria-hidden="true" />
+      <strong>{title}</strong>
+      <span>{summary}</span>
+    </section>
+  );
+}
+/**
+ * The answer before the page has finished loading.
+ *
+ * Most visits to a dashboard end at the first ninety pixels, so the three
+ * numbers that decide whether to keep reading live there: is anything
+ * failing, is any of the corpus unreachable, and how slow is the slow end.
+ *
+ * "Nothing is wrong" and "nothing is being watched" are drawn differently
+ * on purpose - an evaluator that is not running must never read as an
+ * all-clear.
+ */
+function StatusStrip({
+  requests,
+  knowledgeBase,
+  alerts,
+}: {
+  requests: RequestInfo;
+  knowledgeBase: KnowledgeBaseInfo;
+  alerts: AlertsResponse;
+}) {
+  const firing = alerts.alerts.filter((alert) => alert.state === "firing");
+
+  const findings = [
+    firing.length > 0
+      ? `${firing.length} alert${firing.length === 1 ? "" : "s"} firing`
+      : null,
+    requests.failed > 0 ? `${formatNumber(requests.failed)} failing` : null,
+    knowledgeBase.chunks_unreachable > 0
+      ? "part of the corpus is not searchable"
+      : null,
+    knowledgeBase.stalled_documents > 0
+      ? `${formatNumber(knowledgeBase.stalled_documents)} ingestion stalled`
+      : null,
+  ].filter((finding): finding is string => finding !== null);
+
+  const critical =
+    firing.some((alert) => alert.severity === "critical") ||
+    requests.failed > 0 ||
+    knowledgeBase.chunks_unreachable > 0;
+
+  const tone = critical ? "danger" : findings.length > 0 ? "warning" : "ok";
+
+  const headline =
+    findings.length === 0
+      ? "Nothing needs attention"
+      : `${findings.length} thing${findings.length === 1 ? "" : "s"} need${
+          findings.length === 1 ? "s" : ""
+        } attention`;
+
+  const detail =
+    findings.length > 0
+      ? findings.join(" · ")
+      : alerts.enabled
+        ? "No alert is firing, nothing is failing, and the whole corpus is searchable."
+        : "Alerting is not running, so nothing here is being watched for you.";
+
+  return (
+    <section className="mon-status" data-tone={tone} aria-label="Current status">
+      <div className="mon-status-lead">
+        <strong>{headline}</strong>
+        <span>{detail}</span>
+      </div>
+
+      <div className="mon-status-figures">
+        <StatTile
+          label="Failing"
+          value={formatNumber(requests.failed)}
+          tone={requests.failed > 0 ? "danger" : "default"}
+        />
+        <StatTile
+          label="Unreachable"
+          value={formatNumber(knowledgeBase.chunks_unreachable)}
+          tone={knowledgeBase.chunks_unreachable > 0 ? "danger" : "default"}
+        />
+        <StatTile label="p95" value={formatMs(requests.latency.p95_ms)} />
+      </div>
+    </section>
+  );
+}
+
+/**
+ * A priority band heading.
+ *
+ * The bands are reading order, not concealment: band 3 is still on the
+ * same page, in full. A panel behind a toggle is a panel nobody opens.
+ */
+function Band({
+  number,
+  tone,
+  title,
+  note,
+}: {
+  number: number;
+  tone: "danger" | "accent" | "muted";
+  title: string;
+  note: string;
+}) {
+  return (
+    <div className="mon-band" data-tone={tone}>
+      <span className="mon-band-number" aria-hidden="true">
+        {number}
+      </span>
+      <h2>{title}</h2>
+      <span className="mon-band-note">{note}</span>
+      <span className="mon-band-rule" aria-hidden="true" />
+    </div>
   );
 }
 

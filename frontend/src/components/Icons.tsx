@@ -171,3 +171,21 @@ export function ThumbDown({ size = 14, strokeWidth = 1.7 }: IconProps) {
     </svg>
   );
 }
+
+/**
+ * A dial reading past its midpoint - the admin dashboard's mark.
+ *
+ * A document icon used to sit here, back when the sidebar led to the
+ * library; it would now describe the wrong destination.
+ */
+export function Gauge({ size = 15, strokeWidth = 1.7 }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth)}>
+      {/* Drawn to survive 15px: the arc and one long needle. Tick marks and
+          a base plate were in an earlier pass and disappeared entirely at
+          this size, leaving a smudge. */}
+      <path d="M4 16a8 8 0 0 1 16 0" />
+      <path d="M12 16l4.6-4.6" />
+    </svg>
+  );
+}
