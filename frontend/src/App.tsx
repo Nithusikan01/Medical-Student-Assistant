@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AdminRoute, ProtectedRoute } from "./components/RouteGuards";
 import { AdminDocumentsPage } from "./pages/AdminDocumentsPage";
+import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { ChatPage } from "./pages/ChatPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
@@ -56,6 +57,15 @@ export default function App() {
         element={
           <AdminRoute>
             <AdminDocumentsPage />
+          </AdminRoute>
+        }
+      />
+
+      <Route
+        path="/admin/users"
+        element={
+          <AdminRoute>
+            <AdminUsersPage />
           </AdminRoute>
         }
       />

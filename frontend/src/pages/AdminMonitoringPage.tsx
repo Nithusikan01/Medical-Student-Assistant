@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { getModelUsage } from "../api/usage";
 import {
   getAlerts,
   getErrors,
@@ -27,8 +28,9 @@ import {
   Meter,
   Panel,
   StatTile,
+  UsageMeter,
 } from "../components/monitoring/Primitives";
-import { ArrowLeft } from "../components/Icons";
+import { Activity, ArrowLeft, Document, Users } from "../components/Icons";
 import { ThemeToggle } from "../components/ThemeToggle";
 import type {
   AlertInfo,
@@ -37,6 +39,7 @@ import type {
   FeedbackSummaryResponse,
   IngestionResponse,
   KnowledgeBaseInfo,
+  ModelUsageInfo,
   MonitoringRange,
   OverviewResponse,
   PerformanceResponse,
@@ -111,6 +114,7 @@ interface Data {
   ingestion: IngestionResponse;
   feedback: FeedbackSummaryResponse;
   alerts: AlertsResponse;
+  modelUsage: ModelUsageInfo[];
 }
 
 export function AdminMonitoringPage() {
@@ -135,6 +139,7 @@ export function AdminMonitoringPage() {
         ingestion,
         feedback,
         alerts,
+        usage,
       ] = await Promise.all([
         getOverview(params),
         getPerformance(params),
@@ -146,6 +151,9 @@ export function AdminMonitoringPage() {
         // Unwindowed: the evaluator has its own window, and an alert is
         // about now rather than about whatever range is selected here.
         getAlerts(),
+        // Quotas are daily and monthly, so the range picker does
+        // not apply to these either.
+        getModelUsage(),
       ]);
 
       setData({
@@ -157,6 +165,7 @@ export function AdminMonitoringPage() {
         ingestion,
         feedback,
         alerts,
+        modelUsage: usage.models,
       });
     } catch (caught) {
       setError(
@@ -210,11 +219,40 @@ export function AdminMonitoringPage() {
             </div>
           </div>
 
-          <p className="mon-links">
-            <Link to="/admin/traces">Trace explorer &rarr;</Link>
-            {" · "}
-            <Link to="/admin/documents">Library, users and quotas &rarr;</Link>
-          </p>
+          {/* The dashboard is the admin landing page, so the other
+              destinations are mounted here as places to go rather than
+              buried in a line of small text. */}
+          <nav className="admin-nav" aria-label="Admin sections">
+            <Link to="/admin/documents" className="admin-nav-card">
+              <span className="admin-nav-icon">
+                <Document size={18} strokeWidth={1.6} />
+              </span>
+              <span className="admin-nav-copy">
+                <strong>Documents</strong>
+                <span>Upload, review and remove what can be retrieved</span>
+              </span>
+            </Link>
+
+            <Link to="/admin/users" className="admin-nav-card">
+              <span className="admin-nav-icon">
+                <Users size={18} strokeWidth={1.6} />
+              </span>
+              <span className="admin-nav-copy">
+                <strong>Users</strong>
+                <span>Who can sign in, and what they may do</span>
+              </span>
+            </Link>
+
+            <Link to="/admin/traces" className="admin-nav-card">
+              <span className="admin-nav-icon">
+                <Activity size={18} strokeWidth={1.6} />
+              </span>
+              <span className="admin-nav-copy">
+                <strong>Trace explorer</strong>
+                <span>One request, end to end, from its id</span>
+              </span>
+            </Link>
+          </nav>
 
           {error && <p className="error-text">{error}</p>}
 
@@ -237,6 +275,7 @@ function Dashboard({ data }: { data: Data }) {
     ingestion,
     feedback,
     alerts,
+    modelUsage,
   } = data;
   const { requests } = overview;
 
@@ -467,6 +506,36 @@ function Dashboard({ data }: { data: Data }) {
             ))}
           </tbody>
         </table>
+      </Panel>
+
+      <Panel
+        title="Model usage"
+        description="Tokens spent per model, today and this month, against the quotas configured for each."
+      >
+        {modelUsage.length === 0 ? (
+          <EmptyState message="No LLM calls have been made yet." />
+        ) : (
+          <div className="usage-grid">
+            {modelUsage.map((model) => (
+              <div className="usage-card" key={model.id}>
+                <div className="usage-card-header">
+                  <strong>{model.label}</strong>
+                  <span className="cell-sub">{model.provider}</span>
+                </div>
+                <UsageMeter
+                  label="Today"
+                  used={model.daily_tokens_used}
+                  limit={model.daily_token_limit}
+                />
+                <UsageMeter
+                  label="This month"
+                  used={model.monthly_tokens_used}
+                  limit={model.monthly_token_limit}
+                />
+              </div>
+            ))}
+          </div>
+        )}
       </Panel>
 
       <Panel
