@@ -5,7 +5,7 @@ import sqlalchemy as sa
 from rag.ingestion.schemas import DocumentChunk
 from sqlalchemy.orm import Session, sessionmaker
 
-from backend.db.models import DocumentChunkRecord
+from backend.db.models import Document, DocumentChunkRecord
 
 
 class PostgresChunkSink:
@@ -79,6 +79,17 @@ class PostgresChunkSink:
                     for chunk in chunks
                 ]
             )
+
+            # Each landed batch is a sign of life. Without it, a stalled
+            # ingestion is indistinguishable from a slow one: this loop
+            # writes to document_chunks, so the documents row is otherwise
+            # untouched for the whole run.
+            session.execute(
+                sa.update(Document)
+                .where(Document.id == self.document_id)
+                .values(heartbeat_at=sa.func.now())
+            )
+
             session.commit()
 
         self.count += len(chunks)
