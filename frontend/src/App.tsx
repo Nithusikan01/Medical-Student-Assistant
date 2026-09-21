@@ -15,6 +15,18 @@ const AdminMonitoringPage = lazy(() =>
   })),
 );
 
+const AdminTracesPage = lazy(() =>
+  import("./pages/AdminTracesPage").then((module) => ({
+    default: module.AdminTracesPage,
+  })),
+);
+
+const AdminTraceDetailPage = lazy(() =>
+  import("./pages/AdminTraceDetailPage").then((module) => ({
+    default: module.AdminTraceDetailPage,
+  })),
+);
+
 export default function App() {
   return (
     <Routes>
@@ -54,6 +66,28 @@ export default function App() {
           <AdminRoute>
             <Suspense fallback={<p className="mon-boot">Loading monitoring&hellip;</p>}>
               <AdminMonitoringPage />
+            </Suspense>
+          </AdminRoute>
+        }
+      />
+
+      <Route
+        path="/admin/traces"
+        element={
+          <AdminRoute>
+            <Suspense fallback={<p className="mon-boot">Loading traces&hellip;</p>}>
+              <AdminTracesPage />
+            </Suspense>
+          </AdminRoute>
+        }
+      />
+
+      <Route
+        path="/admin/traces/:traceId"
+        element={
+          <AdminRoute>
+            <Suspense fallback={<p className="mon-boot">Loading trace&hellip;</p>}>
+              <AdminTraceDetailPage />
             </Suspense>
           </AdminRoute>
         }
