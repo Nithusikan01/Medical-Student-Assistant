@@ -21,7 +21,11 @@ from backend.schemas.query import (
     SourceChunk,
     SourceMetadata,
 )
-from backend.schemas.usage import ModelUsageInfo, ModelUsageResponse
+from backend.schemas.usage import (
+    ModelUsageInfo,
+    ModelUsageResponse,
+    StageUsageInfo,
+)
 from backend.schemas.user import AdminUserResponse, UpdateUserRoleRequest
 
 __all__ = [
@@ -44,6 +48,7 @@ __all__ = [
     "SetPasswordRequest",
     "SourceChunk",
     "SourceMetadata",
+    "StageUsageInfo",
     "TokenResponse",
     "UpdateUserRoleRequest",
     "UserResponse",

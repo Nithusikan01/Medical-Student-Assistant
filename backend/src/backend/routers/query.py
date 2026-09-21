@@ -2,7 +2,7 @@ import logging
 import time
 
 from fastapi import APIRouter, HTTPException, status
-from rag.llm.schemas import TokenUsage
+from rag.llm.metering import collect_usage
 
 from backend.db.repositories import conversations
 from backend.db.repositories import usage as usage_repo
@@ -97,22 +97,18 @@ def query_documents(
 
     trace.set_conversation(str(conversation.id))
 
-    def _record_usage(token_usage: TokenUsage) -> None:
-        usage_repo.record(
-            session,
-            model_id=resolved_model,
-            provider=resolved_provider,
-            usage=token_usage,
-        )
-
+    # Every LLM call the request makes is metered, not just the final
+    # answer: query rewriting runs on every question, summarisation every
+    # twelve messages, and the Gemini reranker whenever hosted reranking
+    # fails. Counting only generation understated real spend by ~10%.
     try:
-        answer, chunks = rag_service.answer_with_sources(
-            conversation_id=str(request.conversation_id),
-            question=request.question,
-            top_k=request.top_k,
-            generator=generator,
-            on_usage=_record_usage,
-        )
+        with collect_usage() as usage:
+            answer, chunks = rag_service.answer_with_sources(
+                conversation_id=str(request.conversation_id),
+                question=request.question,
+                top_k=request.top_k,
+                generator=generator,
+            )
     except Exception as exc:
         # The underlying message can carry Pinecone or Gemini detail,
         # including credentials embedded in URLs, so it stays in the log.
@@ -152,6 +148,17 @@ def query_documents(
     if conversation.title is None:
         conversation.title = conversations.derive_title(request.question)
 
+    # Written after the answer is safely in hand: accounting must never be
+    # the reason a successful answer fails to reach the user.
+    usage_repo.record_collected(
+        session,
+        events=usage.events,
+        default_model_id=resolved_model,
+        default_provider=resolved_provider,
+        trace_id=trace.trace_id,
+        user_id=user.id,
+    )
+
     session.commit()
 
     # Declared on the response model (and mirrored in the frontend types)
@@ -164,6 +171,8 @@ def query_documents(
         top_k=request.top_k,
         source_count=len(sources),
         processing_time_ms=processing_time_ms,
+        llm_calls=len(usage.events),
+        total_tokens=usage.total_tokens,
     )
 
     return QueryResponse(

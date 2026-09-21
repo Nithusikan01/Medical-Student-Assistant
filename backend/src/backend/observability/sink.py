@@ -85,6 +85,7 @@ def _to_span_row(record: SpanRecord) -> RagSpan:
         trace_id=record.trace_id,
         parent_span_id=record.parent_span_id,
         stage=record.stage,
+        sequence=record.sequence,
         status=record.status.value,
         error_type=record.error_type,
         started_at=record.started_at,

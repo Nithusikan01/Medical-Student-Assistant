@@ -26,18 +26,22 @@ import random
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
 from rag.observability.context import (
     TraceContext,
     bind_span,
+    bind_stage,
     bind_trace,
     current_span,
     current_span_id,
     current_trace,
     new_id,
+    next_sequence,
     reset_span,
+    reset_stage,
     reset_trace,
 )
 from rag.observability.protocol import TraceRecorder
@@ -123,7 +127,7 @@ class _Handle:
 class SpanHandle(_Handle):
     """One stage of work, handed to the body of Tracer.span."""
 
-    __slots__ = ("parent_span_id", "span_id", "stage", "trace_id")
+    __slots__ = ("parent_span_id", "sequence", "span_id", "stage", "trace_id")
 
     def __init__(
         self,
@@ -132,6 +136,7 @@ class SpanHandle(_Handle):
         trace_id: str = "",
         span_id: str = "",
         parent_span_id: str | None = None,
+        sequence: int = 0,
         recording: bool = False,
     ) -> None:
         super().__init__(recording=recording)
@@ -140,6 +145,7 @@ class SpanHandle(_Handle):
         self.trace_id = trace_id
         self.span_id = span_id
         self.parent_span_id = parent_span_id
+        self.sequence = sequence
 
     def to_record(self) -> SpanRecord:
         ended_at = datetime.now(UTC)
@@ -149,6 +155,7 @@ class SpanHandle(_Handle):
             span_id=self.span_id,
             parent_span_id=self.parent_span_id,
             stage=self.stage,
+            sequence=self.sequence,
             started_at=self._started_at or ended_at,
             ended_at=ended_at,
             duration_ms=self._duration_ms(),
@@ -199,13 +206,10 @@ class TraceHandle(_Handle):
         if self.context is None or conversation_id is None:
             return
 
-        self.context = TraceContext(
-            trace_id=self.context.trace_id,
-            request_id=self.context.request_id,
-            conversation_id=str(conversation_id),
-            user_id=self.context.user_id,
-            sampled=self.context.sampled,
-        )
+        # replace() rather than a fresh TraceContext: rebuilding it field by
+        # field drops the span sequence counter, silently restarting every
+        # span position at 1 partway through the trace.
+        self.context = replace(self.context, conversation_id=str(conversation_id))
 
     def set_user(self, user_id: str | None) -> None:
         """
@@ -218,13 +222,7 @@ class TraceHandle(_Handle):
         if self.context is None or user_id is None:
             return
 
-        self.context = TraceContext(
-            trace_id=self.context.trace_id,
-            request_id=self.context.request_id,
-            conversation_id=self.context.conversation_id,
-            user_id=str(user_id),
-            sampled=self.context.sampled,
-        )
+        self.context = replace(self.context, user_id=str(user_id))
 
     def to_record(self) -> TraceRecord:
         ended_at = datetime.now(UTC)
@@ -364,16 +362,25 @@ class Tracer:
 
         handle = NULL_SPAN
         token = None
+        stage_token = None
+
+        name = stage.value if isinstance(stage, Stage) else str(stage)
 
         try:
+            # Bound whether or not this trace is recorded: token metering
+            # attributes spend by stage, and what a request costs must not
+            # depend on whether it happened to be sampled.
+            stage_token = bind_stage(name)
+
             context = current_trace()
 
             if context is not None and context.sampled:
                 handle = SpanHandle(
-                    stage=stage.value if isinstance(stage, Stage) else str(stage),
+                    stage=name,
                     trace_id=context.trace_id,
                     span_id=new_id(),
                     parent_span_id=current_span_id(),
+                    sequence=next_sequence(context),
                     recording=True,
                 )
 
@@ -390,7 +397,7 @@ class Tracer:
             handle.mark_error(error)
             raise
         finally:
-            self._close_span(handle, token)
+            self._close_span(handle, token, stage_token)
 
     def annotate(self, **fields: Any) -> None:
         """
@@ -413,15 +420,16 @@ class Tracer:
         except Exception:
             logger.exception("Failed to annotate the current telemetry span.")
 
-    def _close_span(self, handle: SpanHandle, token: Any) -> None:
+    def _close_span(self, handle: SpanHandle, token: Any, stage_token: Any) -> None:
         try:
             if handle.recording:
                 self._recorder.record_span(handle.to_record())
         except Exception:
             logger.exception("Failed to record a telemetry span.")
         finally:
-            if token is not None:
-                try:
-                    reset_span(token)
-                except Exception:
-                    logger.exception("Failed to reset the span context.")
+            for reset, active in ((reset_span, token), (reset_stage, stage_token)):
+                if active is not None:
+                    try:
+                        reset(active)
+                    except Exception:
+                        logger.exception("Failed to reset the span context.")

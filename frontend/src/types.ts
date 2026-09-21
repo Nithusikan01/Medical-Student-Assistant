@@ -118,9 +118,23 @@ export interface ModelUsageInfo {
   daily_token_limit: number | null;
   monthly_tokens_used: number;
   monthly_token_limit: number | null;
+  // Serialised as a decimal string. null means no pricing is configured for
+  // this model, which is not the same as costing nothing - render it as
+  // "not priced", never as $0.00.
+  daily_estimated_cost_usd: string | null;
+  monthly_estimated_cost_usd: string | null;
+}
+
+export interface StageUsageInfo {
+  stage: string;
+  tokens_used: number;
 }
 
 export interface ModelUsageResponse {
   models: ModelUsageInfo[];
+  // Today's tokens by pipeline stage. Answers "why did consumption go up",
+  // not just "by how much".
+  stages: StageUsageInfo[];
+  pricing_configured: boolean;
   generated_at: string;
 }

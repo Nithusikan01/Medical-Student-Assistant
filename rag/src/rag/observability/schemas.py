@@ -71,6 +71,12 @@ class SpanRecord:
 
     status: SpanStatus = SpanStatus.OK
 
+    # Position within the trace, 1-based. The ordering key for a waterfall:
+    # started_at ties, because the clock is coarser than the gap between a
+    # parent span and the child it opens, so retrieval, dense_retrieval and
+    # query_embedding routinely share one timestamp to the microsecond.
+    sequence: int = 0
+
     parent_span_id: str | None = None
     error_type: str | None = None
 

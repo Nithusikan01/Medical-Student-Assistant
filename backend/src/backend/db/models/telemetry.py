@@ -118,6 +118,19 @@ class RagSpan(Base):
 
     stage: Mapped[str] = mapped_column(sa.String(32), nullable=False)
 
+    # Position within the trace, 1-based, handed out by a monotonic counter
+    # when the span opens. This is the ordering key for a waterfall, because
+    # started_at does not work: the wall clock is coarser than the gap
+    # between a parent span and the child it opens, so retrieval,
+    # dense_retrieval and query_embedding routinely share one timestamp to
+    # the microsecond and render out of order.
+    sequence: Mapped[int] = mapped_column(
+        sa.Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
     status: Mapped[str] = mapped_column(
         sa.String(16),
         nullable=False,
@@ -148,6 +161,7 @@ class RagSpan(Base):
         ),
         # The trace explorer reads one trace's spans in start order; the
         # per-stage latency panels aggregate one stage across a time window.
-        sa.Index("ix_rag_spans_trace_id_started_at", "trace_id", "started_at"),
+        # The trace explorer reads one trace's spans in waterfall order.
+        sa.Index("ix_rag_spans_trace_id_sequence", "trace_id", "sequence"),
         sa.Index("ix_rag_spans_stage_started_at", "stage", "started_at"),
     )

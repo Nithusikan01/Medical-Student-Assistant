@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 import pytest
 import sqlalchemy as sa
 from fastapi.testclient import TestClient
+from rag.llm.metering import UsageEvent, current_collector
 from rag.llm.schemas import TokenUsage
 from rag.observability import Tracer
 from sqlalchemy import create_engine, event
@@ -226,9 +227,7 @@ class StubRagService:
         self.error: Exception | None = None
         self.usage: TokenUsage | None = None
 
-    def answer_with_sources(
-        self, *, conversation_id, question, top_k, generator=None, on_usage=None
-    ):
+    def answer_with_sources(self, *, conversation_id, question, top_k, generator=None):
         self.calls.append(
             {
                 "conversation_id": conversation_id,
@@ -241,8 +240,21 @@ class StubRagService:
         if self.error is not None:
             raise self.error
 
-        if on_usage is not None and self.usage is not None:
-            on_usage(self.usage)
+        # Stands in for the metered generator the real service would call.
+        # Usage now reaches the router through the ambient collector rather
+        # than a callback, so the stub has to speak the same way.
+        if self.usage is not None:
+            collector = current_collector()
+
+            if collector is not None:
+                collector.record(
+                    UsageEvent(
+                        stage="generation",
+                        usage=self.usage,
+                        model="stub-model",
+                        provider="stub",
+                    )
+                )
 
         return self.answer, self.sources
 

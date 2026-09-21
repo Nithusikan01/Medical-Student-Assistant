@@ -8,8 +8,15 @@ from backend.db.models.document import (
     Document,
     DocumentChunkRecord,
 )
-from backend.db.models.generation_usage import GenerationUsageEvent
+from backend.db.models.generation_usage import (
+    STAGE_GENERATION,
+    STAGE_QUERY_REWRITE,
+    STAGE_RERANKING,
+    STAGE_SUMMARIZATION,
+    GenerationUsageEvent,
+)
 from backend.db.models.invite_code import InviteCode
+from backend.db.models.model_pricing import ModelPricing
 from backend.db.models.oauth_account import PROVIDER_GOOGLE, OAuthAccount
 from backend.db.models.refresh_token import RefreshToken
 from backend.db.models.telemetry import (
@@ -26,6 +33,10 @@ __all__ = [
     "PROVIDER_GOOGLE",
     "ROLE_ADMIN",
     "ROLE_USER",
+    "STAGE_GENERATION",
+    "STAGE_QUERY_REWRITE",
+    "STAGE_RERANKING",
+    "STAGE_SUMMARIZATION",
     "STATUS_DELETING",
     "STATUS_ERROR",
     "STATUS_FAILED",
@@ -39,6 +50,7 @@ __all__ = [
     "DocumentChunkRecord",
     "GenerationUsageEvent",
     "InviteCode",
+    "ModelPricing",
     "OAuthAccount",
     "RagSpan",
     "RagTrace",
