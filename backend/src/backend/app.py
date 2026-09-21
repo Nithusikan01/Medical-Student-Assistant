@@ -23,6 +23,7 @@ from backend.routers.query import router as query_router
 from backend.routers.usage import router as usage_router
 from backend.routers.users import router as users_router
 from backend.services.ingest_recovery import recover_on_startup
+from backend.services.telemetry_retention import start_retention_worker
 from backend.wiring.rag_factory import (
     build_history_aware_rag_service,
     build_telemetry_sink,
@@ -84,9 +85,20 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.exception("Could not start the telemetry writer.")
 
+    # Not conditional on telemetry being enabled: turning capture off should
+    # still let what was already captured age out of the database, rather
+    # than freezing it there for good.
+    retention_worker = start_retention_worker(get_session_factory())
+
     try:
         yield
     finally:
+        if retention_worker is not None:
+            try:
+                retention_worker.stop()
+            except Exception:
+                logger.exception("Could not stop the retention worker cleanly.")
+
         if telemetry_sink is not None:
             try:
                 telemetry_sink.stop()
