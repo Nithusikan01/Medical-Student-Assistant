@@ -35,11 +35,7 @@ def main():
         ):
             builder.add_batch(batch)
 
-    corpus = json.loads(
-        OUTPUT.read_text(
-            encoding="utf-8"
-        )
-    )
+    corpus = json.loads(OUTPUT.read_text(encoding="utf-8"))
 
     print()
 
@@ -59,10 +55,7 @@ def main():
 
         assert chunk.metadata.filename == record["metadata"]["filename"]
 
-        assert (
-            chunk.chunk_index
-            == record["metadata"]["chunk_index"]
-        )
+        assert chunk.chunk_index == record["metadata"]["chunk_index"]
 
     print()
     print("✅ BM25 corpus verified.")

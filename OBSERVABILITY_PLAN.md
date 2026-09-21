@@ -3,8 +3,9 @@
 Status of the observability upgrade, phase 1 through phase 19, plus the
 evaluation work that was deliberately deferred.
 
-Last updated: 2026-09-21. Phases 1–8 and 15–17 are merged to `main` and
-deployed; phases 9–14 and 18–19 are not built.
+Last updated: 2026-09-21. **Every phase is built and merged to `main`.**
+What follows is what each one did and why, kept as the record rather than
+as a to-do list.
 
 This plan instruments an application that already worked. Nothing here
 redesigns the RAG pipeline — no retriever, vector store, embedder, reranker
@@ -46,19 +47,19 @@ These came from the specification and constrain every phase, built or not:
 | 6 | Token metering and cost attribution | Done | #25 |
 | 7 | Retrieval behaviour metrics | Done | #20 |
 | 8 | Reranking depth and promotion profile | Done | #21 |
-| 9–11 | Offline evaluation, drift, experiment tracking | Deferred | — |
-| 12 | Error taxonomy and rate-limit classification | Not built | — |
-| 13 | Ingestion and knowledge-base monitoring | Not built | — |
-| 14 | User feedback capture | Not built | — |
+| 9–11 | Offline evaluation, drift, experiment tracking | Done | #34 |
+| 12 | Error taxonomy and rate-limit classification | Done | #31 |
+| 13 | Ingestion and knowledge-base monitoring | Done | #30 |
+| 14 | User feedback capture | Done | #32 |
 | 15 | Monitoring API | Done | #22 |
 | 16 | Monitoring dashboard | Done | #23 |
 | 17 | Trace explorer | Done | #24 |
-| 18 | Alerting | Not built | — |
-| 19 | Production hardening and retention enforcement | Not built | — |
+| 18 | Alerting | Done | #33 |
+| 19 | Production hardening and retention enforcement | Done | #29 |
 | — | Stalled-ingestion recovery (found by phase 7) | Done | #27 |
 
-Tests today: **419 backend** (`tests/unit` + `tests/api`, what CI runs) and
-**125 engine** (`rag/tests/unit`).
+Tests today: **542 backend** (`tests/unit` + `tests/api`, what CI runs) and
+**200 engine** (`rag/tests/unit`).
 
 ---
 
@@ -246,188 +247,223 @@ sweep safe with several ECS tasks running.
 
 ---
 
-# Part II — Remaining
+# Part II — The second half
 
-Ordered as recommended, not by phase number.
+Built in the order 19 → 13 → 12 → 14 → 18 → 9–11, chosen by what was
+wrong rather than by phase number.
 
-## Phase 19 — Retention enforcement *(do first)*
+## Phase 19 — Retention enforcement (PR #29)
 
-**Why first:** `TELEMETRY_RETENTION_DAYS` is parsed, defaulted to 30 and
-stored on the config object (`observability/config.py:75,100`) — and read by
-nothing. There is no prune job and no delete of `rag_traces` or `rag_spans`
-anywhere in the tree. Telemetry rows accumulate indefinitely on production
-Postgres today.
-
+**Why it went first:** `TELEMETRY_RETENTION_DAYS` had been parsed,
+defaulted to 30 and read by nothing since the telemetry tables shipped.
 A configuration knob that silently does nothing is worse than no knob,
-because it reads as handled. This is simultaneously a cost problem and a
-privacy one: the spec asked for retention to be configurable *and* enforced.
+because it reads as handled — and `rag_spans` was growing without bound
+on production while the setting said otherwise.
 
-**Build:**
+`backend/services/telemetry_retention.py` deletes traces past the window
+and their spans with them, in committed batches, once at startup and then
+every `TELEMETRY_RETENTION_INTERVAL_HOURS`.
 
-- `backend/services/telemetry_retention.py` —
-  `prune_telemetry(session_factory, *, retention_days, now=None)`, deleting
-  spans before traces, in bounded batches so a first run against a large
-  table does not hold a long transaction.
-- Call it from the lifespan alongside `recover_on_startup`, guarded the same
-  way, and on a periodic timer thereafter.
-- Index support on `started_at` if the delete plan needs it.
-- Distinguish trace rows from span rows in the log line, so an operator can
-  see what was reclaimed.
+Two ordering decisions:
 
-**Acceptance:** rows older than the window are gone after a startup; rows
-inside it are untouched; a failure logs and does not stop the app; the
-default of 30 days is honoured with no env var set.
+- **Spans are deleted by `trace_id`, never by their own timestamp.** A
+  long request can start before the cutoff and emit spans after it;
+  sweeping by age would delete the trace and strand the rest of its
+  waterfall.
+- **Orphan spans are swept separately, and only once no trace below the
+  cutoff is left.** They are a real state: the sink drops on a full queue
+  and writes the trace last, so a burst leaves spans whose trace never
+  arrived. A span cannot start before its trace, so anything older than
+  the cutoff at that point is an orphan — but that argument only holds
+  once the trace sweep has drained, which is why the orphan pass is gated
+  on it.
 
-Also in this phase: confirm no sampling gap under load, and document the
-`capture_text` blast radius in `.env.example`.
+**Migration 0010** indexes `rag_spans.started_at`; the existing
+`(stage, started_at)` composite cannot serve the orphan query. Retention
+runs whether or not telemetry is enabled, so turning capture off lets what
+was already captured age out.
 
-## Phase 13 — Ingestion and knowledge-base monitoring
+## Phase 13 — Ingestion and knowledge-base monitoring (PR #30)
 
-**Why:** the `Stage` enum already declares `INGESTION`, `INGESTION_BATCH`,
-`DOCUMENT_EMBEDDING` and `VECTOR_UPSERT`
-(`rag/src/rag/observability/schemas.py:41-44`) — and **nothing emits them**.
-The enum promises coverage the pipeline does not have.
+The `Stage` enum had declared `INGESTION`, `INGESTION_BATCH`,
+`DOCUMENT_EMBEDDING` and `VECTOR_UPSERT` since telemetry shipped, and
+nothing emitted any of them. The enum promised coverage the pipeline did
+not have — which is how an ingest that died mid-run could only be found by
+inference from a retrieval metric two phases away.
 
-This is also the path the stalled-ingestion bug lived in. A span per batch
-would have made that failure visible directly, rather than by inference from
-a BM25 metric two phases away.
+The pipeline now opens a span per document, per batch, per embedding call
+and per upsert, plus `DOCUMENT_LOAD` for the PDF parse. They nest under
+the trace the middleware already opened for `POST /api/ingest`. Chunking
+deliberately gets no span: `chunk_batches` is a generator, so a span
+around the loop would re-time the whole ingestion under a name claiming to
+be chunking.
 
-**Build:**
+`GET /api/monitoring/ingestion` answers two questions on purpose — the
+knowledge-base half is a snapshot and ignores the window, the stage half
+is windowed like every other latency panel.
 
-- Spans in `rag/ingestion/pipeline.py` around the ingest loop, each batch,
-  embedding, and the Pinecone upsert. The tracer is already a no-op by
-  default, so `rag/` stays runnable with no backend.
-- A trace per ingestion in `backend/services/document_service.py`, carrying
-  document id and filename (not the source path — that is the server's
-  absolute upload path, dropped elsewhere for the same reason).
-- Knowledge-base freshness: document count by status, chunk count, time since
-  last successful ingest, count of documents currently stuck.
-- `GET /api/monitoring/ingestion`, admin-only, plus the route classification
-  table entry.
-- A dashboard panel, reusing the phase 16 primitives.
+The number worth having is **chunks stored minus chunks a lexical search
+can reach**. BM25 is built from `ready` documents only, so a stuck
+document keeps its rows and its vectors while dropping out of half of
+hybrid retrieval. That is the incident this application already had; it is
+now a subtraction rather than an inference.
 
-**Acceptance:** an upload produces a trace whose waterfall shows per-batch
-work; a killed ingest leaves a visibly incomplete trace; the freshness panel
-names the stuck document that PR #27's sweep would mark failed.
+## Phase 12 — Error taxonomy (PR #31)
 
-## Phase 12 — Error taxonomy
-
-**Why:** `/api/monitoring/errors` counts and groups failures but does not
-classify them. A Gemini 429, a Pinecone timeout and a malformed PDF land in
-one undifferentiated bucket, so the dashboard can say *that* things failed
-but not *what kind* of failure is happening — which is the only thing that
+`/monitoring/errors` could say how many requests failed and where. It
+could not say what kind of failure it was, which is the only part that
 changes what an operator does next.
 
-**Build:**
+Classification is by exception type and status code, **never** by matching
+message text. Provider messages change without notice, and they routinely
+echo the key the request was sent with — a classifier that reads them is
+one careless log line away from storing a credential.
 
-- An error category enum in `rag/observability/schemas.py`: rate limit,
-  upstream timeout, upstream unavailable, auth, validation, internal.
-- Classification at the point where the exception is already caught, attached
-  as span metadata. Classify by exception type and status code, not by
-  matching message strings — provider messages carry keys and change without
-  notice.
-- Rate-limit specifics: which provider, which model, retry-after when the
-  provider supplies it.
-- Extend `/monitoring/errors` to break down by category, and the error panel
-  with it.
+It happens in `Tracer.mark_error`, which every span and trace already
+passes through, so all four LLM call sites, both retrievers, the reranker
+and the whole ingestion path are covered without one call site changing.
 
-**Acceptance:** a forced 429 is categorised as a rate limit and never as a
-generic internal error; no provider message text reaches the database.
+Retry-after is captured when a provider offers one; absent stays null
+rather than zero, because zero renders as "retry immediately".
+**Migration 0011** adds the column; existing rows read as `unclassified`
+rather than being folded into `internal`.
 
-## Phase 14 — User feedback
+## Phase 14 — User feedback (PR #32)
 
-**Why:** there is no table, no endpoint and no UI — `grep -rl feedback`
-across `backend/src` and `frontend/src` returns nothing. This is the only
-signal in the whole plan that carries a human judgement of answer quality,
-and it is the input the deferred evaluation work would eventually need.
+The only human judgement of quality in the application. Thumbs on each
+answer, one rating per person per answer, the same thumb again withdraws
+it.
 
-**Build:**
+`conversation_messages` gained `trace_id`, written from the **ambient
+trace context** — no caller passes it and no signature changed. It is what
+turns "this answer was wrong" into a waterfall an admin can open. The id
+is copied onto the feedback row rather than joined for, because telemetry
+ages out on its own schedule and a rating outlives the spans it points at.
 
-- Migration: `answer_feedback` — trace id, conversation id, user id, rating,
-  optional free-text comment, created_at. Store the trace id so a rating
-  joins to the retrieval and generation that produced it.
-- `POST /api/feedback`, authenticated, ownership-checked, one rating per
-  answer with update-in-place on a second submission.
-- Thumbs up/down in the chat UI, on the assistant message.
-- Aggregate into the dashboard: rating rate, positive share, and the ability
-  to jump from a negative rating to its trace.
+Unlike the telemetry tables, `answer_feedback` carries real foreign keys:
+it is written synchronously by a user looking at the message, so there is
+no batching and no arrival-order problem. Free-text comments are
+deliberately **not** telemetry metadata — they live under ordinary
+retention, outside the sanitiser's path, never on a span.
+**Migration 0012.**
 
-**Note:** free-text comments are user-entered content. They are deliberately
-*not* telemetry metadata — they live in an application table with normal
-retention, outside the sanitiser's path.
+## Phase 18 — Alerting (PR #33)
 
-## Phase 18 — Alerting
+Every number an alert fires on already existed; nothing looked at them.
 
-**Why:** every metric an alert would fire on already exists. What is missing
-is anything that evaluates them and says so.
+- **Thresholds are configuration.** Error rate, p95, spend, dropped
+  telemetry, lexical silence and stuck ingestion.
+- **A rate needs enough samples.** One request failing out of one is a
+  100% error rate. Below the floor a rule reports `insufficient_data` —
+  deliberately not `ok`, because collapsing the two would let a service
+  that stopped receiving traffic look perfectly well.
+- **Alerts clear at 80% of where they fire**, so a metric on the line
+  cannot flap.
+- **Only what starts firing is delivered.** Re-sending everything
+  currently wrong on every tick is how an alerting system gets muted.
 
-**Build:**
+The endpoint reads the evaluator's last verdict rather than evaluating on
+request. Delivery is behind a protocol — logging always, webhook when
+configured — and a failing sink cannot stop the evaluator. One of the
+rules is the failure this upgrade found once already: lexical retrieval
+returning nothing while nothing raises.
 
-- Thresholds in config, not code: error rate, p95 latency, cost per hour,
-  queue-drop rate, time since last successful ingest.
-- An evaluator on a timer reusing the phase 5 aggregation functions.
-- Alert state with hysteresis, so a metric hovering at the threshold does not
-  flap.
-- Delivery: log first, then a webhook. Keep the delivery mechanism behind a
-  protocol seam, like everything else in this project.
-- Surface active alerts on the dashboard.
+## Phases 9–11 — Offline evaluation, drift, experiments (PR #34)
 
-**Acceptance:** thresholds are configurable and documented in `.env.example`;
-an alert clears on its own; a failing delivery cannot stop the evaluator or
-the app.
+Deferred through the whole upgrade, and the reason held throughout: these
+need **ground truth**. `rag/src/rag/evaluation/` now computes Recall@K,
+Precision@K, MRR, nDCG and MAP against a labelled dataset, and none of it
+is reachable from the dashboard or from any endpoint.
 
-## Phases 9–11 — Offline evaluation, drift, experiment tracking *(deferred)*
+What the package does *not* do is the important part. It cannot be run
+against production logs, and nothing in it will invent a number from them.
+An unlabelled question is skipped and counted, never scored as a miss —
+otherwise a set would report a worse system the larger it grew. Every
+metric returns null rather than zero when it is undefined, and the mean
+skips nulls instead of averaging them in.
 
-Deferred on purpose, and still correctly deferred.
+`compare()` covers both remaining jobs with one mechanism: same dataset
+and different config is an **experiment**; same config and different
+numbers is **drift**, meaning the corpus moved underneath. It says which
+it looks like rather than leaving that to be inferred, and refuses to
+compare reports from different datasets — the subtraction would work and
+the answer would be meaningless, which is the more dangerous kind of
+wrong.
 
-These are the metrics that need **ground truth**: Recall@K, Precision@K, MRR,
-nDCG, answer faithfulness, groundedness. Production retrieval logs cannot
-yield them — the spec was explicit that these must not be faked from online
-data, and nothing built so far pretends otherwise.
+Run with `backend/scripts/evaluate_retrieval.py`. The retriever comes from
+`build_hybrid_retriever()`, extracted from the composition root so
+evaluation measures the system actually running rather than a separately
+assembled one.
 
-The prerequisite is a labelled evaluation set: questions with known relevant
-chunks, drawn from this actual corpus. That is a content task before it is an
-engineering task. Phase 14's feedback is the cheapest path to a first
-labelled set.
-
-When it does happen, it belongs in `rag/evaluation/` (which already exists),
-run as an offline job against a fixed set — never in the request path, and
-never mixed into the operational dashboard, because the two answer different
-questions and carry different confidence.
-
----
-
-## Recommended order
-
-**19 → 13 → 12 → 14 → 18 → 9–11**
-
-19 is small, it affects production today, and it closes a gap that currently
-misrepresents itself as closed. 13 next, because ingestion is the last
-pipeline running blind and is where a real incident already lived. 12 and 14
-add signal the dashboard cannot currently show. 18 is worth little until 12
-exists, since alerting on an undifferentiated error bucket produces noise.
-The evaluation block stays last, gated on ground truth rather than on
-engineering time.
+**Still required before any of these numbers mean anything: somebody has
+to write the labelled set.** `backend/data/evaluation/example.json` is a
+template with no labels in it.
 
 ---
+
+## What this upgrade found
+
+Worth recording, because it is the argument for having done it:
+
+- **A document stuck in `processing` for good**, its 1,056 chunks
+  invisible to BM25 while its vectors stayed live in Pinecone. Hybrid
+  retrieval had silently degraded to dense-only. Found by phase 7's
+  `bm25 empty 100%`, fixed in PR #27, and now alerted on directly.
+- **A 10.4% token undercount** — 1,291 recorded against 1,441 actually
+  spent, because only the final generation call was metered.
+- **Waterfalls rendering scrambled**, because span `started_at` values
+  tie: the wall clock is coarser than the gap between a parent span and
+  the child it opens.
+- **A sanitiser redacting `prompt_tokens`** on a bare `token` substring
+  match — the very numbers the cost work depends on.
+- **Two settings that did nothing**: `TELEMETRY_RETENTION_DAYS`, and four
+  ingestion stages declared in an enum nothing emitted.
 
 ## Appendix
 
 **Migrations added by this work:** `0005_telemetry`,
 `0006_telemetry_dimensions`, `0007_span_sequence`, `0008_token_cost`,
-`0009_ingest_heartbeat`.
+`0009_ingest_heartbeat`, `0010_span_started_at_index`,
+`0011_error_category`, `0012_answer_feedback`.
 
-**Configuration** (all defaulted; see `backend/.env.example`):
-`TELEMETRY_ENABLED`, `TELEMETRY_SAMPLE_RATE`, `TELEMETRY_QUEUE_SIZE`,
-`TELEMETRY_BATCH_SIZE`, `TELEMETRY_FLUSH_INTERVAL_SECONDS`,
-`TELEMETRY_SHUTDOWN_TIMEOUT_SECONDS`, `TELEMETRY_CAPTURE_TEXT`,
-`TELEMETRY_RETENTION_DAYS` *(parsed but not yet enforced — phase 19)*,
-`APP_ENVIRONMENT`, `APP_VERSION`, `INGEST_STALL_MINUTES`.
+**Configuration** (all defaulted; `backend/.env.example` documents each one
+and when to move it):
+
+- Telemetry — `TELEMETRY_ENABLED`, `TELEMETRY_SAMPLE_RATE`,
+  `TELEMETRY_QUEUE_SIZE`, `TELEMETRY_BATCH_SIZE`,
+  `TELEMETRY_FLUSH_INTERVAL_SECONDS`,
+  `TELEMETRY_SHUTDOWN_TIMEOUT_SECONDS`, `TELEMETRY_CAPTURE_TEXT`,
+  `TELEMETRY_RETENTION_DAYS`, `TELEMETRY_RETENTION_INTERVAL_HOURS`,
+  `APP_ENV`, `APP_VERSION`.
+- Ingestion — `INGEST_STALL_MINUTES`.
+- Alerts — `ALERTS_ENABLED`, `ALERT_ERROR_RATE`, `ALERT_P95_MS`,
+  `ALERT_COST_PER_HOUR_USD`, `ALERT_DROPPED_RECORDS`,
+  `ALERT_BM25_EMPTY_RATE`, `ALERT_MIN_REQUESTS`,
+  `ALERT_INTERVAL_SECONDS`, `ALERT_WINDOW_MINUTES`, `ALERT_WEBHOOK_URL`.
+
+**API surface added** (all admin-only except the last two):
+`/api/monitoring/overview`, `/performance`, `/tokens`, `/retrieval`,
+`/errors`, `/ingestion`, `/feedback`, `/alerts`, `/traces`,
+`/traces/{trace_id}` — plus `POST /api/feedback` and
+`DELETE /api/feedback/{message_id}`, which any authenticated reader may
+call for their own answers.
 
 **Test files added by this work:** `rag/tests/unit/test_observability.py`,
-`rag/tests/unit/test_metering.py`, `backend/tests/unit/test_telemetry.py`,
-`backend/tests/unit/test_telemetry_repository.py`,
-`backend/tests/unit/test_aggregation.py`,
-`backend/tests/unit/test_retrieval_metrics.py`,
-`backend/tests/unit/test_ingest_recovery.py`,
-`backend/tests/api/test_monitoring_routes.py`.
+`test_metering.py`, `test_ingestion_observability.py`,
+`test_error_taxonomy.py`, `test_evaluation.py`;
+`backend/tests/unit/test_telemetry.py`, `test_telemetry_repository.py`,
+`test_telemetry_retention.py`, `test_aggregation.py`,
+`test_retrieval_metrics.py`, `test_knowledge_base.py`,
+`test_ingest_recovery.py`, `test_alerts.py`, `test_alerting_service.py`;
+`backend/tests/api/test_monitoring_routes.py`,
+`test_feedback_routes.py`.
+
+**Two things still to do by hand**, neither of them code:
+
+1. `backend/scripts/seed_model_pricing.py` has not been run against
+   production, so `model_pricing` is empty and cost reads "not priced"
+   rather than zero. That is the correct display for unpriced usage, but
+   it means spend is not being tracked in currency yet.
+2. Nobody has written a labelled evaluation set, so phases 9–11 have the
+   machinery and no data. Phase 14's thumbs-down ratings, each carrying
+   its trace id, are the cheapest route to a first one.
