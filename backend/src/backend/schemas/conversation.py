@@ -20,6 +20,11 @@ class ConversationMessageResponse(BaseModel):
     sources: list[dict[str, Any]] | None = None
     created_at: datetime
 
+    # This reader's own rating, so reopening a conversation shows the
+    # thumbs they already gave. Scoped to them: how somebody else rated an
+    # answer is not theirs to see.
+    feedback: str | None = None
+
 
 class ConversationDetailResponse(BaseModel):
     id: uuid.UUID

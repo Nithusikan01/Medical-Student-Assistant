@@ -94,6 +94,12 @@ class ConversationMessage(Base):
     # without re-running retrieval.
     sources: Mapped[list[dict[str, Any]] | None] = mapped_column(sa.JSON)
 
+    # The request that produced this answer. Written from the ambient trace
+    # context, so it costs no signature change anywhere - and it is what
+    # turns "this answer was wrong" into a waterfall an admin can open.
+    # Null for user turns, and for answers generated before this existed.
+    trace_id: Mapped[str | None] = mapped_column(sa.String(64))
+
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=False,

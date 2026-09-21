@@ -222,3 +222,65 @@ def test_the_store_hands_out_memory_per_conversation(session_factory, user):
 
     assert isinstance(memory, PersistentConversationMemory)
     assert memory.conversation_id == conversation_id
+
+
+# ----------------------------------------------------------------------
+# The trace an answer came from
+# ----------------------------------------------------------------------
+
+
+def test_an_answer_records_the_trace_that_produced_it(db, session_factory, user):
+    """
+    Taken from the ambient trace context, so no caller passes it and no
+    signature changes. It is what turns "this answer was wrong" into a
+    waterfall an admin can open.
+    """
+
+    from rag.observability import Tracer
+
+    conversation_id = make_conversation(session_factory, user.id)
+    memory = memory_for(session_factory, conversation_id)
+
+    tracer = Tracer()
+
+    with tracer.trace(trace_id="feedbeef") as trace:
+        memory.add_message("assistant", "Take 500mg.")
+
+        assert trace.trace_id == "feedbeef"
+
+    (stored,) = stored_messages(db, conversation_id)
+
+    assert stored.trace_id == "feedbeef"
+
+
+def test_a_question_carries_no_trace(db, session_factory, user):
+    """A trace explains an answer; the user's own question is not
+    something the system produced."""
+
+    from rag.observability import Tracer
+
+    conversation_id = make_conversation(session_factory, user.id)
+    memory = memory_for(session_factory, conversation_id)
+
+    with Tracer().trace(trace_id="feedbeef"):
+        memory.add_message("user", "What dose?")
+
+    (stored,) = stored_messages(db, conversation_id)
+
+    assert stored.trace_id is None
+
+
+def test_an_answer_outside_a_trace_is_still_stored(db, session_factory, user):
+    """
+    A script, a test, or telemetry switched off entirely. The message is
+    the point; the trace id is a convenience.
+    """
+
+    conversation_id = make_conversation(session_factory, user.id)
+    memory = memory_for(session_factory, conversation_id)
+
+    memory.add_message("assistant", "Take 500mg.")
+
+    (stored,) = stored_messages(db, conversation_id)
+
+    assert stored.trace_id is None

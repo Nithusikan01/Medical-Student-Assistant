@@ -16,6 +16,7 @@ from backend.observability.middleware import TelemetryMiddleware
 from backend.routers.auth import router as auth_router
 from backend.routers.conversations import router as conversations_router
 from backend.routers.documents import router as documents_router
+from backend.routers.feedback import router as feedback_router
 from backend.routers.health import router as health_router
 from backend.routers.ingest import router as ingest_router
 from backend.routers.monitoring import router as monitoring_router
@@ -180,6 +181,12 @@ def create_app() -> FastAPI:
         users_router,
         prefix="/api",
         tags=["Users"],
+    )
+
+    app.include_router(
+        feedback_router,
+        prefix="/api",
+        tags=["Feedback"],
     )
 
     app.include_router(

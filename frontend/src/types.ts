@@ -45,6 +45,9 @@ export interface QueryResponse {
   model: string;
   sources: SourceChunk[];
   processing_time_ms: number | null;
+  // The stored id of this answer, so it can be rated without reloading the
+  // conversation. Null means rating is unavailable for this one.
+  message_id: number | null;
 }
 
 export interface GenerationModelInfo {
@@ -66,12 +69,24 @@ export interface ConversationSummary {
   message_count: number;
 }
 
+export type FeedbackRating = "up" | "down";
+
 export interface ConversationMessage {
   id: number;
   role: "user" | "assistant";
   content: string;
   sources: SourceChunk[] | null;
   created_at: string;
+  // This reader's own rating, so reopening a conversation restores it.
+  feedback: FeedbackRating | null;
+}
+
+export interface FeedbackResponseBody {
+  message_id: number;
+  rating: FeedbackRating;
+  comment: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ConversationDetail {
@@ -371,6 +386,27 @@ export interface IngestionResponse {
   ingestions: number;
   failed_ingestions: number;
   stall_threshold_minutes: number;
+}
+
+export interface NegativeFeedbackInfo {
+  message_id: number;
+  conversation_id: string;
+  created_at: string;
+  comment: string | null;
+  trace_id: string | null;
+}
+
+export interface FeedbackSummaryResponse {
+  window: WindowInfo;
+  up: number;
+  down: number;
+  total: number;
+  answers: number;
+  // Null when nobody rated anything. A share of nothing is undefined, and
+  // 0% would read as "everyone hated it".
+  response_rate: number | null;
+  positive_rate: number | null;
+  recent_negative: NegativeFeedbackInfo[];
 }
 
 export interface TraceSummaryInfo {

@@ -369,6 +369,38 @@ class IngestionResponse(BaseModel):
     stall_threshold_minutes: int = 0
 
 
+class NegativeFeedbackInfo(BaseModel):
+    message_id: int
+    conversation_id: str
+    created_at: datetime
+    comment: str | None = None
+
+    # The request that produced the answer. Null for answers generated
+    # before messages carried a trace id, or once telemetry has aged out -
+    # a rating outlives the spans it points at.
+    trace_id: str | None = None
+
+
+class FeedbackResponse(BaseModel):
+    window: WindowInfo
+
+    up: int = 0
+    down: int = 0
+    total: int = 0
+
+    # Answers produced in the window. The denominator worth seeing before
+    # reading anything into the ratio: ten ratings out of ten answers and
+    # ten out of ten thousand are not the same finding.
+    answers: int = 0
+    response_rate: float | None = None
+
+    # Null when nobody rated anything. A share of nothing is undefined,
+    # and 0% would read as "everyone hated it".
+    positive_rate: float | None = None
+
+    recent_negative: list[NegativeFeedbackInfo] = Field(default_factory=list)
+
+
 class TraceDetailResponse(BaseModel):
     trace: TraceSummaryInfo
     spans: list[SpanInfo] = Field(default_factory=list)

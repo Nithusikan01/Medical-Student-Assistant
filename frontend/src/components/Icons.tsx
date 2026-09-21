@@ -153,3 +153,21 @@ export function Spinner({ size = 16, strokeWidth = 2.4 }: IconProps) {
     </svg>
   );
 }
+
+export function ThumbUp({ size = 14, strokeWidth = 1.7 }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth)}>
+      <path d="M7 10v10H4.5A1.5 1.5 0 0 1 3 18.5v-7A1.5 1.5 0 0 1 4.5 10Z" />
+      <path d="M7 10.5 11 3a2.2 2.2 0 0 1 2.2 2.6L12.5 9h5.2A2.3 2.3 0 0 1 20 11.7l-1.3 6A2.3 2.3 0 0 1 16.4 20H7Z" />
+    </svg>
+  );
+}
+
+export function ThumbDown({ size = 14, strokeWidth = 1.7 }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth)}>
+      <path d="M7 14V4H4.5A1.5 1.5 0 0 0 3 5.5v7A1.5 1.5 0 0 0 4.5 14Z" />
+      <path d="M7 13.5 11 21a2.2 2.2 0 0 0 2.2-2.6L12.5 15h5.2A2.3 2.3 0 0 0 20 12.3l-1.3-6A2.3 2.3 0 0 0 16.4 4H7Z" />
+    </svg>
+  );
+}

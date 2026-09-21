@@ -18,6 +18,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from backend.db.repositories import documents as document_repo
+from backend.db.repositories import feedback as feedback_repo
 from backend.db.repositories import telemetry as telemetry_repo
 from backend.db.repositories import usage as usage_repo
 from backend.dependencies import AdminUser, DbSession
@@ -43,12 +44,14 @@ from backend.schemas.monitoring import (
     ErrorCategoryInfo,
     ErrorCountInfo,
     ErrorsResponse,
+    FeedbackResponse,
     FusionInfo,
     InFlightInfo,
     IngestionResponse,
     KnowledgeBaseInfo,
     LatencyInfo,
     ModelSpendInfo,
+    NegativeFeedbackInfo,
     OverviewResponse,
     PerformanceResponse,
     RequestInfo,
@@ -482,6 +485,53 @@ def ingestion(
         ingestions=top_level.count if top_level else 0,
         failed_ingestions=top_level.errors if top_level else 0,
         stall_threshold_minutes=int(stall_threshold().total_seconds() // 60),
+    )
+
+
+@router.get("/monitoring/feedback", response_model=FeedbackResponse)
+def feedback(
+    session: DbSession,
+    admin: AdminUser,
+    window: Window,
+) -> FeedbackResponse:
+    """
+    What readers thought of the answers.
+
+    The only endpoint here carrying a human judgement rather than a
+    measurement. Everything else says how the system behaved; this says
+    whether the behaviour was any good - which latency and token counts
+    cannot establish, however green they are.
+
+    Rates are null rather than zero when nobody rated anything: a share of
+    nothing is undefined, and 0% would read as "everyone hated it".
+    """
+
+    counts = feedback_repo.counts_between(session, window.start, window.end)
+
+    up = counts["up"]
+    down = counts["down"]
+    total = up + down
+
+    answers = feedback_repo.answers_in_window(session, window.start, window.end)
+
+    return FeedbackResponse(
+        window=window_info(window),
+        up=up,
+        down=down,
+        total=total,
+        answers=answers,
+        response_rate=(total / answers) if answers else None,
+        positive_rate=(up / total) if total else None,
+        recent_negative=[
+            NegativeFeedbackInfo(
+                message_id=row.message_id,
+                conversation_id=str(row.conversation_id),
+                created_at=row.created_at,
+                comment=row.comment,
+                trace_id=row.trace_id,
+            )
+            for row in feedback_repo.recent_negative(session, window.start, window.end)
+        ],
     )
 
 

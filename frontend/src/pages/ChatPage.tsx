@@ -26,7 +26,7 @@ export function ChatPage() {
   const [topK, setTopK] = useState(5);
   const [online, setOnline] = useState<boolean | null>(null);
 
-  const { messages, pending, loading, error, ask } =
+  const { messages, pending, loading, error, ask, rate } =
     useConversation(conversationId);
   const { models, selectedModel, selectModel } = useGenerationModels();
 
@@ -170,6 +170,7 @@ export function ChatPage() {
         </div>
 
         <ChatPanel
+          onRate={rate}
           messages={messages}
           pending={pending}
           loading={loading}

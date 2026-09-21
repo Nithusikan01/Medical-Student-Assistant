@@ -1,5 +1,6 @@
 import type {
   ErrorsResponse,
+  FeedbackSummaryResponse,
   IngestionResponse,
   MonitoringRange,
   OverviewResponse,
@@ -59,6 +60,14 @@ export function getErrors(params: WindowParams = {}): Promise<ErrorsResponse> {
 
 export function getIngestion(params: WindowParams = {}): Promise<IngestionResponse> {
   return request<IngestionResponse>(`/api/monitoring/ingestion${query({ ...params })}`);
+}
+
+export function getFeedback(
+  params: WindowParams = {},
+): Promise<FeedbackSummaryResponse> {
+  return request<FeedbackSummaryResponse>(
+    `/api/monitoring/feedback${query({ ...params })}`,
+  );
 }
 
 export function listTraces(

@@ -182,4 +182,5 @@ def query_documents(
         model=resolved_model,
         sources=sources,
         processing_time_ms=processing_time_ms,
+        message_id=conversations.latest_answer_id(session, conversation.id),
     )

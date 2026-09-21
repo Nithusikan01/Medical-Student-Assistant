@@ -8,6 +8,13 @@ from backend.db.models.document import (
     Document,
     DocumentChunkRecord,
 )
+from backend.db.models.feedback import (
+    MAX_COMMENT_LENGTH,
+    RATING_DOWN,
+    RATING_UP,
+    RATINGS,
+    AnswerFeedback,
+)
 from backend.db.models.generation_usage import (
     STAGE_GENERATION,
     STAGE_QUERY_REWRITE,
@@ -30,7 +37,11 @@ from backend.db.models.user import ROLE_ADMIN, ROLE_USER, User
 
 __all__ = [
     "DOCUMENT_STATUSES",
+    "MAX_COMMENT_LENGTH",
     "PROVIDER_GOOGLE",
+    "RATINGS",
+    "RATING_DOWN",
+    "RATING_UP",
     "ROLE_ADMIN",
     "ROLE_USER",
     "STAGE_GENERATION",
@@ -44,6 +55,7 @@ __all__ = [
     "STATUS_PROCESSING",
     "STATUS_READY",
     "TELEMETRY_STATUSES",
+    "AnswerFeedback",
     "Conversation",
     "ConversationMessage",
     "Document",
