@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { askQuestion, getConversation } from "../api/conversations";
-import type { SourceChunk } from "../types";
+import { rateAnswer, withdrawRating } from "../api/feedback";
+import type { FeedbackRating, SourceChunk } from "../types";
 
 export interface ChatMessage {
   id: string;
@@ -11,6 +12,10 @@ export interface ChatMessage {
   // Only set for answers generated this session - conversation history
   // loaded from the server doesn't carry which model answered.
   model?: string;
+  // The stored id of an answer. Absent on questions, and on an answer the
+  // server could not identify - in which case it cannot be rated.
+  messageId?: number;
+  feedback?: FeedbackRating | null;
 }
 
 export function useConversation(conversationId: string | null) {
@@ -44,6 +49,8 @@ export function useConversation(conversationId: string | null) {
             role: message.role,
             content: message.content,
             sources: message.sources ?? undefined,
+            messageId: message.id,
+            feedback: message.feedback,
           })),
         );
       })
@@ -97,6 +104,8 @@ export function useConversation(conversationId: string | null) {
             content: response.answer,
             sources: response.sources,
             model: response.model,
+            messageId: response.message_id ?? undefined,
+            feedback: null,
           },
         ]);
       } catch (caught) {
@@ -110,5 +119,53 @@ export function useConversation(conversationId: string | null) {
     [conversationId],
   );
 
-  return { messages, pending, loading, error, ask };
+  /**
+   * Rate an answer, or take the rating back by pressing the same thumb.
+   *
+   * Optimistic: the thumb fills immediately and reverts if the request
+   * fails. A rating is not worth making someone wait for, and a failed
+   * one that silently looked successful would be worse than a visible
+   * revert.
+   */
+  const rate = useCallback(
+    async (messageId: number, rating: FeedbackRating) => {
+      let previous: FeedbackRating | null | undefined;
+
+      setMessages((messages) =>
+        messages.map((message) => {
+          if (message.messageId !== messageId) {
+            return message;
+          }
+
+          previous = message.feedback;
+
+          return {
+            ...message,
+            feedback: message.feedback === rating ? null : rating,
+          };
+        }),
+      );
+
+      const next = previous === rating ? null : rating;
+
+      try {
+        if (next === null) {
+          await withdrawRating(messageId);
+        } else {
+          await rateAnswer(messageId, next);
+        }
+      } catch {
+        setMessages((messages) =>
+          messages.map((message) =>
+            message.messageId === messageId
+              ? { ...message, feedback: previous ?? null }
+              : message,
+          ),
+        );
+      }
+    },
+    [],
+  );
+
+  return { messages, pending, loading, error, ask, rate };
 }

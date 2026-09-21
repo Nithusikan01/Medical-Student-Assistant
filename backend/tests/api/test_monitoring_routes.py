@@ -875,3 +875,134 @@ def test_successful_spans_are_not_counted_as_errors(client, headers, db):
 
     assert body["category_totals"] == {}
     assert body["by_category"] == []
+
+
+# ----------------------------------------------------------------------
+# Feedback
+# ----------------------------------------------------------------------
+
+
+def add_answer(db, *, user_id, trace_id=None, minutes_ago=5.0):
+    from backend.db.models import Conversation, ConversationMessage
+
+    conversation_id = uuid.uuid4()
+    moment = datetime.now(UTC) - timedelta(minutes=minutes_ago)
+
+    db.add(Conversation(id=conversation_id, user_id=user_id, title="c"))
+    db.flush()
+
+    message = ConversationMessage(
+        conversation_id=conversation_id,
+        role="assistant",
+        content="an answer",
+        trace_id=trace_id,
+        created_at=moment,
+    )
+
+    db.add(message)
+    db.commit()
+
+    return message
+
+
+def add_feedback(db, *, message, user_id, rating="up", comment=None, minutes_ago=4.0):
+    from backend.db.models import AnswerFeedback
+
+    db.add(
+        AnswerFeedback(
+            message_id=message.id,
+            conversation_id=message.conversation_id,
+            user_id=user_id,
+            trace_id=message.trace_id,
+            rating=rating,
+            comment=comment,
+            created_at=datetime.now(UTC) - timedelta(minutes=minutes_ago),
+        )
+    )
+    db.commit()
+
+
+def test_feedback_is_counted_by_rating(client, headers, db, admin):
+    for rating in ("up", "up", "down"):
+        message = add_answer(db, user_id=admin.id)
+        add_feedback(db, message=message, user_id=admin.id, rating=rating)
+
+    body = client.get("/api/monitoring/feedback", headers=headers).json()
+
+    assert (body["up"], body["down"], body["total"]) == (2, 1, 3)
+    assert body["positive_rate"] == pytest.approx(2 / 3)
+
+
+def test_the_denominator_is_reported(client, headers, db, admin):
+    """
+    Ten ratings out of ten answers and ten out of ten thousand are not the
+    same finding, so the answer count is shown alongside.
+    """
+
+    for _ in range(4):
+        add_answer(db, user_id=admin.id)
+
+    message = add_answer(db, user_id=admin.id)
+    add_feedback(db, message=message, user_id=admin.id)
+
+    body = client.get("/api/monitoring/feedback", headers=headers).json()
+
+    assert body["answers"] == 5
+    assert body["response_rate"] == pytest.approx(1 / 5)
+
+
+def test_no_ratings_leaves_the_rates_null(client, headers, db, admin):
+    """
+    Not zero. A share of nothing is undefined, and 0% would read as
+    "everyone hated it".
+    """
+
+    add_answer(db, user_id=admin.id)
+
+    body = client.get("/api/monitoring/feedback", headers=headers).json()
+
+    assert body["total"] == 0
+    assert body["positive_rate"] is None
+
+
+def test_a_complaint_carries_the_trace_that_produced_it(client, headers, db, admin):
+    """
+    What makes a complaint actionable rather than a feeling: it opens a
+    waterfall.
+    """
+
+    message = add_answer(db, user_id=admin.id, trace_id="deadbeef")
+    add_feedback(
+        db,
+        message=message,
+        user_id=admin.id,
+        rating="down",
+        comment="wrong chapter",
+    )
+
+    body = client.get("/api/monitoring/feedback", headers=headers).json()
+
+    (complaint,) = body["recent_negative"]
+
+    assert complaint["trace_id"] == "deadbeef"
+    assert complaint["comment"] == "wrong chapter"
+
+
+def test_positive_ratings_are_not_listed_as_complaints(client, headers, db, admin):
+    message = add_answer(db, user_id=admin.id)
+    add_feedback(db, message=message, user_id=admin.id, rating="up")
+
+    body = client.get("/api/monitoring/feedback", headers=headers).json()
+
+    assert body["recent_negative"] == []
+
+
+def test_a_non_admin_cannot_read_feedback(client, user, auth_headers):
+    """
+    A rating is private to whoever left it; the aggregate is every
+    reader's, so it is admin-only like the rest of monitoring.
+    """
+
+    response = client.get("/api/monitoring/feedback", headers=auth_headers(user))
+
+    assert response.status_code == 403

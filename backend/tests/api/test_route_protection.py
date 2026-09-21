@@ -37,6 +37,10 @@ AUTHENTICATED = {
     ("DELETE", "/api/conversations/{conversation_id}"),
     ("POST", "/api/query"),
     ("GET", "/api/models"),
+    # Rating an answer is the reader's own act; ownership is checked
+    # against the conversation, and someone else's message reads as 404.
+    ("POST", "/api/feedback"),
+    ("DELETE", "/api/feedback/{message_id}"),
 }
 
 ADMIN_ONLY = {
@@ -56,6 +60,7 @@ ADMIN_ONLY = {
     ("GET", "/api/monitoring/retrieval"),
     ("GET", "/api/monitoring/errors"),
     ("GET", "/api/monitoring/ingestion"),
+    ("GET", "/api/monitoring/feedback"),
     ("GET", "/api/monitoring/traces"),
     ("GET", "/api/monitoring/traces/{trace_id}"),
 }

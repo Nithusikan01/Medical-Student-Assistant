@@ -66,6 +66,11 @@ class QueryResponse(BaseModel):
 
     processing_time_ms: int | None = None
 
+    # The stored id of this answer, so the client can rate it without
+    # reloading the conversation. Null if the message could not be found,
+    # which the client reads as "rating unavailable" rather than failing.
+    message_id: int | None = None
+
 
 class GenerationModelInfo(BaseModel):
     id: str

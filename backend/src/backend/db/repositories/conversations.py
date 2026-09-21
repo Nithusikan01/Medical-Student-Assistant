@@ -89,6 +89,23 @@ def messages_for(
     )
 
 
+def latest_answer_id(session: Session, conversation_id: uuid.UUID) -> int | None:
+    """
+    The id of the most recent assistant message in a conversation.
+
+    Returned to the client so an answer can be rated without reloading
+    the conversation first - the id is minted inside the memory layer,
+    which the router has no handle on.
+    """
+
+    return session.scalar(
+        sa.select(sa.func.max(ConversationMessage.id)).where(
+            ConversationMessage.conversation_id == conversation_id,
+            ConversationMessage.role == "assistant",
+        )
+    )
+
+
 def attach_sources_to_latest_answer(
     session: Session,
     conversation_id: uuid.UUID,

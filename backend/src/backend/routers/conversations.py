@@ -4,7 +4,7 @@ import sqlalchemy as sa
 from fastapi import APIRouter, HTTPException, status
 
 from backend.db.models import Conversation
-from backend.db.repositories import conversations
+from backend.db.repositories import conversations, feedback
 from backend.dependencies import CurrentUser, DbSession
 from backend.schemas.conversation import (
     ConversationCreateRequest,
@@ -103,6 +103,14 @@ def get_conversation(
 ) -> ConversationDetailResponse:
     conversation = _owned_or_404(session, conversation_id, user.id)
 
+    messages = conversations.messages_for(session, conversation.id)
+
+    ratings = feedback.ratings_for_messages(
+        session,
+        message_ids=[message.id for message in messages],
+        user_id=user.id,
+    )
+
     return ConversationDetailResponse(
         id=conversation.id,
         title=conversation.title,
@@ -115,8 +123,9 @@ def get_conversation(
                 content=message.content,
                 sources=message.sources,
                 created_at=message.created_at,
+                feedback=ratings.get(message.id),
             )
-            for message in conversations.messages_for(session, conversation.id)
+            for message in messages
         ],
     )
 

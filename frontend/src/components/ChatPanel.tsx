@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { ChatMessage } from "../hooks/useConversation";
-import type { GenerationModelInfo } from "../types";
-import { Send, Spinner } from "./Icons";
+import type { FeedbackRating, GenerationModelInfo } from "../types";
+import { Send, Spinner, ThumbDown, ThumbUp } from "./Icons";
 import { ModelSelect } from "./ModelSelect";
 import { SourceList } from "./SourceList";
 
@@ -18,6 +18,7 @@ interface ChatPanelProps {
   selectedModel: string | null;
   onModelChange: (id: string) => void;
   onSend: (question: string) => void;
+  onRate: (messageId: number, rating: FeedbackRating) => void;
 }
 
 export function ChatPanel({
@@ -32,6 +33,7 @@ export function ChatPanel({
   selectedModel,
   onModelChange,
   onSend,
+  onRate,
 }: ChatPanelProps) {
   const [draft, setDraft] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
@@ -86,6 +88,12 @@ export function ChatPanel({
               )}
               <p className="message-body">{message.content}</p>
               {message.sources && <SourceList sources={message.sources} />}
+              {message.messageId !== undefined && (
+                <FeedbackButtons
+                  rating={message.feedback ?? null}
+                  onRate={(rating) => onRate(message.messageId as number, rating)}
+                />
+              )}
             </article>
           ),
         )}
@@ -160,5 +168,45 @@ export function ChatPanel({
         </div>
       </form>
     </>
+  );
+}
+
+/**
+ * Thumbs on an answer.
+ *
+ * The only place in this application where a reader says whether something
+ * was any good. Pressing the thumb already showing takes the rating back,
+ * so a misclick is one click to undo rather than a stuck opinion.
+ */
+function FeedbackButtons({
+  rating,
+  onRate,
+}: {
+  rating: FeedbackRating | null;
+  onRate: (rating: FeedbackRating) => void;
+}) {
+  return (
+    <div className="message-feedback">
+      <button
+        type="button"
+        className="feedback-button"
+        aria-pressed={rating === "up"}
+        aria-label={rating === "up" ? "Remove your rating" : "Helpful"}
+        title="Helpful"
+        onClick={() => onRate("up")}
+      >
+        <ThumbUp />
+      </button>
+      <button
+        type="button"
+        className="feedback-button"
+        aria-pressed={rating === "down"}
+        aria-label={rating === "down" ? "Remove your rating" : "Not helpful"}
+        title="Not helpful"
+        onClick={() => onRate("down")}
+      >
+        <ThumbDown />
+      </button>
+    </div>
   );
 }

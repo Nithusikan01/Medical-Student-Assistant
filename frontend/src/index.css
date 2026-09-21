@@ -1475,6 +1475,47 @@ a:hover {
    scrollbar around a plot that fits but whose labels do not. */
 /* A finding stated in words, under the tiles that imply it. Used where a
    number alone would not tell an admin what to do about it. */
+/* Thumbs on an answer. Quiet until hovered or pressed: a rating is
+   offered, not demanded, and a row of bright buttons under every reply
+   reads as a request for homework. */
+.message-feedback {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.6rem;
+}
+
+.feedback-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+.feedback-button:hover {
+  opacity: 1;
+  background: var(--surface-muted, rgba(127, 127, 127, 0.1));
+}
+
+.feedback-button[aria-pressed="true"] {
+  opacity: 1;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.feedback-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .mon-note {
   margin: 0.85rem 0 0;
   padding: 0.7rem 0.85rem;
@@ -1608,6 +1649,20 @@ a:hover {
   margin-top: 22px;
   padding-top: 18px;
   border-top: 1px solid var(--border);
+}
+
+/* A value that is deliberately absent - "not recorded", "no comment" -
+   rather than a number rendered dim. Zero and unknown must not look
+   alike anywhere in this dashboard. */
+.mon-muted {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.mon-link {
+  color: var(--accent);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.82em;
 }
 
 .mon-table {

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import {
   getErrors,
+  getFeedback,
   getIngestion,
   getOverview,
   getPerformance,
@@ -30,6 +31,7 @@ import { ArrowLeft } from "../components/Icons";
 import { ThemeToggle } from "../components/ThemeToggle";
 import type {
   ErrorsResponse,
+  FeedbackSummaryResponse,
   IngestionResponse,
   MonitoringRange,
   OverviewResponse,
@@ -102,6 +104,7 @@ interface Data {
   retrieval: RetrievalResponse;
   errors: ErrorsResponse;
   ingestion: IngestionResponse;
+  feedback: FeedbackSummaryResponse;
 }
 
 export function AdminMonitoringPage() {
@@ -117,7 +120,7 @@ export function AdminMonitoringPage() {
     try {
       const params = { range: selected };
 
-      const [overview, performance, tokens, retrieval, errors, ingestion] =
+      const [overview, performance, tokens, retrieval, errors, ingestion, feedback] =
         await Promise.all([
           getOverview(params),
           getPerformance(params),
@@ -125,9 +128,18 @@ export function AdminMonitoringPage() {
           getRetrieval(params),
           getErrors(params),
           getIngestion(params),
+          getFeedback(params),
         ]);
 
-      setData({ overview, performance, tokens, retrieval, errors, ingestion });
+      setData({
+        overview,
+        performance,
+        tokens,
+        retrieval,
+        errors,
+        ingestion,
+        feedback,
+      });
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "Could not load monitoring data.",
@@ -195,7 +207,8 @@ export function AdminMonitoringPage() {
 }
 
 function Dashboard({ data }: { data: Data }) {
-  const { overview, performance, tokens, retrieval, errors, ingestion } = data;
+  const { overview, performance, tokens, retrieval, errors, ingestion, feedback } =
+    data;
   const { requests } = overview;
 
   return (
@@ -547,6 +560,71 @@ function Dashboard({ data }: { data: Data }) {
             <StageLatencyChart stages={ingestion.stages} />
           </div>
         </div>
+      </Panel>
+
+      <Panel
+        title="What readers thought"
+        description="The only judgement of quality here. Everything else on this page measures behaviour, not whether the behaviour was any good."
+      >
+        <div className="mon-tiles">
+          <StatTile
+            label="Helpful"
+            value={formatNumber(feedback.up)}
+            detail={
+              feedback.positive_rate === null
+                ? "nobody rated anything"
+                : `${formatPercent(feedback.positive_rate)} of ratings`
+            }
+          />
+          <StatTile
+            label="Not helpful"
+            value={formatNumber(feedback.down)}
+            detail="each one opens a trace"
+            tone={feedback.down > 0 ? "warning" : "default"}
+          />
+          <StatTile
+            label="Answers rated"
+            value={
+              feedback.response_rate === null
+                ? "—"
+                : formatPercent(feedback.response_rate)
+            }
+            detail={`${formatNumber(feedback.total)} of ${formatNumber(
+              feedback.answers,
+            )} answers`}
+          />
+        </div>
+
+        {feedback.recent_negative.length === 0 ? (
+          <EmptyState message="No complaints in this window." />
+        ) : (
+          <table className="data-table mon-table">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Comment</th>
+                <th>Trace</th>
+              </tr>
+            </thead>
+            <tbody>
+              {feedback.recent_negative.map((row) => (
+                <tr key={row.message_id}>
+                  <td>{new Date(row.created_at).toLocaleString()}</td>
+                  <td>{row.comment ?? <span className="mon-muted">—</span>}</td>
+                  <td>
+                    {row.trace_id ? (
+                      <Link to={`/admin/traces/${row.trace_id}`} className="mon-link">
+                        {row.trace_id.slice(0, 12)}…
+                      </Link>
+                    ) : (
+                      <span className="mon-muted">not recorded</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </Panel>
 
       <Panel

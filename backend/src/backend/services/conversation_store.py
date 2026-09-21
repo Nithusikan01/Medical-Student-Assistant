@@ -4,6 +4,7 @@ from typing import Any
 import sqlalchemy as sa
 from rag.conversation.memory import ConversationMemory
 from rag.conversation.schemas import ChatMessage
+from rag.observability import current_trace_id
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.db.models import Conversation, ConversationMessage
@@ -80,6 +81,10 @@ class PersistentConversationMemory(ConversationMemory):
                 conversation_id=self.conversation_id,
                 role=role,
                 content=content,
+                # Ambient, so no caller passes it and no signature changes.
+                # Only for answers: a user's question is not something a
+                # trace explains.
+                trace_id=current_trace_id() if role == "assistant" else None,
             )
 
             session.add(row)
