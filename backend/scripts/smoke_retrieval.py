@@ -18,7 +18,9 @@ if TYPE_CHECKING:
 
 
 DEFAULT_QUERY = "Who is Nithusikan?"
-DEFAULT_CORPUS_PATH = Path(__file__).resolve().parents[1] / "storage" / "bm25_corpus.json"
+DEFAULT_CORPUS_PATH = (
+    Path(__file__).resolve().parents[1] / "storage" / "bm25_corpus.json"
+)
 
 
 def parse_args() -> argparse.Namespace:

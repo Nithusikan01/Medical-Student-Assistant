@@ -82,9 +82,9 @@ cd frontend; npm run dev
 
 The Vite dev server (port 5173) proxies `/api` and `/health` to `http://127.0.0.1:8000`; override with `VITE_BACKEND_URL` in `frontend/.env` or the shell (`vite.config.ts` reads it via `loadEnv`, so both work). `npm run build` runs `tsc -b` first, so it also type-checks.
 
-Ingestion runs through `POST /api/ingest` (multipart upload) or the frontend's upload panel — there is no CLI ingestion entry point (`main.py` was deleted). Ad-hoc scripts in `backend/scripts/` are for manual smoke testing, not part of the test suite: `ask_cv_from_terminal.py` (interactive Q&A), `smoke_rag.py` / `smoke_retrieval.py` / `smoke_reranker.py` (component smoke checks — named `smoke_` rather than `test_` so pytest cannot collect them), `run_ingestion.py` (BM25 corpus verification, despite the name), `migrate_bm25_corpus.py` (imports a legacy `bm25_corpus.json` into the database), `reset_pinecone.py` (drops and recreates the Pinecone index — destructive).
+Ingestion runs through `POST /api/ingest` (multipart upload) or the frontend's upload panel — there is no CLI ingestion entry point (`main.py` was deleted). Ad-hoc scripts in `backend/scripts/` are for manual smoke testing, not part of the test suite: `ask_cv_from_terminal.py` (interactive Q&A), `smoke_rag.py` / `smoke_retrieval.py` / `smoke_reranker.py` (component smoke checks — named `smoke_` rather than `test_` so pytest cannot collect them), `run_ingestion.py` (BM25 corpus verification, despite the name), `migrate_bm25_corpus.py` (imports a legacy `bm25_corpus.json` into the database), `reset_pinecone.py` (drops and recreates the Pinecone index — destructive), `seed_model_pricing.py` (fills `model_pricing`, without which cost reads "not priced" rather than zero), `evaluate_retrieval.py` (runs a labelled evaluation set against the live retriever — see Offline evaluation below).
 
-Required environment variables (`.env` in `backend/`, templated by `backend/.env.example`): `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `GEMINI_API_KEY`, `DATABASE_URL` (PostgreSQL), `SECRET_KEY` (JWT signing, ≥32 chars), `ADMIN_EMAIL`/`ADMIN_PASSWORD` (seeded on startup, idempotent — an existing password is never overwritten). Retrieval/chunking/embedding variables (`CHUNK_SIZE`, `CANDIDATE_K`, `USE_HOSTED_INFERENCE`, etc.) are read in `rag/src/rag/config/settings.py::load_settings`; auth/database variables (`ALLOW_OPEN_REGISTRATION`, `COOKIE_SECURE`, `CORS_ORIGINS`, token TTLs) are read in `backend/src/backend/auth/config.py::load_auth_config` and `backend/src/backend/app.py::cors_origins`. `.env` files are gitignored at any depth; `.env.example` files are committed. Apply migrations before first run: `cd backend; alembic upgrade head` (three revisions: `0001_auth_tables`, `0002_conversations`, `0003_documents`).
+Required environment variables (`.env` in `backend/`, templated by `backend/.env.example`): `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `GEMINI_API_KEY`, `DATABASE_URL` (PostgreSQL), `SECRET_KEY` (JWT signing, ≥32 chars), `ADMIN_EMAIL`/`ADMIN_PASSWORD` (seeded on startup, idempotent — an existing password is never overwritten). Retrieval/chunking/embedding variables (`CHUNK_SIZE`, `CANDIDATE_K`, `USE_HOSTED_INFERENCE`, etc.) are read in `rag/src/rag/config/settings.py::load_settings`; auth/database variables (`ALLOW_OPEN_REGISTRATION`, `COOKIE_SECURE`, `CORS_ORIGINS`, token TTLs) are read in `backend/src/backend/auth/config.py::load_auth_config` and `backend/src/backend/app.py::cors_origins`. `.env` files are gitignored at any depth; `.env.example` files are committed. Apply migrations before first run: `cd backend; alembic upgrade head` (`0001_auth_tables` through `0012_answer_feedback`; the later ones add generation usage, telemetry, token cost, an ingestion heartbeat, an error taxonomy and answer feedback).
 
 ## Architecture
 
@@ -165,6 +165,35 @@ All under `rag/src/rag/` unless noted:
 3. `retrieval/schemas.py`: `RetrievedChunk`/`RetrievedChunkMetadata` (post-retrieval/rerank, carries `dense_score`/`bm25_score`/`hybrid_score`/`rerank_score`/`retrieval_method`).
 
 `ChunkMetadata` is the canonical field set (document_id, filename, source_path, page_number, section_title, heading_level, start_char/end_char, chunk_size, overlap_size, element_id/type, language, tags); the other metadata dataclasses mirror it for their stage. When adding a metadata field, it typically needs updating in all three places plus `BM25Metadata` (`ingestion/bm25/schemas.py`), the API's `SourceMetadata` (`backend/src/backend/schemas/query.py` — note `source_path` is deliberately dropped there, since it's the server's absolute upload path), and the mirrored TypeScript interface in `frontend/src/types.ts`.
+
+### Offline evaluation
+
+`rag/src/rag/evaluation/` computes Recall@K, Precision@K, MRR, nDCG and MAP
+against a **labelled** dataset. It is deliberately separate from everything
+under `backend/observability/`, and the separation is the point:
+
+- `backend/observability/` measures **what happened** — latency, spend, error
+  rates, how many chunks came back. Derivable from production traffic, served
+  live by the admin monitoring API.
+- `rag/evaluation/` measures **whether it was any good**. Not derivable from
+  production traffic at any volume: it needs questions paired with the
+  passages that genuinely answer them, which only a person who knows the
+  corpus can write. Nothing it produces reaches the dashboard, and no endpoint
+  serves it.
+
+Run it with `cd backend; python scripts/evaluate_retrieval.py <dataset.json>`,
+optionally `--save runs/before.json`, then `--compare runs/before.json
+runs/after.json`. The comparison covers both experiment tracking (same
+dataset, different config) and drift (same config, corpus changed underneath);
+it reports which of the two it looks like rather than leaving that to be
+inferred. `backend/data/evaluation/example.json` is a template with no labels
+in it — unlabelled examples are skipped and counted, never scored as misses.
+
+Labels are `document_chunks` ids, which are also the Pinecone vector ids, so
+re-chunking a document invalidates every label pointing into it. Label at
+document level where a question is answered by a whole document: it is
+cheaper, survives re-ingestion, and is scored separately rather than mixed in
+with passage-level scores.
 
 ### Config
 

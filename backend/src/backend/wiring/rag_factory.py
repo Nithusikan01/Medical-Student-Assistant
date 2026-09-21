@@ -421,11 +421,15 @@ def refresh_bm25_index() -> int:
 
 
 @lru_cache
-def build_history_aware_rag_service() -> HistoryAwareRAGService:
-    #
-    # Embedding Model and Vector Store (shared with the ingestion path)
-    #
-    embedder = build_embedder()
+def build_hybrid_retriever() -> HybridRetriever:
+    """
+    Dense plus BM25, fused - the retrieval half of the query path.
+
+    Extracted so offline evaluation can measure the retriever the
+    application actually runs. Scoring a separately assembled one would
+    measure a system nobody is using, which is the quiet way an
+    evaluation set stops meaning anything.
+    """
 
     #
     # Telemetry
@@ -442,7 +446,7 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
     #
     dense_retriever = DenseRetriever(
         vector_store=build_vector_store(),
-        embedding_model=embedder,
+        embedding_model=build_embedder(),
         tracer=tracer,
     )
 
@@ -454,14 +458,18 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
         tracer=tracer,
     )
 
-    #
-    # Hybrid Retriever
-    #
-    hybrid_retriever = HybridRetriever(
+    return HybridRetriever(
         dense_retriever=dense_retriever,
         bm25_retriever=bm25_retriever,
         tracer=tracer,
     )
+
+
+@lru_cache
+def build_history_aware_rag_service() -> HistoryAwareRAGService:
+    tracer = build_tracer()
+
+    hybrid_retriever = build_hybrid_retriever()
 
     #
     # Reranker
