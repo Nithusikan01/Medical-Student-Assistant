@@ -334,6 +334,32 @@ export interface ErrorsResponse {
   by_stage: ErrorCountInfo[];
 }
 
+export interface KnowledgeBaseInfo {
+  documents_by_status: Record<string, number>;
+  total_documents: number;
+  ready_documents: number;
+
+  chunks_stored: number;
+  chunks_retrievable: number;
+
+  // Stored, vectors live, but invisible to lexical search because the
+  // document is not ready. Zero is the healthy value.
+  chunks_unreachable: number;
+
+  last_ingested_at: string | null;
+  stalled_documents: number;
+  healthy: boolean;
+}
+
+export interface IngestionResponse {
+  window: WindowInfo;
+  knowledge_base: KnowledgeBaseInfo;
+  stages: StageLatencyInfo[];
+  ingestions: number;
+  failed_ingestions: number;
+  stall_threshold_minutes: number;
+}
+
 export interface TraceSummaryInfo {
   trace_id: string;
   request_id: string | null;

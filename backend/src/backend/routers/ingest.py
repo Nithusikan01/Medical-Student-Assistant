@@ -11,7 +11,7 @@ from rag.ingestion.pipeline import IngestionPipeline
 from rag.ingestion.processor import VectorDataProcessor
 
 from backend.db.session import get_session_factory
-from backend.dependencies import AdminUser
+from backend.dependencies import AdminUser, CurrentTrace
 from backend.schemas.document import DocumentResponse, IngestResponse
 from backend.services.document_service import (
     DocumentService,
@@ -20,6 +20,7 @@ from backend.services.document_service import (
 from backend.services.upload_service import UploadService
 from backend.wiring.rag_factory import (
     build_embedder,
+    build_tracer,
     build_vector_store,
     refresh_bm25_index,
 )
@@ -40,6 +41,9 @@ def get_ingestion_pipeline() -> IngestionPipeline:
         processor=VectorDataProcessor(),
         vector_store=build_vector_store(),
         batch_size=settings.embedding_batch_size,
+        # The middleware has already opened a trace for this request, so the
+        # pipeline's spans nest under it rather than starting a second one.
+        tracer=build_tracer(),
     )
 
 
@@ -68,6 +72,7 @@ def get_document_service() -> DocumentService:
 def ingest_document(
     admin: AdminUser,
     file: Annotated[UploadFile, File()],
+    trace: CurrentTrace,
 ) -> IngestResponse:
 
     if file.content_type != "application/pdf" and not (
@@ -91,6 +96,12 @@ def ingest_document(
             size_bytes=saved_file.stat().st_size,
             uploaded_by=admin.id,
         )
+
+        # Attached after the fact because the id is minted inside the
+        # service. The filename is an admin-chosen document title, not user
+        # content, and without it an ingestion trace reads as an anonymous
+        # slow request.
+        trace.set(document_id=str(document.id), filename=document.filename)
 
         return IngestResponse(
             filename=document.filename,

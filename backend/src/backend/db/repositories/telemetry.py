@@ -83,6 +83,7 @@ def span_points(
     window: TimeWindow,
     *,
     stage: str | None = None,
+    stages: Sequence[str] | None = None,
 ) -> list[SpanPoint]:
     query = sa.select(
         RagSpan.stage,
@@ -97,6 +98,12 @@ def span_points(
 
     if stage is not None:
         query = query.where(RagSpan.stage == stage)
+
+    # A family of stages rather than one - the ingestion panel wants every
+    # ingestion stage and nothing else, and filtering in SQL beats pulling
+    # a window's worth of query spans to discard them in Python.
+    if stages is not None:
+        query = query.where(RagSpan.stage.in_(list(stages)))
 
     return [
         SpanPoint(

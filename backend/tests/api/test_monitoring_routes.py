@@ -541,3 +541,193 @@ def test_pricing_rows_are_not_exposed(client, headers, db):
     body = client.get("/api/monitoring/tokens", headers=headers).json()
 
     assert "input_cost_per_1m_usd" not in str(body)
+
+
+# ----------------------------------------------------------------------
+# Ingestion and the knowledge base
+# ----------------------------------------------------------------------
+
+
+def add_ingested_document(
+    db,
+    *,
+    status: str = "ready",
+    chunks: int = 0,
+    heartbeat_minutes_ago: float | None = None,
+    minutes_ago: float = 10.0,
+):
+    from backend.db.models import Document, DocumentChunkRecord
+
+    document_id = uuid.uuid4()
+    moment = datetime.now(UTC) - timedelta(minutes=minutes_ago)
+
+    db.add(
+        Document(
+            id=document_id,
+            filename=f"{document_id}.pdf",
+            status=status,
+            created_at=moment,
+            updated_at=moment,
+            heartbeat_at=(
+                None
+                if heartbeat_minutes_ago is None
+                else datetime.now(UTC) - timedelta(minutes=heartbeat_minutes_ago)
+            ),
+        )
+    )
+
+    for index in range(chunks):
+        db.add(
+            DocumentChunkRecord(
+                id=f"{document_id}_chunk_{index}",
+                document_id=document_id,
+                chunk_index=index,
+                text=f"chunk {index}",
+            )
+        )
+
+    db.commit()
+
+    return document_id
+
+
+def test_the_ingestion_panel_reports_the_corpus(client, headers, db):
+    add_ingested_document(db, status="ready", chunks=5)
+    add_ingested_document(db, status="failed")
+
+    body = client.get("/api/monitoring/ingestion", headers=headers).json()
+    knowledge_base = body["knowledge_base"]
+
+    assert knowledge_base["total_documents"] == 2
+    assert knowledge_base["ready_documents"] == 1
+    assert knowledge_base["chunks_stored"] == 5
+    assert knowledge_base["chunks_retrievable"] == 5
+    assert knowledge_base["healthy"] is True
+
+
+def test_chunks_stranded_by_a_stuck_ingest_are_reported(client, headers, db):
+    """
+    The incident this panel exists for. A document stuck in `processing`
+    keeps its chunk rows and its vectors, and drops out of lexical
+    retrieval entirely - with nothing failing anywhere to say so.
+    """
+
+    add_ingested_document(db, status="ready", chunks=4)
+    add_ingested_document(db, status="processing", chunks=6, minutes_ago=4000)
+
+    knowledge_base = client.get("/api/monitoring/ingestion", headers=headers).json()[
+        "knowledge_base"
+    ]
+
+    assert knowledge_base["chunks_stored"] == 10
+    assert knowledge_base["chunks_retrievable"] == 4
+    assert knowledge_base["chunks_unreachable"] == 6
+    assert knowledge_base["stalled_documents"] == 1
+    assert knowledge_base["healthy"] is False
+
+
+def test_a_live_ingest_is_not_reported_as_stalled(client, headers, db):
+    add_ingested_document(
+        db,
+        status="processing",
+        chunks=2,
+        minutes_ago=240,
+        heartbeat_minutes_ago=1,
+    )
+
+    knowledge_base = client.get("/api/monitoring/ingestion", headers=headers).json()[
+        "knowledge_base"
+    ]
+
+    assert knowledge_base["stalled_documents"] == 0
+
+    # Still unreachable, because BM25 only reads ready documents - being
+    # healthy-in-progress does not make a partial corpus searchable.
+    assert knowledge_base["chunks_unreachable"] == 2
+
+
+def test_the_panel_says_what_stalled_means(client, headers):
+    body = client.get("/api/monitoring/ingestion", headers=headers).json()
+
+    assert body["stall_threshold_minutes"] == 15
+
+
+def test_ingestion_stage_latencies_come_back(client, headers, db):
+    trace_id = add_trace(db, route="/api/ingest")
+
+    add_span(db, trace_id=trace_id, stage="ingestion", sequence=1, duration_ms=9000.0)
+    add_span(
+        db, trace_id=trace_id, stage="document_load", sequence=2, duration_ms=800.0
+    )
+    add_span(
+        db,
+        trace_id=trace_id,
+        stage="ingestion_batch",
+        sequence=3,
+        duration_ms=400.0,
+    )
+
+    body = client.get("/api/monitoring/ingestion", headers=headers).json()
+    stages = {stage["stage"]: stage for stage in body["stages"]}
+
+    assert set(stages) == {"ingestion", "document_load", "ingestion_batch"}
+    assert stages["ingestion"]["latency"]["p95_ms"] == 9000.0
+
+
+def test_query_stages_are_not_charted_as_ingestion(client, headers, db):
+    trace_id = add_trace(db)
+
+    add_span(db, trace_id=trace_id, stage="retrieval", sequence=1)
+    add_span(db, trace_id=trace_id, stage="generation", sequence=2)
+
+    body = client.get("/api/monitoring/ingestion", headers=headers).json()
+
+    assert body["stages"] == []
+
+
+def test_ingestions_are_counted_by_document_not_by_batch(client, headers, db):
+    """
+    The nested spans run once per batch. Counting them would say a single
+    upload was twelve ingestions.
+    """
+
+    trace_id = add_trace(db, route="/api/ingest")
+
+    add_span(db, trace_id=trace_id, stage="ingestion", sequence=1)
+
+    for index in range(5):
+        add_span(
+            db,
+            trace_id=trace_id,
+            stage="ingestion_batch",
+            sequence=index + 2,
+        )
+
+    body = client.get("/api/monitoring/ingestion", headers=headers).json()
+
+    assert body["ingestions"] == 1
+    assert body["failed_ingestions"] == 0
+
+
+def test_a_failed_ingestion_is_counted(client, headers, db):
+    trace_id = add_trace(db, route="/api/ingest", status="error")
+
+    add_span(
+        db,
+        trace_id=trace_id,
+        stage="ingestion",
+        sequence=1,
+        status="error",
+        error_type="RuntimeError",
+    )
+
+    body = client.get("/api/monitoring/ingestion", headers=headers).json()
+
+    assert body["ingestions"] == 1
+    assert body["failed_ingestions"] == 1
+
+
+def test_a_non_admin_cannot_read_the_ingestion_panel(client, user, auth_headers):
+    response = client.get("/api/monitoring/ingestion", headers=auth_headers(user))
+
+    assert response.status_code == 403

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import {
   getErrors,
+  getIngestion,
   getOverview,
   getPerformance,
   getRetrieval,
@@ -20,6 +21,7 @@ import {
   formatMs,
   formatNumber,
   formatPercent,
+  formatWhen,
   Meter,
   Panel,
   StatTile,
@@ -28,6 +30,7 @@ import { ArrowLeft } from "../components/Icons";
 import { ThemeToggle } from "../components/ThemeToggle";
 import type {
   ErrorsResponse,
+  IngestionResponse,
   MonitoringRange,
   OverviewResponse,
   PerformanceResponse,
@@ -50,6 +53,7 @@ interface Data {
   tokens: TokensResponse;
   retrieval: RetrievalResponse;
   errors: ErrorsResponse;
+  ingestion: IngestionResponse;
 }
 
 export function AdminMonitoringPage() {
@@ -65,15 +69,17 @@ export function AdminMonitoringPage() {
     try {
       const params = { range: selected };
 
-      const [overview, performance, tokens, retrieval, errors] = await Promise.all([
-        getOverview(params),
-        getPerformance(params),
-        getTokens(params),
-        getRetrieval(params),
-        getErrors(params),
-      ]);
+      const [overview, performance, tokens, retrieval, errors, ingestion] =
+        await Promise.all([
+          getOverview(params),
+          getPerformance(params),
+          getTokens(params),
+          getRetrieval(params),
+          getErrors(params),
+          getIngestion(params),
+        ]);
 
-      setData({ overview, performance, tokens, retrieval, errors });
+      setData({ overview, performance, tokens, retrieval, errors, ingestion });
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "Could not load monitoring data.",
@@ -141,7 +147,7 @@ export function AdminMonitoringPage() {
 }
 
 function Dashboard({ data }: { data: Data }) {
-  const { overview, performance, tokens, retrieval, errors } = data;
+  const { overview, performance, tokens, retrieval, errors, ingestion } = data;
   const { requests } = overview;
 
   return (
@@ -406,6 +412,93 @@ function Dashboard({ data }: { data: Data }) {
             </div>
           </div>
         )}
+      </Panel>
+
+      <Panel
+        title="Knowledge base"
+        description={`${formatNumber(
+          ingestion.knowledge_base.ready_documents,
+        )} of ${formatNumber(
+          ingestion.knowledge_base.total_documents,
+        )} documents searchable · last ingest ${formatWhen(
+          ingestion.knowledge_base.last_ingested_at,
+        )}`}
+      >
+        <div className="mon-tiles">
+          <StatTile
+            label="Chunks searchable"
+            value={formatNumber(ingestion.knowledge_base.chunks_retrievable)}
+            detail={`of ${formatNumber(ingestion.knowledge_base.chunks_stored)} stored`}
+          />
+          <StatTile
+            label="Unreachable chunks"
+            value={formatNumber(ingestion.knowledge_base.chunks_unreachable)}
+            detail="stored, but invisible to lexical search"
+            tone={
+              ingestion.knowledge_base.chunks_unreachable > 0 ? "danger" : "default"
+            }
+          />
+          <StatTile
+            label="Stalled ingestions"
+            value={formatNumber(ingestion.knowledge_base.stalled_documents)}
+            detail={`silent for over ${ingestion.stall_threshold_minutes}m`}
+            tone={
+              ingestion.knowledge_base.stalled_documents > 0 ? "danger" : "default"
+            }
+          />
+          <StatTile
+            label="Ingestions"
+            value={formatNumber(ingestion.ingestions)}
+            detail={
+              ingestion.failed_ingestions > 0
+                ? `${formatNumber(ingestion.failed_ingestions)} failed`
+                : "in this window"
+            }
+            tone={ingestion.failed_ingestions > 0 ? "warning" : "default"}
+          />
+        </div>
+
+        {ingestion.knowledge_base.chunks_unreachable > 0 && (
+          <p className="mon-note">
+            Chunks belonging to a document that is not ready keep their vectors
+            but drop out of lexical retrieval, so hybrid search quietly runs on
+            one retriever instead of two.{" "}
+            <Link to="/admin/documents">Review the documents</Link>.
+          </p>
+        )}
+
+        <div className="mon-grid">
+          <div>
+            <h3 className="mon-subhead">Documents by status</h3>
+            {Object.keys(ingestion.knowledge_base.documents_by_status).length === 0 ? (
+              <EmptyState message="Nothing has been uploaded yet." />
+            ) : (
+              <table className="data-table mon-table">
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>Documents</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(ingestion.knowledge_base.documents_by_status).map(
+                    ([status, count]) => (
+                      <tr key={status}>
+                        <td>{status}</td>
+                        <td>{formatNumber(count)}</td>
+                      </tr>
+                    ),
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div>
+            <h3 className="mon-subhead">Ingestion stages</h3>
+            <StageLatencyChart stages={ingestion.stages} />
+          </div>
+        </div>
       </Panel>
 
       <Panel
