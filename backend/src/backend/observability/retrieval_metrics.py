@@ -38,6 +38,11 @@ RETRIEVAL_STAGES = (
 
 RETRIEVER_STAGES = ("dense_retrieval", "bm25_retrieval")
 
+# Read on its own rather than added to RETRIEVAL_STAGES: the cache sits in
+# front of retrieval and its spans are the record of retrieval that did
+# *not* happen, which is the opposite of what the report above measures.
+CACHE_STAGE = "cache_lookup"
+
 
 @dataclass(frozen=True, slots=True)
 class Distribution:
@@ -152,10 +157,55 @@ class RerankingSummary:
 
 
 @dataclass(frozen=True, slots=True)
+class CacheSummary:
+    """
+    How often the response cache saved the work.
+
+    `hit_rate` is None when nothing was looked up, never 0.0: a share of
+    nothing is undefined, and 0% would read as "the cache never worked"
+    rather than "nobody asked it anything".
+    """
+
+    calls: int = 0
+    hits: int = 0
+    hit_rate: float | None = None
+
+    # Split because the two say different things: exact hits mean the same
+    # question is being asked again, semantic hits mean it is being asked
+    # in different words. A collapse in the semantic share is the sign the
+    # threshold has been set too high.
+    exact_hits: int = 0
+    semantic_hits: int = 0
+
+    similarity: Distribution = field(default_factory=Distribution)
+    entry_count: Distribution = field(default_factory=Distribution)
+
+
+def summarize_cache(rows: Sequence[dict]) -> CacheSummary | None:
+    if not rows:
+        return None
+
+    hits = [row for row in rows if row.get("hit") is True]
+
+    return CacheSummary(
+        calls=len(rows),
+        hits=len(hits),
+        hit_rate=len(hits) / len(rows),
+        exact_hits=sum(1 for row in hits if row.get("match") == "exact"),
+        semantic_hits=sum(1 for row in hits if row.get("match") == "semantic"),
+        # Only hits carry one, so a miss must not drag the distribution
+        # toward zero.
+        similarity=summarize(_field(hits, "similarity")),
+        entry_count=summarize(_field(rows, "entry_count")),
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class RetrievalReport:
     retrievers: list[RetrieverSummary]
     fusion: FusionSummary | None
     reranking: RerankingSummary | None
+    cache: CacheSummary | None = None
 
 
 # ----------------------------------------------------------------------
@@ -279,4 +329,5 @@ def build_report(spans: Sequence[tuple[str, dict]]) -> RetrievalReport:
         ],
         fusion=summarize_fusion(grouped.get("fusion", [])),
         reranking=summarize_reranking(grouped.get("reranking", [])),
+        cache=summarize_cache(grouped.get(CACHE_STAGE, [])),
     )

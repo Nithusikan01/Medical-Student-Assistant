@@ -10,9 +10,11 @@ against.
 import pytest
 
 from backend.observability.retrieval_metrics import (
+    CACHE_STAGE,
     RETRIEVAL_STAGES,
     build_report,
     summarize,
+    summarize_cache,
     summarize_fusion,
     summarize_reranking,
     summarize_retriever,
@@ -332,3 +334,74 @@ def test_depth_is_absent_when_no_span_recorded_it():
 
     assert summary.max_promoted_rank.count == 0
     assert summary.max_promoted_rank.mean is None
+
+
+# ----------------------------------------------------------------------
+# The response cache
+# ----------------------------------------------------------------------
+
+
+def test_cache_hits_are_split_by_how_they_matched():
+    """
+    Two findings, not one. Exact hits mean the same question is being
+    asked again; semantic hits mean it is being asked in other words, and
+    their share is what says whether the threshold is set sensibly.
+    """
+
+    summary = summarize_cache(
+        [
+            {"hit": True, "match": "exact", "entry_count": 10},
+            {"hit": True, "match": "semantic", "similarity": 0.97, "entry_count": 10},
+            {"hit": False, "match": "miss", "entry_count": 10},
+            {"hit": False, "match": "miss", "entry_count": 11},
+        ]
+    )
+
+    assert summary.calls == 4
+    assert summary.hits == 2
+    assert summary.hit_rate == pytest.approx(0.5)
+    assert summary.exact_hits == 1
+    assert summary.semantic_hits == 1
+
+
+def test_only_hits_contribute_a_similarity():
+    """A miss has no similarity, and must not drag the mean toward zero."""
+
+    summary = summarize_cache(
+        [
+            {"hit": True, "match": "semantic", "similarity": 0.98},
+            {"hit": False, "match": "miss"},
+            {"hit": False, "match": "miss"},
+        ]
+    )
+
+    assert summary.similarity.count == 1
+    assert summary.similarity.mean == pytest.approx(0.98)
+
+
+def test_a_cache_nobody_consulted_is_absent_rather_than_zero():
+    """
+    The same rule as every other stage here: "did not run" and "ran and
+    found nothing" are different findings, and a hit rate of 0% would
+    claim the second.
+    """
+
+    assert summarize_cache([]) is None
+
+
+def test_the_report_carries_the_cache_when_it_ran():
+    report = build_report(
+        [
+            (CACHE_STAGE, {"hit": True, "match": "exact"}),
+            ("dense_retrieval", {"result_count": 5}),
+        ]
+    )
+
+    assert report.cache is not None
+    assert report.cache.hits == 1
+
+
+def test_the_report_leaves_the_cache_out_when_it_did_not_run():
+    report = build_report([("dense_retrieval", {"result_count": 5})])
+
+    assert report.cache is None

@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from rag.cache.protocol import ResponseCache
+from rag.cache.semantic_cache import InMemorySemanticCache
 from rag.config.component_configs import GenerationConfig
 from rag.config.settings import load_settings
 from rag.conversation.query_rewriter import QueryRewriter
@@ -421,6 +423,54 @@ def refresh_bm25_index() -> int:
 
 
 @lru_cache
+def build_response_cache() -> ResponseCache | None:
+    """
+    The one response cache the running service uses, or None.
+
+    None rather than a do-nothing cache when it is switched off, so the
+    service can tell the difference: a cache that is not there emits no
+    lookup span, and an empty `cache_lookup` stage in a trace then means
+    "caching is off" instead of "every question was new".
+
+    Shares the process-wide embedder, so the semantic tier costs no extra
+    model or client - only the embedding call itself, which it hands back
+    to dense retrieval on a miss.
+    """
+
+    config = load_settings().cache_config()
+
+    if not config.enabled:
+        logger.info("Response caching is disabled.")
+        return None
+
+    return InMemorySemanticCache(
+        config,
+        build_embedder() if config.semantic_enabled else None,
+    )
+
+
+def refresh_corpus_state() -> int:
+    """
+    Everything that has to happen when the corpus changes.
+
+    The lexical index is rebuilt in place and the response cache emptied.
+    Both are derived from the documents, and an answer is only as good as
+    the documents it was retrieved from - working out which cached answers
+    a newly ingested PDF could have changed is not knowable without asking
+    the questions again, so none are kept.
+    """
+
+    documents = refresh_bm25_index()
+
+    cache = build_response_cache()
+
+    if cache is not None:
+        cache.invalidate()
+
+    return documents
+
+
+@lru_cache
 def build_hybrid_retriever() -> HybridRetriever:
     """
     Dense plus BM25, fused - the retrieval half of the query path.
@@ -508,6 +558,7 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
         session_manager=session_manager,
         query_rewriter=query_rewriter,
         summarizer=summarizer,
+        response_cache=build_response_cache(),
         tracer=tracer,
     )
 

@@ -122,12 +122,32 @@ class StubSessionManager:
 REWRITTEN_QUERY = "paracetamol dose adults"
 
 
+def continuing_conversation() -> ConversationMemory:
+    """
+    A conversation that already has a turn in it.
+
+    The default for these tests, because the service only rewrites a query
+    when there is context to fold into it - an opening question skips the
+    rewriter, and every stage after it would then run on the raw question
+    instead of REWRITTEN_QUERY. The opening turn is covered on its own in
+    test_an_opening_question_skips_the_rewrite.
+    """
+
+    memory = ConversationMemory()
+
+    memory.add_message(role="user", content="what is paracetamol for?")
+    memory.add_message(role="assistant", content="Pain and fever.")
+
+    return memory
+
+
 def build_service(
     tracer: Tracer,
     *,
     reranker: BaseReranker | None = None,
     vector_results=None,
     bm25_documents=None,
+    memory: ConversationMemory | None = None,
 ) -> HistoryAwareRAGService:
     generator = StubGenerator()
 
@@ -177,7 +197,9 @@ def build_service(
     return HistoryAwareRAGService(
         query_service=query_service,
         generator=generator,
-        session_manager=StubSessionManager(ConversationMemory()),
+        session_manager=StubSessionManager(
+            memory if memory is not None else continuing_conversation()
+        ),
         query_rewriter=QueryRewriter(rewrite_generator, tracer=tracer),
         summarizer=ConversationSummarizer(generator, tracer=tracer),
         tracer=tracer,
@@ -356,6 +378,25 @@ def test_query_rewrite_records_whether_it_changed_the_query(tracer, recorder):
 
     # Rewriting spends tokens that the usage table still does not count.
     assert rewrite["total_tokens"] == 150
+
+
+def test_an_opening_question_skips_the_rewrite(tracer, recorder):
+    """
+    With no summary and no earlier turns there is nothing for the rewriter
+    to resolve, so it is not called - and the absent span says so.
+    """
+
+    service = build_service(tracer, memory=ConversationMemory())
+
+    answer_once(service, tracer, question="paracetamol")
+
+    stages = {span.stage for span in recorder.spans}
+
+    assert "query_rewrite" not in stages
+
+    # Retrieval still ran, on the question exactly as it was asked.
+    assert "retrieval" in stages
+    assert "generation" in stages
 
 
 def test_memory_writes_are_labelled_by_role(tracer, recorder):

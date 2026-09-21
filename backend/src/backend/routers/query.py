@@ -108,6 +108,10 @@ def query_documents(
                 question=request.question,
                 top_k=request.top_k,
                 generator=generator,
+                # The service is handed a generator, not its catalog id,
+                # and the response cache must not serve one model's answer
+                # as another's - so the id travels with it.
+                model_id=resolved_model,
             )
     except Exception as exc:
         # The underlying message can carry Pinecone or Gemini detail,

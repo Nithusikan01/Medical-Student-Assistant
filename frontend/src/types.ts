@@ -230,6 +230,16 @@ export interface RouteCountInfo {
   count: number;
 }
 
+export interface CacheInfo {
+  calls: number;
+  hits: number;
+  /** Null when nothing was looked up - not the same as a hit rate of zero. */
+  hit_rate: number | null;
+  exact_hits: number;
+  semantic_hits: number;
+  average_similarity: number | null;
+}
+
 export interface OverviewResponse {
   window: WindowInfo;
   requests: RequestInfo;
@@ -239,6 +249,8 @@ export interface OverviewResponse {
   estimated_cost_usd: string | null;
   pricing_configured: boolean;
   error_count: number;
+  /** Null when response caching is switched off. */
+  cache: CacheInfo | null;
 }
 
 export interface PerformanceResponse {

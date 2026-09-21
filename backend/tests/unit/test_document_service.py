@@ -97,7 +97,7 @@ def service(session_factory, pipeline, vector_store, call_log) -> DocumentServic
         session_factory=session_factory,
         pipeline=pipeline,
         vector_store=vector_store,
-        refresh_lexical_index=refresh,
+        on_corpus_change=refresh,
     )
 
 
@@ -203,7 +203,7 @@ def test_delete_marks_the_document_before_touching_the_vector_store(
         session_factory=session_factory,
         pipeline=pipeline,
         vector_store=StatusProbingStore(call_log),
-        refresh_lexical_index=lambda: call_log.append("refresh_bm25"),
+        on_corpus_change=lambda: call_log.append("refresh_bm25"),
     )
 
     service.delete(document_id)
@@ -272,7 +272,7 @@ def test_purge_sweeps_up_vectors_the_registry_does_not_know_about(
         session_factory=session_factory,
         pipeline=pipeline,
         vector_store=store,
-        refresh_lexical_index=lambda: call_log.append("refresh_bm25"),
+        on_corpus_change=lambda: call_log.append("refresh_bm25"),
     )
 
     removed = service.purge(document_id)
@@ -292,7 +292,7 @@ def test_purge_still_works_when_the_store_cannot_list(
         session_factory=session_factory,
         pipeline=pipeline,
         vector_store=vector_store,
-        refresh_lexical_index=lambda: call_log.append("refresh_bm25"),
+        on_corpus_change=lambda: call_log.append("refresh_bm25"),
     )
 
     assert service.purge(document_id) == 2
@@ -402,7 +402,7 @@ def test_a_failed_ingestion_leaves_a_visible_failed_row(
         session_factory=session_factory,
         pipeline=RecordingPipeline(error=RuntimeError("pdf is corrupt")),
         vector_store=vector_store,
-        refresh_lexical_index=lambda: call_log.append("refresh_bm25"),
+        on_corpus_change=lambda: call_log.append("refresh_bm25"),
     )
 
     path = tmp_path / "upload.pdf"

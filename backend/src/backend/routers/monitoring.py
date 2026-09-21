@@ -36,12 +36,15 @@ from backend.observability.knowledge_base import (
     build_report as build_knowledge_base_report,
 )
 from backend.observability.retrieval_metrics import (
+    CACHE_STAGE,
     RETRIEVAL_STAGES,
     build_report,
+    summarize_cache,
 )
 from backend.schemas.monitoring import (
     AlertInfo,
     AlertsResponse,
+    CacheInfo,
     DistributionInfo,
     ErrorCategoryInfo,
     ErrorCountInfo,
@@ -157,6 +160,28 @@ def latency_info(summary) -> LatencyInfo:
     )
 
 
+def cache_info(summary) -> CacheInfo | None:
+    """
+    None when the cache emitted no spans at all.
+
+    That happens when caching is switched off, and it is a different
+    statement from a hit rate of zero - which would mean the cache ran and
+    recognised nothing.
+    """
+
+    if summary is None:
+        return None
+
+    return CacheInfo(
+        calls=summary.calls,
+        hits=summary.hits,
+        hit_rate=summary.hit_rate,
+        exact_hits=summary.exact_hits,
+        semantic_hits=summary.semantic_hits,
+        average_similarity=summary.similarity.mean,
+    )
+
+
 def request_info(summary) -> RequestInfo:
     return RequestInfo(
         total=summary.total,
@@ -241,6 +266,17 @@ def overview(session: DbSession, admin: AdminUser, window: Window) -> OverviewRe
 
     errors = telemetry_repo.error_counts_by_type(session, window)
 
+    cache = summarize_cache(
+        [
+            meta or {}
+            for _, meta in telemetry_repo.span_metadata(
+                session,
+                window,
+                stages=[CACHE_STAGE],
+            )
+        ]
+    )
+
     return OverviewResponse(
         window=window_info(window),
         requests=request_info(summary),
@@ -250,6 +286,7 @@ def overview(session: DbSession, admin: AdminUser, window: Window) -> OverviewRe
         estimated_cost_usd=cost,
         pricing_configured=priced,
         error_count=sum(count for _, _, count in errors),
+        cache=cache_info(cache),
     )
 
 

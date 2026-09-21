@@ -34,12 +34,16 @@ class DocumentService:
         session_factory: sessionmaker[Session],
         pipeline: IngestionPipeline,
         vector_store: VectorStoreInterface,
-        refresh_lexical_index,
+        on_corpus_change,
     ) -> None:
         self._session_factory = session_factory
         self._pipeline = pipeline
         self._vector_store = vector_store
-        self._refresh_lexical_index = refresh_lexical_index
+        # Called after any change to the set of documents that can be
+        # retrieved. Rebuilds the lexical index and empties the response
+        # cache - a callable rather than either of those, so this service
+        # keeps knowing nothing about what is derived from the corpus.
+        self._on_corpus_change = on_corpus_change
 
     # ------------------------------------------------------------------
     # Ingestion
@@ -116,7 +120,7 @@ class DocumentService:
 
             document = documents.get(session, document_id)
 
-        self._refresh_lexical_index()
+        self._on_corpus_change()
 
         return document
 
@@ -130,7 +134,10 @@ class DocumentService:
 
         BM25 is refreshed before the vectors are removed so the document is
         never "delisted but still lexically retrievable"; the loader only
-        includes ready documents, so flipping the status is enough.
+        includes ready documents, so flipping the status is enough. The
+        response cache is emptied at the same point and for the same
+        reason, and stays empty even if the vector delete below fails -
+        the safe direction for a cache.
         """
 
         with self._session_factory() as session:
@@ -148,7 +155,7 @@ class DocumentService:
 
             vector_ids = documents.chunk_ids(session, document_id)
 
-        self._refresh_lexical_index()
+        self._on_corpus_change()
 
         try:
             self._vector_store.delete(vector_ids)
@@ -193,6 +200,6 @@ class DocumentService:
             session.execute(sa.delete(Document).where(Document.id == document_id))
             session.commit()
 
-        self._refresh_lexical_index()
+        self._on_corpus_change()
 
         return len(known) + len(stray)
