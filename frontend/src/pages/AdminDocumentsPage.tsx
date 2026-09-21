@@ -277,7 +277,7 @@ export function AdminDocumentsPage() {
               Everyone queries these documents. Only admins can change them.
             </p>
             <p className="mon-links">
-              <Link to="/admin/monitoring">Monitoring &rarr;</Link>
+              <Link to="/admin/monitoring">Admin dashboard &rarr;</Link>
             </p>
           </div>
 

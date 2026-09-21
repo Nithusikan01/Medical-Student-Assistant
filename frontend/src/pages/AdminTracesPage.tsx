@@ -112,7 +112,7 @@ export function AdminTracesPage() {
           </div>
 
           <p className="mon-links">
-            <Link to="/admin/monitoring">&larr; Monitoring</Link>
+            <Link to="/admin/monitoring">&larr; Admin dashboard</Link>
           </p>
 
           {/* Jumping straight to an id is the point of the page: someone

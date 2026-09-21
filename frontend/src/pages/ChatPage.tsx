@@ -11,7 +11,7 @@ import {
 import { useAuth } from "../auth/useAuth";
 import { ChatPanel } from "../components/ChatPanel";
 import { ConversationSidebar } from "../components/ConversationSidebar";
-import { BookMark, Document, SignOut } from "../components/Icons";
+import { BookMark, Gauge, SignOut } from "../components/Icons";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useConversation } from "../hooks/useConversation";
 import { useGenerationModels } from "../hooks/useGenerationModels";
@@ -143,10 +143,14 @@ export function ChatPage() {
             </span>
           </div>
 
+          {/* Points at the dashboard rather than the library: the page that
+              says whether anything is broken should not be one click deeper
+              than the page that does not. The dashboard links onward to the
+              library, users and the trace explorer. */}
           {user?.role === "admin" && (
-            <Link to="/admin/documents" className="admin-link">
-              <Document />
-              Manage documents
+            <Link to="/admin/monitoring" className="admin-link">
+              <Gauge />
+              Admin dashboard
             </Link>
           )}
 
