@@ -67,6 +67,19 @@ class Document(Base):
         onupdate=sa.func.now(),
     )
 
+    # Touched as each batch of chunks lands, so a stalled ingestion can be
+    # told from a slow one.
+    #
+    # Without it there is no way to distinguish the two: `updated_at` is set
+    # when the row changes, and ingestion writes to document_chunks rather
+    # than to this table, so a healthy twenty-minute ingest and one that died
+    # ten seconds in look identical.
+    #
+    # Null means no batch has landed yet - either the ingest is very young,
+    # or it died before its first batch. The sweep falls back to created_at
+    # for those.
+    heartbeat_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+
     chunks: Mapped[list["DocumentChunkRecord"]] = relationship(
         back_populates="document",
         cascade="all, delete-orphan",
@@ -78,6 +91,8 @@ class Document(Base):
             name="status_valid",
         ),
         sa.Index("ix_documents_status", "status"),
+        # The stalled-ingestion sweep: processing rows, oldest heartbeat first.
+        sa.Index("ix_documents_status_heartbeat_at", "status", "heartbeat_at"),
         # Partial, so a failed or deleted upload does not block re-uploading
         # the same file, while two live copies cannot coexist.
         sa.Index(

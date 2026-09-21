@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from rag.utils.logger import setup_logging
 
 from backend.auth.bootstrap import ensure_admin_user
-from backend.db.session import get_engine, session_scope
+from backend.db.session import get_engine, get_session_factory, session_scope
 from backend.db.startup import verify_connectivity, warn_if_schema_outdated
 from backend.dependencies import get_auth_config
 from backend.observability.middleware import TelemetryMiddleware
@@ -22,6 +22,7 @@ from backend.routers.monitoring import router as monitoring_router
 from backend.routers.query import router as query_router
 from backend.routers.usage import router as usage_router
 from backend.routers.users import router as users_router
+from backend.services.ingest_recovery import recover_on_startup
 from backend.wiring.rag_factory import (
     build_history_aware_rag_service,
     build_telemetry_sink,
@@ -64,6 +65,11 @@ async def lifespan(app: FastAPI):
 
     with session_scope() as session:
         ensure_admin_user(session, get_auth_config())
+
+    # A process killed mid-ingest leaves its document stuck in "processing"
+    # for good: nothing raised, so nothing marked it failed. This is the
+    # replacement process, so this is the moment to reconcile.
+    recover_on_startup(get_session_factory())
 
     app.state.rag_service = build_history_aware_rag_service()
 
