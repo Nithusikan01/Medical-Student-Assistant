@@ -105,7 +105,7 @@ export function ChatPage() {
       <aside className="sidebar">
         <span className="wordmark">
           <BookMark />
-          Medical Student Assistant
+          Anamnesis
         </span>
 
         <div className="status">

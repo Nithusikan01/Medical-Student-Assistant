@@ -123,8 +123,8 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="RAG Application API",
-        description="Hybrid + Rerank + Memory-aware RAG API",
+        title="Anamnesis API",
+        description="Hybrid + Rerank + Memory-aware RAG API for a shared study library",
         version="2.0.0",
         lifespan=lifespan,
     )

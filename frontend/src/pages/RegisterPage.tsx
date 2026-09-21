@@ -49,7 +49,7 @@ export function RegisterPage() {
       <div className="auth-bar">
         <span className="wordmark">
           <BookMark size={22} />
-          Medical Student Assistant
+          Anamnesis
         </span>
         <ThemeToggle />
       </div>
