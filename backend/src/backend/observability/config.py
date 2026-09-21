@@ -12,6 +12,8 @@ import logging
 import os
 from dataclasses import dataclass
 
+from backend.observability.alerts import AlertSettings
+
 logger = logging.getLogger(__name__)
 
 
@@ -108,4 +110,33 @@ def load_telemetry_config() -> TelemetryConfig:
         ),
         environment=os.getenv("APP_ENV", "development"),
         app_version=os.getenv("APP_VERSION", "2.0.0"),
+    )
+
+
+def _env_str(name: str) -> str | None:
+    raw = os.getenv(name)
+
+    return raw.strip() or None if raw else None
+
+
+def load_alert_settings() -> AlertSettings:
+    """
+    Alert thresholds, from the environment.
+
+    Every one of these defaults is wrong for somebody, which is why none
+    of them is a constant in the rules. See backend/.env.example for what
+    each one means and when to move it.
+    """
+
+    return AlertSettings(
+        enabled=_env_bool("ALERTS_ENABLED", True),
+        error_rate=_env_float("ALERT_ERROR_RATE", 0.10),
+        p95_ms=_env_float("ALERT_P95_MS", 15000.0),
+        cost_per_hour_usd=_env_float("ALERT_COST_PER_HOUR_USD", 1.0),
+        dropped_records=_env_float("ALERT_DROPPED_RECORDS", 0.0),
+        bm25_empty_rate=_env_float("ALERT_BM25_EMPTY_RATE", 0.5),
+        min_requests=_env_int("ALERT_MIN_REQUESTS", 20, minimum=1),
+        interval_seconds=_env_float("ALERT_INTERVAL_SECONDS", 300.0, minimum=10.0),
+        window_minutes=_env_int("ALERT_WINDOW_MINUTES", 15, minimum=1),
+        webhook_url=_env_str("ALERT_WEBHOOK_URL"),
     )

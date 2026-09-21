@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import {
+  getAlerts,
   getErrors,
   getFeedback,
   getIngestion,
@@ -30,6 +31,8 @@ import {
 import { ArrowLeft } from "../components/Icons";
 import { ThemeToggle } from "../components/ThemeToggle";
 import type {
+  AlertInfo,
+  AlertsResponse,
   ErrorsResponse,
   FeedbackSummaryResponse,
   IngestionResponse,
@@ -105,6 +108,7 @@ interface Data {
   errors: ErrorsResponse;
   ingestion: IngestionResponse;
   feedback: FeedbackSummaryResponse;
+  alerts: AlertsResponse;
 }
 
 export function AdminMonitoringPage() {
@@ -120,16 +124,27 @@ export function AdminMonitoringPage() {
     try {
       const params = { range: selected };
 
-      const [overview, performance, tokens, retrieval, errors, ingestion, feedback] =
-        await Promise.all([
-          getOverview(params),
-          getPerformance(params),
-          getTokens(params),
-          getRetrieval(params),
-          getErrors(params),
-          getIngestion(params),
-          getFeedback(params),
-        ]);
+      const [
+        overview,
+        performance,
+        tokens,
+        retrieval,
+        errors,
+        ingestion,
+        feedback,
+        alerts,
+      ] = await Promise.all([
+        getOverview(params),
+        getPerformance(params),
+        getTokens(params),
+        getRetrieval(params),
+        getErrors(params),
+        getIngestion(params),
+        getFeedback(params),
+        // Unwindowed: the evaluator has its own window, and an alert is
+        // about now rather than about whatever range is selected here.
+        getAlerts(),
+      ]);
 
       setData({
         overview,
@@ -139,6 +154,7 @@ export function AdminMonitoringPage() {
         errors,
         ingestion,
         feedback,
+        alerts,
       });
     } catch (caught) {
       setError(
@@ -207,12 +223,22 @@ export function AdminMonitoringPage() {
 }
 
 function Dashboard({ data }: { data: Data }) {
-  const { overview, performance, tokens, retrieval, errors, ingestion, feedback } =
-    data;
+  const {
+    overview,
+    performance,
+    tokens,
+    retrieval,
+    errors,
+    ingestion,
+    feedback,
+    alerts,
+  } = data;
   const { requests } = overview;
 
   return (
     <>
+      <AlertBanner alerts={alerts} />
+
       <div className="mon-tiles">
         <StatTile
           label="Requests"
@@ -682,4 +708,62 @@ function Dashboard({ data }: { data: Data }) {
       </Panel>
     </>
   );
+}
+
+/**
+ * What the evaluator last decided.
+ *
+ * Silent when nothing is firing: a banner that is always present is a
+ * banner nobody reads. The one thing it does say when quiet is whether
+ * the evaluator is running at all - "not running" and "nothing is wrong"
+ * must never look alike.
+ */
+function AlertBanner({ alerts }: { alerts: AlertsResponse }) {
+  if (!alerts.enabled) {
+    return (
+      <p className="mon-note">
+        Alerting is not running, so nothing here is being watched for you.
+      </p>
+    );
+  }
+
+  const firing = alerts.alerts.filter((alert) => alert.state === "firing");
+
+  if (firing.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="mon-alerts">
+      {firing.map((alert) => (
+        <article
+          key={alert.key}
+          className="mon-alert"
+          data-severity={alert.severity}
+        >
+          <div className="mon-alert-head">
+            <strong>{alert.label}</strong>
+            <span className="mon-alert-value">{describeAlert(alert)}</span>
+          </div>
+          {alert.advice && <p className="mon-alert-advice">{alert.advice}</p>}
+        </article>
+      ))}
+    </section>
+  );
+}
+
+function describeAlert(alert: AlertInfo): string {
+  if (alert.value === null) {
+    return "not measurable";
+  }
+
+  // Thresholds below 1 are shares in this rule set; everything else is a
+  // count or a duration, and rendering those as percentages would be
+  // nonsense.
+  const asShare = alert.threshold > 0 && alert.threshold < 1;
+
+  const show = (value: number) =>
+    asShare ? `${(value * 100).toFixed(1)}%` : String(Math.round(value));
+
+  return `${show(alert.value)} · over ${show(alert.threshold)}`;
 }
