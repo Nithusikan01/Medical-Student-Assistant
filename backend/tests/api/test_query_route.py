@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from rag.retrieval.schemas import RetrievedChunk, RetrievedChunkMetadata
 
 from backend.db.models import Conversation
+from tests.conftest import STUB_DEFAULT_MODEL_ID
 
 QUESTION = "What is the paracetamol dose for an adult?"
 
@@ -100,6 +101,9 @@ def test_the_question_reaches_the_engine_with_its_conversation(
             "question": QUESTION,
             "top_k": 7,
             "generator": mock.ANY,
+            # Passed so the response cache never serves one model's answer
+            # as another's.
+            "model_id": STUB_DEFAULT_MODEL_ID,
         }
     ]
 

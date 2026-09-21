@@ -22,7 +22,7 @@ from backend.wiring.rag_factory import (
     build_embedder,
     build_tracer,
     build_vector_store,
-    refresh_bm25_index,
+    refresh_corpus_state,
 )
 
 logger = logging.getLogger(__name__)
@@ -58,7 +58,7 @@ def get_document_service() -> DocumentService:
         session_factory=get_session_factory(),
         pipeline=get_ingestion_pipeline(),
         vector_store=build_vector_store(),
-        refresh_lexical_index=refresh_bm25_index,
+        on_corpus_change=refresh_corpus_state,
     )
 
 

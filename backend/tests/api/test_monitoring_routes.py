@@ -198,6 +198,43 @@ def test_the_overview_counts_requests_and_tokens(client, headers, db):
     assert body["total_tokens"] == 1100
 
 
+def test_the_overview_omits_the_cache_when_it_never_ran(client, headers):
+    """
+    Null, not a hit rate of zero. A cache that is switched off emits no
+    lookup spans at all, and 0% would read as one that recognised nothing.
+    """
+
+    body = client.get("/api/monitoring/overview", headers=headers).json()
+
+    assert body["cache"] is None
+
+
+def test_the_overview_reports_the_cache_hit_rate(client, headers, db):
+    trace_id = add_trace(db)
+
+    add_span(
+        db,
+        trace_id=trace_id,
+        stage="cache_lookup",
+        sequence=1,
+        meta={"hit": True, "match": "exact", "entry_count": 4},
+    )
+    add_span(
+        db,
+        trace_id=trace_id,
+        stage="cache_lookup",
+        sequence=2,
+        meta={"hit": False, "match": "miss", "entry_count": 4},
+    )
+
+    body = client.get("/api/monitoring/overview", headers=headers).json()
+
+    assert body["cache"]["calls"] == 2
+    assert body["cache"]["hits"] == 1
+    assert body["cache"]["hit_rate"] == 0.5
+    assert body["cache"]["exact_hits"] == 1
+
+
 def test_in_flight_is_reported_as_per_process(client, headers):
     body = client.get("/api/monitoring/overview", headers=headers).json()
 

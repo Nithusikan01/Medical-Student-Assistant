@@ -20,6 +20,10 @@ dependencies = [
     "pinecone",
     "rank-bm25",
     "langchain-text-splitters",
+    # The semantic response cache compares query vectors as one matrix
+    # multiply. rank-bm25 already pulls numpy in, but a direct import
+    # deserves a direct dependency.
+    "numpy",
 ]
 
 [project.optional-dependencies]

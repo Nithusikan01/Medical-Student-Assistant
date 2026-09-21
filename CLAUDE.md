@@ -10,16 +10,19 @@ it. It extracts text from PDFs, chunks it, embeds it (Pinecone hosted inference 
 local Sentence Transformers as a fallback), stores/retrieves vectors in Pinecone, fuses dense
 retrieval with BM25 lexical retrieval, reranks (also Pinecone hosted by default), and generates
 answers with Google Gemini. Conversation memory is persisted per user in PostgreSQL and lets
-follow-up questions get rewritten into standalone retrieval queries. Auth is JWT access tokens
-plus rotating httpOnly-cookie refresh tokens with reuse detection. A React + TypeScript
-frontend provides login/register, chat, and (admin-only) document management.
+follow-up questions get rewritten into standalone retrieval queries. Answers are cached in
+process, matched exactly or by meaning, so a class asking the same things does not pay for
+retrieval and generation every time. Auth is JWT access tokens plus rotating httpOnly-cookie
+refresh tokens with reuse detection. A React + TypeScript frontend provides login/register,
+chat, and (admin-only) document management.
 
 ## Repository layout
 
 Three top-level parts, two of them installable Python packages:
 
 - `rag/` — the RAG engine, package `rag`. Pure library: no FastAPI, no HTTP, no database.
-  Contains `config/`, `conversation/` (memory + the `ConversationStore` protocol),
+  Contains `cache/` (the response cache + its `ResponseCache` protocol), `config/`,
+  `conversation/` (memory + the `ConversationStore` protocol),
   `embeddings/`, `evaluation/`, `indexes/`, `ingestion/` (including the `ChunkSink` protocol),
   `llm/`, `rerankers/` (the `BaseReranker` implementations, kept alongside `retrieval/` rather
   than inside it), `retrieval/`, `services/`, `utils/`, `vectorstore/`, plus its own `tests/`.
@@ -35,7 +38,9 @@ ruff `TID251` rule (`flake8-tidy-imports.banned-api` in `rag/pyproject.toml`) en
 lint time. `backend/` is the runtime root: `.env`, `data/raw/`, and `storage/` are resolved
 relative to it, so run uvicorn, Alembic, and the scripts from inside `backend/`. Where the
 engine needs persistence, it depends on a protocol defined in `rag/` (`ConversationStore`,
-`ChunkSink`) whose database-backed implementation lives in `backend/`.
+`ChunkSink`) whose database-backed implementation lives in `backend/`. `ResponseCache` is the
+same seam pointed the other way: the implementation shipped in `rag/` is in-process, and a
+shared one would live in `backend/` without the service changing.
 
 ## Commands
 
@@ -84,7 +89,7 @@ The Vite dev server (port 5173) proxies `/api` and `/health` to `http://127.0.0.
 
 Ingestion runs through `POST /api/ingest` (multipart upload) or the frontend's upload panel — there is no CLI ingestion entry point (`main.py` was deleted). Ad-hoc scripts in `backend/scripts/` are for manual smoke testing, not part of the test suite: `ask_cv_from_terminal.py` (interactive Q&A), `smoke_rag.py` / `smoke_retrieval.py` / `smoke_reranker.py` (component smoke checks — named `smoke_` rather than `test_` so pytest cannot collect them), `run_ingestion.py` (BM25 corpus verification, despite the name), `migrate_bm25_corpus.py` (imports a legacy `bm25_corpus.json` into the database), `reset_pinecone.py` (drops and recreates the Pinecone index — destructive), `seed_model_pricing.py` (fills `model_pricing`, without which cost reads "not priced" rather than zero), `evaluate_retrieval.py` (runs a labelled evaluation set against the live retriever — see Offline evaluation below).
 
-Required environment variables (`.env` in `backend/`, templated by `backend/.env.example`): `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `GEMINI_API_KEY`, `DATABASE_URL` (PostgreSQL), `SECRET_KEY` (JWT signing, ≥32 chars), `ADMIN_EMAIL`/`ADMIN_PASSWORD` (seeded on startup, idempotent — an existing password is never overwritten). Retrieval/chunking/embedding variables (`CHUNK_SIZE`, `CANDIDATE_K`, `USE_HOSTED_INFERENCE`, etc.) are read in `rag/src/rag/config/settings.py::load_settings`; auth/database variables (`ALLOW_OPEN_REGISTRATION`, `COOKIE_SECURE`, `CORS_ORIGINS`, token TTLs) are read in `backend/src/backend/auth/config.py::load_auth_config` and `backend/src/backend/app.py::cors_origins`. `.env` files are gitignored at any depth; `.env.example` files are committed. Apply migrations before first run: `cd backend; alembic upgrade head` (`0001_auth_tables` through `0012_answer_feedback`; the later ones add generation usage, telemetry, token cost, an ingestion heartbeat, an error taxonomy and answer feedback).
+Required environment variables (`.env` in `backend/`, templated by `backend/.env.example`): `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `GEMINI_API_KEY`, `DATABASE_URL` (PostgreSQL), `SECRET_KEY` (JWT signing, ≥32 chars), `ADMIN_EMAIL`/`ADMIN_PASSWORD` (seeded on startup, idempotent — an existing password is never overwritten). Retrieval/chunking/embedding/cache variables (`CHUNK_SIZE`, `CANDIDATE_K`, `USE_HOSTED_INFERENCE`, `RESPONSE_CACHE_*`, etc.) are read in `rag/src/rag/config/settings.py::load_settings`; auth/database variables (`ALLOW_OPEN_REGISTRATION`, `COOKIE_SECURE`, `CORS_ORIGINS`, token TTLs) are read in `backend/src/backend/auth/config.py::load_auth_config` and `backend/src/backend/app.py::cors_origins`. `.env` files are gitignored at any depth; `.env.example` files are committed. Apply migrations before first run: `cd backend; alembic upgrade head` (`0001_auth_tables` through `0012_answer_feedback`; the later ones add generation usage, telemetry, token cost, an ingestion heartbeat, an error taxonomy and answer feedback).
 
 ## Architecture
 
@@ -114,7 +119,7 @@ Everything is assembled through dependency injection, not framework magic. The t
 - **Ingestion** (`rag/ingestion/pipeline.py::IngestionPipeline.ingest`) is constructed per-request in `backend/routers/ingest.py::get_ingestion_pipeline()`, and driven by `backend/services/document_service.py::DocumentService.ingest`, which creates the `documents` row (`status=processing`) *before* the pipeline runs.
 - **Query** (`rag/services/history_aware_rag_service.py::HistoryAwareRAGService`) is built once by `backend/wiring/rag_factory.py::build_history_aware_rag_service()` — an `@lru_cache()`d factory called at API startup (`backend/app.py` lifespan).
 
-`rag_factory.py` also exposes `build_embedder()`, `build_reranker()`, `build_vector_store()`, and `build_bm25_index()` as their own `@lru_cache()`d singletons. Ingesting or deleting a document calls `refresh_bm25_index()`, which reloads chunks from Postgres and calls `.rebuild()` on the *same* `BM25Index` object — the running `HistoryAwareRAGService` holds a reference to it and sees the change immediately. This replaced an earlier design that called `build_history_aware_rag_service.cache_clear()` on every ingest, which re-instantiated the embedder and reranker (and, before hosted inference, reloaded model weights) on every single upload.
+`rag_factory.py` also exposes `build_embedder()`, `build_reranker()`, `build_vector_store()`, `build_bm25_index()`, and `build_response_cache()` as their own `@lru_cache()`d singletons. Ingesting or deleting a document calls `refresh_corpus_state()`, which does the two things that have to happen when the corpus changes: `refresh_bm25_index()` reloads chunks from Postgres and calls `.rebuild()` on the *same* `BM25Index` object — the running `HistoryAwareRAGService` holds a reference to it and sees the change immediately — and the response cache is emptied. This replaced an earlier design that called `build_history_aware_rag_service.cache_clear()` on every ingest, which re-instantiated the embedder and reranker (and, before hosted inference, reloaded model weights) on every single upload.
 
 When changing how a component is constructed (e.g. adding a retriever, changing model names), `rag_factory.py` is the single place that wires it into the live query path. It lives in `backend/` because it is application composition, not library code — the `rag` package deliberately ships no composition root.
 
@@ -134,6 +139,8 @@ PDF file -> DocumentLoader -> TextChunker -> Embedder -> VectorDataProcessor -> 
 conversation_id + question
   -> PersistentConversationMemory (Postgres-backed, per conversation, hydrated on each build)
   -> QueryRewriter (LLM call: folds conversation history into a standalone query)
+       skipped on the opening turn, where there is no history to fold in
+  -> ResponseCache lookup on the standalone query  --hit--> cached answer + sources, done
   -> HybridRetriever
        -> DenseRetriever -> PineconeVectorStore
        -> BM25Retriever  -> BM25Index (loaded from document_chunks at factory build time, refreshed in place after ingest/delete)
@@ -143,16 +150,65 @@ conversation_id + question
      inference is disabled entirely)
   -> PromptBuilder -> GeminiGenerator
   -> answer + structured RetrievedChunk sources
+  -> ResponseCache stores the answer (only if the prompt carried no conversation history)
   -> ConversationMemory updated; summarized once message count hits HistoryAwareRAGService.SUMMARY_TRIGGER
+     (both of these run on a cache hit too)
 ```
 
 `backend/services/conversation_store.py::PersistentConversationMemory` subclasses the engine's `ConversationMemory` and write-throughs every message to Postgres. It deliberately tracks two separate views: `messages` holds only turns since the last summary checkpoint (`Conversation.summary_checkpoint_message_id`) — this is what `HistoryAwareRAGService` checks against `SUMMARY_TRIGGER` — while `_recent` is a fixed-size window over the *full* history and is what actually goes into the prompt. Hydrating full history into `messages` too would make the trigger condition permanently true past the trigger length and fire an extra Gemini call every turn, forever; `update_summary` advances the checkpoint and clears `messages` back to empty.
 
 `session_manager` in `HistoryAwareRAGService`'s constructor is typed against `rag/conversation/store.py::ConversationStore` (a Protocol with one method, `get_memory()`); the engine's own in-process `SessionManager` satisfies it structurally and is still what the unit tests use, but `backend/services/conversation_store.py::PersistentConversationStore` is what production wires up. Not one line of `SessionManager` changed to make this work — that's the point of the protocol seam.
 
+### Response cache
+
+`rag/cache/` holds answers already given, so a repeated question skips retrieval, reranking and
+generation entirely. `backend/wiring/rag_factory.py::build_response_cache()` wires
+`InMemorySemanticCache` into `HistoryAwareRAGService`, or `None` when
+`RESPONSE_CACHE_ENABLED=false` — `None` rather than a do-nothing cache, so an absent
+`cache_lookup` span means "caching is off" instead of "every question was new".
+
+Three rules carry the correctness, and changing any of them needs care:
+
+1. **Keyed on the standalone query, never the raw question.** The lookup happens *after* the
+   rewrite, because the rewritten query is context-free by construction — that is what makes it
+   safe to hand one conversation's answer to another. Keying on the raw question would serve
+   nonsense for a follow-up like "what about the second one?".
+2. **Only answers generated with no conversation history are stored**
+   (`CacheConfig.store_context_free_only`, on by default). An answer written with a conversation
+   in front of it can refer back to it ("as I said above"), and nothing can tell from the text
+   whether it did. Later turns still *read* from the cache; they just do not write to it.
+3. **A hit skips the work, never the record of it.** `HistoryAwareRAGService._finish` — the
+   assistant memory write and the `SUMMARY_TRIGGER` check — runs on hits and misses alike.
+   Skipping it would leave the stored conversation disagreeing with what the user was shown.
+
+The scope is `(normalised question, top_k, model_id)`: a different model or a different number
+of sources legitimately gives a different answer, so neither shares entries. `model_id` is the
+catalog id, passed down from `routers/query.py` because the service is handed a generator object
+and has no other way to know which model it is. Matching is two-tier — a free normalised-text
+hash, then a cosine scan over stored question vectors above
+`RESPONSE_CACHE_SIMILARITY_THRESHOLD` (0.95 by default, deliberately high: serving the answer to
+a *nearly* identical question is worse than missing). A semantic miss hands its embedding back
+so `QueryService.search` can pass it to `DenseRetriever` instead of embedding the same text
+twice — that is what the optional `query_embedding` parameter threaded through `QueryService` →
+`HybridRetriever` → `DenseRetriever` is for.
+
+Bounded by `RESPONSE_CACHE_MAX_ENTRIES` (LRU) and `RESPONSE_CACHE_TTL_SECONDS`, and emptied
+whenever the corpus changes. It is per-process: two uvicorn workers keep two caches and a
+restart keeps none — the same caveat `InFlightInfo.per_process` already documents. The cache
+never raises; a failure is a cache miss.
+
+Observability: the lookup opens a `Stage.CACHE_LOOKUP` span recording `hit`, `match`
+(`exact`/`semantic`/`miss`), `similarity` and `entry_count` — no query text, per the rule in
+`rag/observability/schemas.py`. `summarize_stages()` groups by whatever stages are present, so
+`cache_lookup` appears in `/api/monitoring/performance` and the trace waterfall with no further
+work; `observability/retrieval_metrics.py::summarize_cache` turns the same spans into the
+`cache` field on `/api/monitoring/overview`, which is **null when nothing was looked up** rather
+than a hit rate of zero. A hit also produces `llm_calls=0` and `total_tokens=0` on the trace, so
+the spend saving shows up on the existing dashboards by itself.
+
 ### Document deletion ordering
 
-`backend/services/document_service.py::DocumentService.delete` has to run in a specific order: mark `status='deleting'` (committed immediately) → `refresh_bm25_index()` (lexical retrieval stops seeing the document now) → delete Pinecone vectors in batches of ≤1000 (Pinecone's per-call cap) → delete the `documents` row (cascades to `document_chunks`). BM25 first, deliberately, so a document is never "delisted but still retrievable" during the window between the two removals. A failed vector delete raises `DocumentDeletionError` (message masked — the underlying exception can carry a Pinecone key) and leaves the row in `deleting`; `POST /api/documents/{id}/purge` retries and additionally sweeps vector ids sharing the document's id prefix with no matching chunk row, since Pinecone's serverless tier has no delete-by-metadata-filter and `list_ids()` is only safe to use for this kind of admin-triggered reconciliation, not the primary delete path.
+`backend/services/document_service.py::DocumentService.delete` has to run in a specific order: mark `status='deleting'` (committed immediately) → `on_corpus_change()` (lexical retrieval stops seeing the document now, and the response cache is emptied) → delete Pinecone vectors in batches of ≤1000 (Pinecone's per-call cap) → delete the `documents` row (cascades to `document_chunks`). BM25 first, deliberately, so a document is never "delisted but still retrievable" during the window between the two removals. A failed vector delete raises `DocumentDeletionError` (message masked — the underlying exception can carry a Pinecone key) and leaves the row in `deleting` — with the cache already emptied, which is the safe direction for a cache; `POST /api/documents/{id}/purge` retries and additionally sweeps vector ids sharing the document's id prefix with no matching chunk row, since Pinecone's serverless tier has no delete-by-metadata-filter and `list_ids()` is only safe to use for this kind of admin-triggered reconciliation, not the primary delete path.
 
 ### Data model chain (why there are five near-identical "chunk" types)
 

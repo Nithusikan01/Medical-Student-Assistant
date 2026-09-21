@@ -357,6 +357,17 @@ function Dashboard({ data }: { data: Data }) {
           value={formatNumber(overview.in_flight.current)}
           detail={`peak ${overview.in_flight.peak} · this process`}
         />
+        {/* Absent entirely when caching is off, rather than shown as 0% -
+            which would read as a cache that never recognised anything. */}
+        {overview.cache && overview.cache.hit_rate !== null && (
+          <StatTile
+            label="Cache hits"
+            value={formatPercent(overview.cache.hit_rate)}
+            detail={`${formatNumber(overview.cache.exact_hits)} exact · ${formatNumber(
+              overview.cache.semantic_hits,
+            )} by meaning`}
+          />
+        )}
       </div>
 
       <Panel

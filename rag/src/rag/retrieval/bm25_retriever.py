@@ -30,6 +30,7 @@ class BM25Retriever(BaseRetriever):
         self,
         query: str,
         top_k: int | None = None,
+        query_embedding: list[float] | None = None,
     ) -> list[RetrievedChunk]:
         """
         Retrieve the most relevant chunks using BM25 lexical search.

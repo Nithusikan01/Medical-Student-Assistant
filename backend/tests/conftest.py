@@ -227,13 +227,24 @@ class StubRagService:
         self.error: Exception | None = None
         self.usage: TokenUsage | None = None
 
-    def answer_with_sources(self, *, conversation_id, question, top_k, generator=None):
+    def answer_with_sources(
+        self,
+        *,
+        conversation_id,
+        question,
+        top_k,
+        generator=None,
+        model_id=None,
+    ):
         self.calls.append(
             {
                 "conversation_id": conversation_id,
                 "question": question,
                 "top_k": top_k,
                 "generator": generator,
+                # The catalog id, which the router passes so the response
+                # cache can keep one model's answers apart from another's.
+                "model_id": model_id,
             }
         )
 

@@ -87,6 +87,23 @@ class InFlightInfo(BaseModel):
     per_process: bool = True
 
 
+class CacheInfo(BaseModel):
+    """
+    What the response cache did in the window.
+
+    `hit_rate` and `average_similarity` are null when there is nothing to
+    divide by. A cache nobody consulted has no hit rate, and reporting 0%
+    would say something the data does not.
+    """
+
+    calls: int = 0
+    hits: int = 0
+    hit_rate: float | None = None
+    exact_hits: int = 0
+    semantic_hits: int = 0
+    average_similarity: float | None = None
+
+
 class OverviewResponse(BaseModel):
     window: WindowInfo
     requests: RequestInfo
@@ -96,6 +113,10 @@ class OverviewResponse(BaseModel):
     estimated_cost_usd: Decimal | None = None
     pricing_configured: bool = False
     error_count: int
+
+    # Null when the cache is switched off, which is not the same as a hit
+    # rate of zero: a cache that is not there emits no lookup spans at all.
+    cache: CacheInfo | None = None
 
 
 class PerformanceResponse(BaseModel):

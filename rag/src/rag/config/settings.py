@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from rag.config.component_configs import (
+    CacheConfig,
     ChunkingConfig,
     EmbeddingConfig,
     GenerationConfig,
@@ -70,6 +71,20 @@ class Settings:
     generation_model_name: str = "gemini-3.1-flash-lite"
 
     # ------------------------------------------------------------------
+    # Response cache
+    #
+    # Answers already given, keyed on the standalone form of the question,
+    # so a class asking the same things does not pay for retrieval and
+    # generation every time. Invalidated whenever the corpus changes.
+    # ------------------------------------------------------------------
+    response_cache_enabled: bool = True
+    response_cache_semantic_enabled: bool = True
+    response_cache_max_entries: int = 512
+    response_cache_ttl_seconds: int = 86_400
+    response_cache_similarity_threshold: float = 0.95
+    response_cache_store_context_free_only: bool = True
+
+    # ------------------------------------------------------------------
     # Component Configurations
     # ------------------------------------------------------------------
     def pinecone_config(self) -> PineconeConfig:
@@ -107,6 +122,16 @@ class Settings:
         return ChunkingConfig(
             chunk_size=self.chunk_size,
             chunk_overlap=self.chunk_overlap,
+        )
+
+    def cache_config(self) -> CacheConfig:
+        return CacheConfig(
+            enabled=self.response_cache_enabled,
+            semantic_enabled=self.response_cache_semantic_enabled,
+            max_entries=self.response_cache_max_entries,
+            ttl_seconds=self.response_cache_ttl_seconds,
+            similarity_threshold=self.response_cache_similarity_threshold,
+            store_context_free_only=self.response_cache_store_context_free_only,
         )
 
     def retrieval_config(self) -> RetrievalConfig:
@@ -177,5 +202,21 @@ def load_settings() -> Settings:
         hosted_rerank_model=os.getenv(
             "HOSTED_RERANK_MODEL",
             "bge-reranker-v2-m3",
+        ),
+        response_cache_enabled=_env_bool("RESPONSE_CACHE_ENABLED", True),
+        response_cache_semantic_enabled=_env_bool(
+            "RESPONSE_CACHE_SEMANTIC_ENABLED",
+            True,
+        ),
+        response_cache_max_entries=int(os.getenv("RESPONSE_CACHE_MAX_ENTRIES", "512")),
+        response_cache_ttl_seconds=int(
+            os.getenv("RESPONSE_CACHE_TTL_SECONDS", "86400")
+        ),
+        response_cache_similarity_threshold=float(
+            os.getenv("RESPONSE_CACHE_SIMILARITY_THRESHOLD", "0.95")
+        ),
+        response_cache_store_context_free_only=_env_bool(
+            "RESPONSE_CACHE_STORE_CONTEXT_FREE_ONLY",
+            True,
         ),
     )
