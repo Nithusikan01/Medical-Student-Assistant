@@ -251,11 +251,29 @@ class ErrorCountInfo(BaseModel):
     count: int
 
 
+class ErrorCategoryInfo(BaseModel):
+    category: str
+    stage: str
+    count: int
+
+
 class ErrorsResponse(BaseModel):
     window: WindowInfo
     failed_requests: int
     failure_rate: float
     by_stage: list[ErrorCountInfo] = Field(default_factory=list)
+
+    # The axis an operator acts on: rate_limit, timeout, upstream, auth,
+    # validation, internal - or "unclassified" for rows written before the
+    # taxonomy existed.
+    by_category: list[ErrorCategoryInfo] = Field(default_factory=list)
+
+    # Totals per category, for the summary tiles.
+    category_totals: dict[str, int] = Field(default_factory=dict)
+
+    # The longest wait a provider asked for. Null means none was offered,
+    # which is not the same as "retry now".
+    max_retry_after_seconds: float | None = None
 
 
 # ----------------------------------------------------------------------

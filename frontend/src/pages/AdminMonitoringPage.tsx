@@ -47,6 +47,54 @@ const RANGES: { value: MonitoringRange; label: string }[] = [
   { value: "30d", label: "30d" },
 ];
 
+/**
+ * The error taxonomy, in the order an operator would triage it: the ones
+ * with a clear action first, our own bugs last.
+ *
+ * `unclassified` is rows written before the taxonomy existed. It is kept
+ * distinct from `internal` rather than folded into it - a guess about the
+ * past would be indistinguishable from a real classification afterwards.
+ */
+const CATEGORY_ORDER = [
+  "rate_limit",
+  "timeout",
+  "upstream",
+  "auth",
+  "validation",
+  "internal",
+  "unclassified",
+];
+
+const CATEGORY_LABELS: Record<string, string> = {
+  rate_limit: "Rate limited",
+  timeout: "Timed out",
+  upstream: "Upstream failed",
+  auth: "Auth rejected",
+  validation: "Bad input",
+  internal: "Internal",
+  unclassified: "Unclassified",
+};
+
+const CATEGORY_ADVICE: Record<string, string> = {
+  rate_limit: "wait, back off, or raise a quota",
+  timeout: "usually transient",
+  upstream: "check the provider",
+  auth: "a key expired or was rotated",
+  validation: "the document or request, not the service",
+  internal: "our own bug",
+  unclassified: "recorded before the taxonomy existed",
+};
+
+const CATEGORY_TONE: Record<string, "default" | "warning" | "danger"> = {
+  rate_limit: "warning",
+  timeout: "warning",
+  upstream: "danger",
+  auth: "danger",
+  validation: "default",
+  internal: "danger",
+  unclassified: "default",
+};
+
 interface Data {
   overview: OverviewResponse;
   performance: PerformanceResponse;
@@ -508,6 +556,29 @@ function Dashboard({ data }: { data: Data }) {
           1,
         )}`}
       >
+        {Object.keys(errors.category_totals).length > 0 && (
+          <div className="mon-tiles">
+            {CATEGORY_ORDER.filter(
+              (category) => errors.category_totals[category] !== undefined,
+            ).map((category) => (
+              <StatTile
+                key={category}
+                label={CATEGORY_LABELS[category] ?? category}
+                value={formatNumber(errors.category_totals[category])}
+                detail={CATEGORY_ADVICE[category]}
+                tone={CATEGORY_TONE[category] ?? "default"}
+              />
+            ))}
+          </div>
+        )}
+
+        {errors.max_retry_after_seconds !== null && (
+          <p className="mon-note">
+            A provider asked us to wait up to{" "}
+            {Math.round(errors.max_retry_after_seconds)}s before retrying.
+          </p>
+        )}
+
         {errors.by_stage.length === 0 ? (
           <EmptyState message="No stage errors in this window." />
         ) : (

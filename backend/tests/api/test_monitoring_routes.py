@@ -61,6 +61,7 @@ def add_span(
     duration_ms: float = 50.0,
     status: str = "ok",
     error_type: str | None = None,
+    error_category: str | None = None,
     meta: dict | None = None,
 ) -> None:
     started = datetime.now(UTC) - timedelta(minutes=5)
@@ -73,6 +74,7 @@ def add_span(
             sequence=sequence,
             status=status,
             error_type=error_type,
+            error_category=error_category,
             started_at=started,
             ended_at=started + timedelta(milliseconds=duration_ms),
             duration_ms=duration_ms,
@@ -731,3 +733,145 @@ def test_a_non_admin_cannot_read_the_ingestion_panel(client, user, auth_headers)
     response = client.get("/api/monitoring/ingestion", headers=auth_headers(user))
 
     assert response.status_code == 403
+
+
+# ----------------------------------------------------------------------
+# The error taxonomy
+# ----------------------------------------------------------------------
+
+
+def test_errors_are_grouped_by_what_to_do_about_them(client, headers, db):
+    """
+    A rate limit, a timeout and a bad document are three different
+    responses from an operator. Grouping only by exception class put all
+    three in one bucket.
+    """
+
+    trace_id = add_trace(db, status="error", status_code=502)
+
+    add_span(
+        db,
+        trace_id=trace_id,
+        stage="generation",
+        sequence=1,
+        status="error",
+        error_type="RateLimitError",
+        error_category="rate_limit",
+    )
+    add_span(
+        db,
+        trace_id=trace_id,
+        stage="dense_retrieval",
+        sequence=2,
+        status="error",
+        error_type="DeadlineExceeded",
+        error_category="timeout",
+    )
+
+    body = client.get("/api/monitoring/errors", headers=headers).json()
+
+    assert body["category_totals"] == {"rate_limit": 1, "timeout": 1}
+    assert {row["category"] for row in body["by_category"]} == {
+        "rate_limit",
+        "timeout",
+    }
+
+
+def test_the_exception_class_is_still_reported(client, headers, db):
+    """
+    Both axes, not one replacing the other: the class is what you search a
+    log for, the category is what you act on.
+    """
+
+    trace_id = add_trace(db, status="error")
+
+    add_span(
+        db,
+        trace_id=trace_id,
+        stage="generation",
+        sequence=1,
+        status="error",
+        error_type="RateLimitError",
+        error_category="rate_limit",
+    )
+
+    body = client.get("/api/monitoring/errors", headers=headers).json()
+
+    assert body["by_stage"][0]["error_type"] == "RateLimitError"
+    assert body["by_category"][0]["category"] == "rate_limit"
+
+
+def test_rows_from_before_the_taxonomy_read_as_unclassified(client, headers, db):
+    """
+    Not folded into `internal`. A guess about the past is worse than an
+    honest gap, and afterwards the two would be indistinguishable.
+    """
+
+    trace_id = add_trace(db, status="error")
+
+    add_span(
+        db,
+        trace_id=trace_id,
+        stage="generation",
+        sequence=1,
+        status="error",
+        error_type="RuntimeError",
+        error_category=None,
+    )
+
+    body = client.get("/api/monitoring/errors", headers=headers).json()
+
+    assert body["category_totals"] == {"unclassified": 1}
+
+
+def test_a_provider_retry_after_is_surfaced(client, headers, db):
+    trace_id = add_trace(db, status="error")
+
+    add_span(
+        db,
+        trace_id=trace_id,
+        stage="generation",
+        sequence=1,
+        status="error",
+        error_type="RateLimitError",
+        error_category="rate_limit",
+        meta={"retry_after_seconds": 60},
+    )
+
+    body = client.get("/api/monitoring/errors", headers=headers).json()
+
+    assert body["max_retry_after_seconds"] == 60
+
+
+def test_no_retry_after_is_null_not_zero(client, headers, db):
+    """
+    Zero would render as "retry immediately", the opposite of what a rate
+    limit with no guidance means.
+    """
+
+    trace_id = add_trace(db, status="error")
+
+    add_span(
+        db,
+        trace_id=trace_id,
+        stage="generation",
+        sequence=1,
+        status="error",
+        error_type="RateLimitError",
+        error_category="rate_limit",
+    )
+
+    body = client.get("/api/monitoring/errors", headers=headers).json()
+
+    assert body["max_retry_after_seconds"] is None
+
+
+def test_successful_spans_are_not_counted_as_errors(client, headers, db):
+    trace_id = add_trace(db)
+
+    add_span(db, trace_id=trace_id, stage="generation", sequence=1)
+
+    body = client.get("/api/monitoring/errors", headers=headers).json()
+
+    assert body["category_totals"] == {}
+    assert body["by_category"] == []
