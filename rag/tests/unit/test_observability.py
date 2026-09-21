@@ -18,6 +18,7 @@ from rag.observability import (
     current_trace,
     sanitize_metadata,
 )
+from rag.observability.metrics import promotion_profile, rank_change
 from rag.observability.sanitize import MAX_STRING_LENGTH, REDACTED
 
 
@@ -312,3 +313,84 @@ def test_unrepresentable_values_do_not_break_a_span(tracer, recorder):
     # The span is still recorded; only its metadata is sacrificed.
     assert len(recorder.spans) == 1
     assert recorder.spans[0].metadata == {}
+
+
+# ----------------------------------------------------------------------
+# Reranking effect
+# ----------------------------------------------------------------------
+
+
+def test_promotion_profile_reports_where_the_selection_came_from():
+    candidates = [f"c{n}" for n in range(1, 31)]
+    selected = ["c12", "c3", "c25", "c1", "c7"]
+
+    profile = promotion_profile(candidates, selected)
+
+    assert profile["promoted_from_ranks"] == [12, 3, 25, 1, 7]
+    assert profile["max_promoted_rank"] == 25
+    assert profile["mean_promoted_rank"] == pytest.approx(9.6)
+
+    # 30 candidates fetched, deepest one used was 25: five were scored for
+    # nothing.
+    assert profile["unused_candidate_depth"] == 5
+
+
+def test_a_shallow_selection_shows_a_large_unused_depth():
+    """
+    The signal that candidate_k is too big: everything the reranker chose
+    came from the first few candidates, so the rest cost latency for
+    nothing.
+    """
+
+    candidates = [f"c{n}" for n in range(1, 31)]
+
+    profile = promotion_profile(candidates, ["c2", "c1", "c4"])
+
+    assert profile["max_promoted_rank"] == 4
+    assert profile["unused_candidate_depth"] == 26
+
+
+def test_a_selection_pressing_against_the_pool_shows_none_unused():
+    """The opposite signal: the pool may be cutting off good chunks."""
+
+    candidates = [f"c{n}" for n in range(1, 11)]
+
+    profile = promotion_profile(candidates, ["c10", "c1"])
+
+    assert profile["max_promoted_rank"] == 10
+    assert profile["unused_candidate_depth"] == 0
+
+
+def test_an_unknown_chunk_is_skipped_rather_than_guessed_at():
+    """
+    Inventing a rank for a chunk that was never a candidate would quietly
+    corrupt the average.
+    """
+
+    profile = promotion_profile(["a", "b"], ["b", "from-nowhere"])
+
+    assert profile["promoted_from_ranks"] == [2]
+
+
+def test_promotion_profile_of_nothing_is_empty():
+    assert promotion_profile([], []) == {}
+    assert promotion_profile(["a"], []) == {}
+
+
+def test_rank_change_and_promotion_profile_answer_different_questions():
+    """
+    rank_change says whether the selection changed; promotion_profile says
+    how deep it reached to do it. A reranker can reorder heavily without
+    going deep, and both facts matter for different decisions.
+    """
+
+    candidates = [f"c{n}" for n in range(1, 21)]
+    selected = ["c3", "c2", "c1"]
+
+    changed = rank_change(candidates[:3], selected)
+    profile = promotion_profile(candidates, selected)
+
+    # Fully reordered, but nothing new and nothing deep.
+    assert changed["reordered_count"] == 2
+    assert changed["introduced_count"] == 0
+    assert profile["max_promoted_rank"] == 3

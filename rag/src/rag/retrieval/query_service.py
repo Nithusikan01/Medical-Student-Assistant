@@ -3,6 +3,7 @@ import logging
 from rag.observability import (
     Stage,
     Tracer,
+    promotion_profile,
     rank_change,
     summarize_scores,
 )
@@ -120,12 +121,18 @@ class QueryService:
                         top_k=top_k,
                     )
 
+                    candidate_ids = [chunk.id for chunk in candidates]
+                    selected_ids = [chunk.id for chunk in results]
+
                     rerank_span.set(
                         final_count=len(results),
-                        **rank_change(
-                            [chunk.id for chunk in candidates[:top_k]],
-                            [chunk.id for chunk in results],
-                        ),
+                        # What changed, against the selection retrieval
+                        # would have made on its own.
+                        **rank_change(candidate_ids[:top_k], selected_ids),
+                        # How deep into the candidate pool it reached,
+                        # which is what says whether candidate_k is
+                        # earning the latency it costs.
+                        **promotion_profile(candidate_ids, selected_ids),
                         **summarize_scores(
                             chunk.rerank_score
                             for chunk in results

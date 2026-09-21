@@ -282,3 +282,53 @@ def test_only_retrieval_stages_are_declared():
         "fusion",
         "reranking",
     }
+
+
+# ----------------------------------------------------------------------
+# Candidate pool depth
+# ----------------------------------------------------------------------
+
+
+def test_promotion_depth_is_aggregated():
+    summary = summarize_reranking(
+        [
+            {
+                "max_promoted_rank": 25,
+                "mean_promoted_rank": 9.6,
+                "unused_candidate_depth": 5,
+            },
+            {
+                "max_promoted_rank": 4,
+                "mean_promoted_rank": 2.0,
+                "unused_candidate_depth": 26,
+            },
+        ]
+    )
+
+    assert summary.max_promoted_rank.mean == pytest.approx(14.5)
+    assert summary.max_promoted_rank.maximum == pytest.approx(25.0)
+    assert summary.unused_candidate_depth.mean == pytest.approx(15.5)
+
+
+def test_a_consistently_shallow_reranker_shows_high_unused_depth():
+    """
+    What tuning candidate_k down would look like in the data: reranking
+    never reaches past the first few candidates, so most of the pool is
+    retrieved and scored for nothing.
+    """
+
+    summary = summarize_reranking(
+        [{"max_promoted_rank": 3, "unused_candidate_depth": 27} for _ in range(10)]
+    )
+
+    assert summary.max_promoted_rank.maximum == pytest.approx(3.0)
+    assert summary.unused_candidate_depth.minimum == pytest.approx(27.0)
+
+
+def test_depth_is_absent_when_no_span_recorded_it():
+    """Older spans predate the field; they must not contribute zeroes."""
+
+    summary = summarize_reranking([{"candidate_count": 30, "final_count": 5}])
+
+    assert summary.max_promoted_rank.count == 0
+    assert summary.max_promoted_rank.mean is None
