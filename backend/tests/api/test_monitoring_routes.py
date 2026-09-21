@@ -1006,3 +1006,87 @@ def test_a_non_admin_cannot_read_feedback(client, user, auth_headers):
     response = client.get("/api/monitoring/feedback", headers=auth_headers(user))
 
     assert response.status_code == 403
+
+
+# ----------------------------------------------------------------------
+# Alerts
+# ----------------------------------------------------------------------
+
+
+def test_alerts_report_disabled_when_no_evaluator_is_running(client, headers):
+    """
+    The API tests do not run the lifespan, so nothing started the
+    evaluator - which is the same shape as ALERTS_ENABLED=false. It must
+    read as "not running", never as "nothing is wrong".
+    """
+
+    body = client.get("/api/monitoring/alerts", headers=headers).json()
+
+    assert body["enabled"] is False
+    assert body["alerts"] == []
+    assert body["evaluated_at"] is None
+
+
+def test_the_endpoint_reports_what_was_last_evaluated(client, headers):
+    """
+    Read, not computed. A dashboard refresh must not be able to decide
+    whether an alert fires, and several admins watching at once should
+    see one answer rather than three.
+    """
+
+    from backend.observability.alerts import Alert, RuleState, Severity
+
+    evaluated_at = datetime.now(UTC)
+
+    class StubService:
+        def current(self):
+            return (
+                [
+                    Alert(
+                        key="error_rate",
+                        label="Requests are failing",
+                        severity=Severity.CRITICAL,
+                        state=RuleState.FIRING,
+                        value=0.42,
+                        threshold=0.1,
+                        advice="Check the error panel.",
+                        since=evaluated_at,
+                    ),
+                    Alert(
+                        key="cost_per_hour",
+                        label="Spend is high",
+                        severity=Severity.WARNING,
+                        state=RuleState.INSUFFICIENT_DATA,
+                        value=None,
+                        threshold=1.0,
+                        advice="",
+                    ),
+                ],
+                evaluated_at,
+            )
+
+    client.app.state.alert_service = StubService()
+
+    try:
+        body = client.get("/api/monitoring/alerts", headers=headers).json()
+    finally:
+        client.app.state.alert_service = None
+
+    assert body["enabled"] is True
+    assert body["firing"] == 1
+
+    by_key = {alert["key"]: alert for alert in body["alerts"]}
+
+    assert by_key["error_rate"]["state"] == "firing"
+    assert by_key["error_rate"]["advice"]
+
+    # Reported as its own state rather than as "ok": a rule with nothing
+    # to judge has not passed, it has not run.
+    assert by_key["cost_per_hour"]["state"] == "insufficient_data"
+    assert by_key["cost_per_hour"]["value"] is None
+
+
+def test_a_non_admin_cannot_read_alerts(client, user, auth_headers):
+    response = client.get("/api/monitoring/alerts", headers=auth_headers(user))
+
+    assert response.status_code == 403

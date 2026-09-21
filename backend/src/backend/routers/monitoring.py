@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from backend.db.repositories import documents as document_repo
 from backend.db.repositories import feedback as feedback_repo
@@ -40,6 +40,8 @@ from backend.observability.retrieval_metrics import (
     build_report,
 )
 from backend.schemas.monitoring import (
+    AlertInfo,
+    AlertsResponse,
     DistributionInfo,
     ErrorCategoryInfo,
     ErrorCountInfo,
@@ -532,6 +534,43 @@ def feedback(
             )
             for row in feedback_repo.recent_negative(session, window.start, window.end)
         ],
+    )
+
+
+@router.get("/monitoring/alerts", response_model=AlertsResponse)
+def alerts(request: Request, admin: AdminUser) -> AlertsResponse:
+    """
+    What the evaluator last decided.
+
+    Read rather than computed: a dashboard refresh must not be able to
+    decide whether an alert fires, and several admins watching at once
+    should see one answer rather than three.
+    """
+
+    service = getattr(request.app.state, "alert_service", None)
+
+    if service is None:
+        return AlertsResponse(enabled=False)
+
+    current, evaluated_at = service.current()
+
+    return AlertsResponse(
+        alerts=[
+            AlertInfo(
+                key=alert.key,
+                label=alert.label,
+                severity=alert.severity.value,
+                state=alert.state.value,
+                value=alert.value,
+                threshold=alert.threshold,
+                advice=alert.advice,
+                since=alert.since,
+            )
+            for alert in current
+        ],
+        firing=sum(1 for alert in current if alert.firing),
+        evaluated_at=evaluated_at,
+        enabled=True,
     )
 
 

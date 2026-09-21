@@ -401,6 +401,34 @@ class FeedbackResponse(BaseModel):
     recent_negative: list[NegativeFeedbackInfo] = Field(default_factory=list)
 
 
+class AlertInfo(BaseModel):
+    key: str
+    label: str
+    severity: str
+
+    # "ok", "firing", or "insufficient_data" - the third is reported
+    # rather than folded into "ok", because a rule with nothing to judge
+    # has not passed, it has not run.
+    state: str
+
+    # Null when the metric was not measurable in the window. Not zero.
+    value: float | None = None
+    threshold: float
+    advice: str = ""
+    since: datetime | None = None
+
+
+class AlertsResponse(BaseModel):
+    alerts: list[AlertInfo] = Field(default_factory=list)
+    firing: int = 0
+
+    # Null until the evaluator has run once. The endpoint reports what was
+    # last evaluated rather than evaluating on request: a dashboard
+    # refresh must not decide whether an alert fires.
+    evaluated_at: datetime | None = None
+    enabled: bool = True
+
+
 class TraceDetailResponse(BaseModel):
     trace: TraceSummaryInfo
     spans: list[SpanInfo] = Field(default_factory=list)

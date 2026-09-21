@@ -409,6 +409,26 @@ export interface FeedbackSummaryResponse {
   recent_negative: NegativeFeedbackInfo[];
 }
 
+export interface AlertInfo {
+  key: string;
+  label: string;
+  severity: "warning" | "critical";
+  // "ok" | "firing" | "insufficient_data". The third is its own state
+  // because a rule with nothing to judge has not passed, it has not run.
+  state: string;
+  value: number | null;
+  threshold: number;
+  advice: string;
+  since: string | null;
+}
+
+export interface AlertsResponse {
+  alerts: AlertInfo[];
+  firing: number;
+  evaluated_at: string | null;
+  enabled: boolean;
+}
+
 export interface TraceSummaryInfo {
   trace_id: string;
   request_id: string | null;

@@ -1,4 +1,5 @@
 import type {
+  AlertsResponse,
   ErrorsResponse,
   FeedbackSummaryResponse,
   IngestionResponse,
@@ -68,6 +69,10 @@ export function getFeedback(
   return request<FeedbackSummaryResponse>(
     `/api/monitoring/feedback${query({ ...params })}`,
   );
+}
+
+export function getAlerts(): Promise<AlertsResponse> {
+  return request<AlertsResponse>("/api/monitoring/alerts");
 }
 
 export function listTraces(

@@ -23,6 +23,7 @@ from backend.routers.monitoring import router as monitoring_router
 from backend.routers.query import router as query_router
 from backend.routers.usage import router as usage_router
 from backend.routers.users import router as users_router
+from backend.services.alerting import start_alert_service
 from backend.services.ingest_recovery import recover_on_startup
 from backend.services.telemetry_retention import start_retention_worker
 from backend.wiring.rag_factory import (
@@ -91,9 +92,22 @@ async def lifespan(app: FastAPI):
     # than freezing it there for good.
     retention_worker = start_retention_worker(get_session_factory())
 
+    # Reads the sink's drop counter, so "monitoring is lossy right now"
+    # can itself be an alert rather than something to notice later.
+    app.state.alert_service = start_alert_service(
+        get_session_factory(),
+        drop_count=(lambda: telemetry_sink.dropped) if telemetry_sink else None,
+    )
+
     try:
         yield
     finally:
+        if app.state.alert_service is not None:
+            try:
+                app.state.alert_service.stop()
+            except Exception:
+                logger.exception("Could not stop the alert evaluator cleanly.")
+
         if retention_worker is not None:
             try:
                 retention_worker.stop()

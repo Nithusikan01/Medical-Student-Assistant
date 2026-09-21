@@ -1654,6 +1654,48 @@ a:hover {
 /* A value that is deliberately absent - "not recorded", "no comment" -
    rather than a number rendered dim. Zero and unknown must not look
    alike anywhere in this dashboard. */
+/* Firing alerts, above everything else on the page.
+   Absent entirely when nothing is wrong: a banner that is always there is
+   a banner nobody reads. */
+.mon-alerts {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 1.2rem;
+}
+
+.mon-alert {
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--chart-warning, var(--accent));
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.mon-alert[data-severity="critical"] {
+  border-color: var(--chart-danger, #b4232b);
+}
+
+.mon-alert-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.mon-alert-value {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.mon-alert-advice {
+  margin: 0.35rem 0 0;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
 .mon-muted {
   color: var(--text-muted);
   opacity: 0.7;
