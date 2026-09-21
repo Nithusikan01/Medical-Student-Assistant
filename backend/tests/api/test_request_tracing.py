@@ -10,7 +10,16 @@ still leaves the API answering.
 import uuid
 
 import pytest
-from rag.observability import SpanRecord, SpanStatus, Tracer, TraceRecord
+from rag.observability import (
+    SpanRecord,
+    SpanStatus,
+    Stage,
+    Tracer,
+    TraceRecord,
+)
+
+from backend.dependencies import get_rag_service
+from backend.observability.inflight import IN_FLIGHT
 
 
 class RecordingRecorder:
@@ -230,6 +239,71 @@ def test_an_unhandled_exception_is_traced_as_an_error(traced_client, recorder):
 
     assert trace.status is SpanStatus.ERROR
     assert trace.error_type == "RuntimeError"
+
+
+def test_spans_from_the_endpoint_join_the_request_trace(
+    traced_client,
+    user,
+    auth_headers,
+    recorder,
+):
+    """
+    The load-bearing assumption of the whole design.
+
+    The middleware sets the trace context on the event loop, but /api/query
+    is a synchronous `def`, so FastAPI runs it in a worker thread. This
+    passes only because anyio copies the context into that thread - if it
+    did not, every pipeline span would be orphaned from its request.
+    """
+
+    tracer = traced_client.app.state.tracer
+
+    class SpanningRagService:
+        def answer_with_sources(
+            self, *, conversation_id, question, top_k, generator=None, on_usage=None
+        ):
+            with tracer.span(Stage.GENERATION) as span:
+                span.set(ran_in="worker thread")
+
+            return "An answer.", []
+
+    traced_client.app.dependency_overrides[get_rag_service] = SpanningRagService
+
+    response = traced_client.post(
+        "/api/query",
+        headers=auth_headers(user),
+        json={"conversation_id": str(uuid.uuid4()), "question": "What is the dose?"},
+    )
+
+    assert response.status_code == 200
+
+    span = next(s for s in recorder.spans if s.stage == "generation")
+
+    assert span.trace_id == recorder.traces[0].trace_id
+    assert span.trace_id == response.headers["x-trace-id"]
+
+
+def test_the_in_flight_gauge_is_balanced(traced_client, user, auth_headers):
+    """
+    Incremented and decremented around every request, including ones that
+    fail - a leak here would make the dashboard report phantom load that
+    only a restart clears.
+    """
+
+    before = IN_FLIGHT.current
+
+    traced_client.get("/api/conversations", headers=auth_headers(user))
+    traced_client.get("/api/conversations")
+
+    with pytest.raises(RuntimeError):
+
+        @traced_client.app.get("/api/_explode_for_gauge")
+        def explode():
+            raise RuntimeError("kaboom")
+
+        traced_client.get("/api/_explode_for_gauge")
+
+    assert IN_FLIGHT.current == before
 
 
 # ----------------------------------------------------------------------

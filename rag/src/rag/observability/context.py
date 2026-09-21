@@ -14,6 +14,7 @@ caller that wants explicit propagation can still pass a Tracer around.
 import uuid
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
+from typing import Any
 
 
 def new_id() -> str:
@@ -48,8 +49,13 @@ _current_trace: ContextVar[TraceContext | None] = ContextVar(
     default=None,
 )
 
-_current_span_id: ContextVar[str | None] = ContextVar(
-    "rag_current_span_id",
+# Holds the in-flight SpanHandle, not just its id, so a component nested
+# inside someone else's span can annotate it - FallbackReranker recording
+# which reranker actually answered, for instance - without opening a second
+# span that would duplicate the first one's timing. Typed loosely because
+# the handle lives in tracer.py, which imports this module.
+_current_span: ContextVar[Any | None] = ContextVar(
+    "rag_current_span",
     default=None,
 )
 
@@ -64,8 +70,14 @@ def current_trace_id() -> str | None:
     return trace.trace_id if trace is not None else None
 
 
+def current_span() -> Any | None:
+    return _current_span.get()
+
+
 def current_span_id() -> str | None:
-    return _current_span_id.get()
+    span = _current_span.get()
+
+    return getattr(span, "span_id", None) if span is not None else None
 
 
 def bind_trace(trace: TraceContext | None) -> Token:
@@ -76,9 +88,9 @@ def reset_trace(token: Token) -> None:
     _current_trace.reset(token)
 
 
-def bind_span_id(span_id: str | None) -> Token:
-    return _current_span_id.set(span_id)
+def bind_span(span: Any | None) -> Token:
+    return _current_span.set(span)
 
 
-def reset_span_id(token: Token) -> None:
-    _current_span_id.reset(token)
+def reset_span(token: Token) -> None:
+    _current_span.reset(token)

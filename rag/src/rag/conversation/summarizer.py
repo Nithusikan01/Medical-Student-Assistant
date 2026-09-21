@@ -1,11 +1,13 @@
 from rag.conversation.memory import ConversationMemory
 from rag.llm.generator import GeminiGenerator
+from rag.observability import Stage, Tracer, generation_metadata
 
 
 class ConversationSummarizer:
 
-    def __init__(self, generator: GeminiGenerator):
+    def __init__(self, generator: GeminiGenerator, *, tracer: Tracer | None = None):
         self.generator = generator
+        self.tracer = tracer if tracer is not None else Tracer()
 
     def summarize(self, memory: ConversationMemory) -> str:
 
@@ -32,5 +34,18 @@ Rules:
 Return ONLY the updated summary.
 """
 
-        response = self.generator.generate(prompt)
-        return response.text.strip()
+        with self.tracer.span(
+            Stage.SUMMARIZATION,
+            message_count=len(messages),
+            previous_summary_length=len(memory.summary or ""),
+        ) as span:
+
+            response = self.generator.generate(prompt)
+            summary = response.text.strip()
+
+            span.set(
+                summary_length=len(summary),
+                **generation_metadata(response),
+            )
+
+            return summary

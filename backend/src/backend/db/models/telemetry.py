@@ -46,6 +46,22 @@ class RagTrace(Base):
 
     error_type: Mapped[str | None] = mapped_column(sa.String(128))
 
+    # Promoted out of `meta` into columns because both are primary
+    # dashboard dimensions - success and error rates group by status class,
+    # and per-route latency groups by route. Querying them inside a JSON
+    # column would need dialect-specific SQL, which the SQLite-backed test
+    # suite could not exercise.
+    #
+    # Nullable on purpose: an exception that escapes past the router means
+    # no response ever starts, so there is no status to record. That case
+    # counts as a failure, which is why "no status" and 5xx are treated
+    # alike when rates are computed.
+    status_code: Mapped[int | None] = mapped_column(sa.Integer)
+
+    # The route template, never the concrete path - one series per route
+    # rather than one per conversation id.
+    route: Mapped[str | None] = mapped_column(sa.String(256))
+
     started_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=False,
@@ -79,6 +95,7 @@ class RagTrace(Base):
         sa.Index("ix_rag_traces_status_started_at", "status", "started_at"),
         sa.Index("ix_rag_traces_conversation_id", "conversation_id"),
         sa.Index("ix_rag_traces_user_id", "user_id"),
+        sa.Index("ix_rag_traces_route_started_at", "route", "started_at"),
     )
 
 
