@@ -164,4 +164,9 @@ class RagSpan(Base):
         # The trace explorer reads one trace's spans in waterfall order.
         sa.Index("ix_rag_spans_trace_id_sequence", "trace_id", "sequence"),
         sa.Index("ix_rag_spans_stage_started_at", "stage", "started_at"),
+        # Retention sweeps orphan spans by age alone - spans whose trace row
+        # never arrived, because the sink drops on a full queue and the
+        # trace is written last. The composite above cannot serve that
+        # query: started_at is not its leading column.
+        sa.Index("ix_rag_spans_started_at", "started_at"),
     )

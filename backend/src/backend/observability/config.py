@@ -72,7 +72,10 @@ class TelemetryConfig:
     # are stored (spec section 39).
     capture_text: bool = False
 
+    # Enforced by backend/services/telemetry_retention.py, which deletes
+    # anything older on startup and then once per interval.
     retention_days: int = 30
+    retention_interval_hours: int = 24
 
     environment: str = "development"
     app_version: str = "2.0.0"
@@ -98,6 +101,11 @@ def load_telemetry_config() -> TelemetryConfig:
         ),
         capture_text=_env_bool("TELEMETRY_CAPTURE_TEXT", False),
         retention_days=_env_int("TELEMETRY_RETENTION_DAYS", 30, minimum=1),
+        retention_interval_hours=_env_int(
+            "TELEMETRY_RETENTION_INTERVAL_HOURS",
+            24,
+            minimum=1,
+        ),
         environment=os.getenv("APP_ENV", "development"),
         app_version=os.getenv("APP_VERSION", "2.0.0"),
     )
