@@ -7,6 +7,7 @@ from rag.ingestion.document_loader import DocumentLoader
 from rag.ingestion.embedder import Embedder
 from rag.ingestion.processor import VectorDataProcessor
 from rag.ingestion.sinks import ChunkSink
+from rag.observability import Stage, Tracer
 from rag.vectorstore.base import VectorStoreInterface
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,7 @@ class IngestionPipeline:
         batch_size: int,
         bm25_corpus_path: str | Path | None = None,
         chunk_sink: ChunkSink | None = None,
+        tracer: Tracer | None = None,
     ) -> None:
         self.loader = loader
         self.chunker = chunker
@@ -68,6 +70,11 @@ class IngestionPipeline:
         )
         # Takes precedence over bm25_corpus_path when supplied.
         self.chunk_sink = chunk_sink
+
+        # Defaults to a tracer that records nothing, so the pipeline stays
+        # runnable with no telemetry backend - the same contract the query
+        # service follows.
+        self.tracer = tracer if tracer is not None else Tracer()
 
     def ingest(
         self,
@@ -89,69 +96,102 @@ class IngestionPipeline:
         )
 
         try:
-            # ---------------------------------------------------------
-            # Load document
-            # ---------------------------------------------------------
-            document = self.loader.load(
-                str(file_path),
-                document_id=document_id,
-                filename=filename,
-            )
-
-            logger.info(
-                "Loaded '%s' (%d pages).",
-                document.filename,
-                len(document.pages),
-            )
-
-            total_chunks = 0
-            total_vectors = 0
-
-            # A per-call sink wins, since it may be scoped to this document.
-            bm25_builder = chunk_sink or self.chunk_sink
-
-            if bm25_builder is None and self.bm25_corpus_path is not None:
-                bm25_builder = BM25CorpusBuilder(self.bm25_corpus_path)
-
-            with (
-                bm25_builder if bm25_builder is not None else _NullContext()
-            ) as builder:
+            with self.tracer.span(Stage.INGESTION) as ingestion:
                 # ---------------------------------------------------------
-                # Process document in batches
+                # Load document
                 # ---------------------------------------------------------
-                for batch_number, chunk_batch in enumerate(
-                    self.chunker.chunk_batches(
-                        document=document,
-                        batch_size=self.batch_size,
-                    ),
-                    start=1,
-                ):
-
-                    logger.info(
-                        "Processing batch %d (%d chunks).",
-                        batch_number,
-                        len(chunk_batch),
+                with self.tracer.span(Stage.DOCUMENT_LOAD) as load:
+                    document = self.loader.load(
+                        str(file_path),
+                        document_id=document_id,
+                        filename=filename,
                     )
 
-                    if builder is not None:
-                        builder.add_batch(chunk_batch)
+                    load.set(pages=len(document.pages))
 
-                    # Generate embeddings
-                    embedded_chunks = self.embedder.embed_batch(chunk_batch)
+                logger.info(
+                    "Loaded '%s' (%d pages).",
+                    document.filename,
+                    len(document.pages),
+                )
 
-                    # Convert to vector records
-                    vector_records = self.processor.prepare(embedded_chunks)
+                total_chunks = 0
+                total_vectors = 0
 
-                    # Store vectors
-                    self.vector_store.upsert(vector_records)
+                # Initialised rather than left to the loop: a PDF with no
+                # extractable text yields no batches at all, and the span
+                # below still has to report how many there were.
+                batch_number = 0
 
-                    total_chunks += len(chunk_batch)
-                    total_vectors += len(vector_records)
+                # A per-call sink wins, since it may be scoped to this document.
+                bm25_builder = chunk_sink or self.chunk_sink
 
-                    logger.info(
-                        "Finished batch %d.",
-                        batch_number,
-                    )
+                if bm25_builder is None and self.bm25_corpus_path is not None:
+                    bm25_builder = BM25CorpusBuilder(self.bm25_corpus_path)
+
+                with (
+                    bm25_builder if bm25_builder is not None else _NullContext()
+                ) as builder:
+                    # -----------------------------------------------------
+                    # Process document in batches
+                    # -----------------------------------------------------
+                    #
+                    # Chunking gets no span of its own. chunk_batches is a
+                    # generator, so the splitting happens as each batch is
+                    # pulled; a span around the loop would re-time the whole
+                    # ingestion under a name that claims to be chunking.
+                    for batch_number, chunk_batch in enumerate(
+                        self.chunker.chunk_batches(
+                            document=document,
+                            batch_size=self.batch_size,
+                        ),
+                        start=1,
+                    ):
+                        with self.tracer.span(
+                            Stage.INGESTION_BATCH,
+                            batch=batch_number,
+                            chunks=len(chunk_batch),
+                        ):
+                            logger.info(
+                                "Processing batch %d (%d chunks).",
+                                batch_number,
+                                len(chunk_batch),
+                            )
+
+                            if builder is not None:
+                                builder.add_batch(chunk_batch)
+
+                            # Generate embeddings
+                            with self.tracer.span(
+                                Stage.DOCUMENT_EMBEDDING,
+                                chunks=len(chunk_batch),
+                            ):
+                                embedded_chunks = self.embedder.embed_batch(chunk_batch)
+
+                            # Convert to vector records
+                            vector_records = self.processor.prepare(embedded_chunks)
+
+                            # Store vectors
+                            with self.tracer.span(
+                                Stage.VECTOR_UPSERT,
+                                vectors=len(vector_records),
+                            ):
+                                self.vector_store.upsert(vector_records)
+
+                            total_chunks += len(chunk_batch)
+                            total_vectors += len(vector_records)
+
+                            logger.info(
+                                "Finished batch %d.",
+                                batch_number,
+                            )
+
+                ingestion.set(
+                    pages=len(document.pages),
+                    chunks=total_chunks,
+                    vectors=total_vectors,
+                    batches=batch_number,
+                )
 
             logger.info(
                 ("Successfully ingested '%s'. " "(chunks=%d, vectors=%d)"),

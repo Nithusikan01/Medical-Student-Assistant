@@ -1473,6 +1473,23 @@ a:hover {
 
 /* Sized to include the axis band, so the card never grows a tiny nested
    scrollbar around a plot that fits but whose labels do not. */
+/* A finding stated in words, under the tiles that imply it. Used where a
+   number alone would not tell an admin what to do about it. */
+.mon-note {
+  margin: 0.85rem 0 0;
+  padding: 0.7rem 0.85rem;
+  border-left: 3px solid var(--chart-warning, var(--accent));
+  border-radius: 0 6px 6px 0;
+  background: var(--surface-muted, rgba(127, 127, 127, 0.08));
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.mon-note a {
+  color: var(--accent);
+}
+
 .mon-chart {
   width: 100%;
   overflow: visible;

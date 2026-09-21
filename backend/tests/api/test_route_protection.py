@@ -55,6 +55,7 @@ ADMIN_ONLY = {
     ("GET", "/api/monitoring/tokens"),
     ("GET", "/api/monitoring/retrieval"),
     ("GET", "/api/monitoring/errors"),
+    ("GET", "/api/monitoring/ingestion"),
     ("GET", "/api/monitoring/traces"),
     ("GET", "/api/monitoring/traces/{trace_id}"),
 }

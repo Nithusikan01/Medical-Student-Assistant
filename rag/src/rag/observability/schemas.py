@@ -39,6 +39,7 @@ class Stage(str, Enum):
 
     # Ingestion path
     INGESTION = "ingestion"
+    DOCUMENT_LOAD = "document_load"
     INGESTION_BATCH = "ingestion_batch"
     DOCUMENT_EMBEDDING = "document_embedding"
     VECTOR_UPSERT = "vector_upsert"

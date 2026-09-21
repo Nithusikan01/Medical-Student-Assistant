@@ -46,6 +46,44 @@ export function formatCost(value: string | null): string {
   return amount < 0.01 ? `$${amount.toFixed(5)}` : `$${amount.toFixed(2)}`;
 }
 
+/**
+ * A timestamp as elapsed time, because the question this answers is "is the
+ * corpus current" rather than "what time was it".
+ *
+ * Null is "never", not "now": a knowledge base nothing has ever been
+ * ingested into is a real state, and rendering it as a date would be a
+ * fiction.
+ */
+export function formatWhen(iso: string | null): string {
+  if (!iso) {
+    return "never";
+  }
+
+  const then = new Date(iso).getTime();
+
+  if (Number.isNaN(then)) {
+    return "unknown";
+  }
+
+  const minutes = Math.max(Math.round((Date.now() - then) / 60000), 0);
+
+  if (minutes < 1) {
+    return "just now";
+  }
+
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+
+  const hours = Math.round(minutes / 60);
+
+  if (hours < 48) {
+    return `${hours}h ago`;
+  }
+
+  return `${Math.round(hours / 24)}d ago`;
+}
+
 export function StatTile({
   label,
   value,

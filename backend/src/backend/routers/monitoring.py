@@ -17,6 +17,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from backend.db.repositories import documents as document_repo
 from backend.db.repositories import telemetry as telemetry_repo
 from backend.db.repositories import usage as usage_repo
 from backend.dependencies import AdminUser, DbSession
@@ -29,6 +30,10 @@ from backend.observability.aggregation import (
     summarize_stages,
 )
 from backend.observability.inflight import IN_FLIGHT
+from backend.observability.knowledge_base import INGESTION_STAGES
+from backend.observability.knowledge_base import (
+    build_report as build_knowledge_base_report,
+)
 from backend.observability.retrieval_metrics import (
     RETRIEVAL_STAGES,
     build_report,
@@ -39,6 +44,8 @@ from backend.schemas.monitoring import (
     ErrorsResponse,
     FusionInfo,
     InFlightInfo,
+    IngestionResponse,
+    KnowledgeBaseInfo,
     LatencyInfo,
     ModelSpendInfo,
     OverviewResponse,
@@ -59,6 +66,7 @@ from backend.schemas.monitoring import (
     TraceTokenInfo,
     WindowInfo,
 )
+from backend.services.ingest_recovery import stall_threshold
 
 router = APIRouter()
 
@@ -391,6 +399,66 @@ def errors(session: DbSession, admin: AdminUser, window: Window) -> ErrorsRespon
                 session, window
             )
         ],
+    )
+
+
+@router.get("/monitoring/ingestion", response_model=IngestionResponse)
+def ingestion(
+    session: DbSession,
+    admin: AdminUser,
+    window: Window,
+) -> IngestionResponse:
+    """
+    The corpus and the pipeline that fills it.
+
+    Two different questions in one response, deliberately. The knowledge
+    base half is a snapshot and ignores the window - "how much is
+    retrievable right now" has no time range. The stage half is windowed
+    like every other latency panel.
+    """
+
+    stored, retrievable = document_repo.chunk_totals(session)
+
+    report = build_knowledge_base_report(
+        status_counts=document_repo.status_counts(session),
+        chunks_stored=stored,
+        chunks_retrievable=retrievable,
+        last_ingested_at=document_repo.last_ingested_at(session),
+        stalled_documents=document_repo.count_processing_since(
+            session,
+            datetime.now(UTC) - stall_threshold(),
+        ),
+    )
+
+    stages = summarize_stages(
+        telemetry_repo.span_points(session, window, stages=INGESTION_STAGES)
+    )
+
+    # The top-level ingestion span stands for one document ingested, so its
+    # count and error count are the document-level numbers; the nested
+    # stages would count batches and overstate both.
+    top_level = next(
+        (summary for summary in stages if summary.stage == "ingestion"),
+        None,
+    )
+
+    return IngestionResponse(
+        window=window_info(window),
+        knowledge_base=KnowledgeBaseInfo(
+            documents_by_status=report.documents_by_status,
+            total_documents=report.total_documents,
+            ready_documents=report.ready_documents,
+            chunks_stored=report.chunks_stored,
+            chunks_retrievable=report.chunks_retrievable,
+            chunks_unreachable=report.chunks_unreachable,
+            last_ingested_at=report.last_ingested_at,
+            stalled_documents=report.stalled_documents,
+            healthy=report.healthy,
+        ),
+        stages=[stage_info(summary) for summary in stages],
+        ingestions=top_level.count if top_level else 0,
+        failed_ingestions=top_level.errors if top_level else 0,
+        stall_threshold_minutes=int(stall_threshold().total_seconds() // 60),
     )
 
 

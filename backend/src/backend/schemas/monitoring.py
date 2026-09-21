@@ -318,6 +318,39 @@ class TraceTokenInfo(BaseModel):
     estimated_cost_usd: Decimal | None = None
 
 
+class KnowledgeBaseInfo(BaseModel):
+    """What there is to retrieve from, as opposed to traffic against it."""
+
+    documents_by_status: dict[str, int] = Field(default_factory=dict)
+    total_documents: int = 0
+    ready_documents: int = 0
+
+    chunks_stored: int = 0
+    chunks_retrievable: int = 0
+
+    # Stored, vectors live, but invisible to lexical search because the
+    # document is not ready. Zero is the healthy value.
+    chunks_unreachable: int = 0
+
+    last_ingested_at: datetime | None = None
+    stalled_documents: int = 0
+    healthy: bool = True
+
+
+class IngestionResponse(BaseModel):
+    window: WindowInfo
+    knowledge_base: KnowledgeBaseInfo
+
+    # Per-stage latency for the ingestion path only, newest window first.
+    stages: list[StageLatencyInfo] = Field(default_factory=list)
+    ingestions: int = 0
+    failed_ingestions: int = 0
+
+    # How long the sweep waits before calling an ingestion stalled, so the
+    # panel can say what "stalled" means rather than asserting it.
+    stall_threshold_minutes: int = 0
+
+
 class TraceDetailResponse(BaseModel):
     trace: TraceSummaryInfo
     spans: list[SpanInfo] = Field(default_factory=list)
