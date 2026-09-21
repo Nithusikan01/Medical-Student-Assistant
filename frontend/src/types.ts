@@ -327,11 +327,24 @@ export interface ErrorCountInfo {
   count: number;
 }
 
+export interface ErrorCategoryInfo {
+  category: string;
+  stage: string;
+  count: number;
+}
+
 export interface ErrorsResponse {
   window: WindowInfo;
   failed_requests: number;
   failure_rate: number;
   by_stage: ErrorCountInfo[];
+
+  // What to do about it, as opposed to which exception class was raised.
+  by_category: ErrorCategoryInfo[];
+  category_totals: Record<string, number>;
+
+  // Null means no provider offered one, which is not "retry now".
+  max_retry_after_seconds: number | null;
 }
 
 export interface KnowledgeBaseInfo {

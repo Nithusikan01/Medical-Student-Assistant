@@ -40,6 +40,7 @@ from backend.observability.retrieval_metrics import (
 )
 from backend.schemas.monitoring import (
     DistributionInfo,
+    ErrorCategoryInfo,
     ErrorCountInfo,
     ErrorsResponse,
     FusionInfo,
@@ -387,7 +388,23 @@ def retrieval(
 
 @router.get("/monitoring/errors", response_model=ErrorsResponse)
 def errors(session: DbSession, admin: AdminUser, window: Window) -> ErrorsResponse:
+    """
+    What failed, and what kind of failure it was.
+
+    `by_stage` names the exception class; `by_category` says what to do
+    about it. The two are reported side by side rather than one replacing
+    the other - the class is what you search a log for, the category is
+    what you act on.
+    """
+
     summary = summarize_requests(telemetry_repo.trace_points(session, window), window)
+
+    by_category = telemetry_repo.error_counts_by_category(session, window)
+
+    totals: dict[str, int] = {}
+
+    for category, _stage, count in by_category:
+        totals[category] = totals.get(category, 0) + count
 
     return ErrorsResponse(
         window=window_info(window),
@@ -399,6 +416,12 @@ def errors(session: DbSession, admin: AdminUser, window: Window) -> ErrorsRespon
                 session, window
             )
         ],
+        by_category=[
+            ErrorCategoryInfo(category=category, stage=stage, count=count)
+            for category, stage, count in by_category
+        ],
+        category_totals=totals,
+        max_retry_after_seconds=telemetry_repo.retry_after_seen(session, window),
     )
 
 

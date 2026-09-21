@@ -153,6 +153,77 @@ def error_counts_by_type(
     ]
 
 
+def error_counts_by_category(
+    session: Session,
+    window: TimeWindow,
+) -> list[tuple[str, str, int]]:
+    """
+    (category, stage, count) for failed spans, most frequent first.
+
+    The axis an operator acts on. `error_counts_by_type` says which
+    exception class was raised; this says whether to wait for a quota, to
+    check a provider's status page, or to go and look at one document.
+
+    Rows written before the category column existed come back as
+    "unclassified" rather than being folded into `internal` - a guess
+    about the past is worse than an honest gap, and the two would be
+    indistinguishable afterwards.
+    """
+
+    rows = session.execute(
+        sa.select(
+            RagSpan.error_category,
+            RagSpan.stage,
+            sa.func.count().label("total"),
+        )
+        .where(
+            sa.and_(
+                RagSpan.started_at >= window.start,
+                RagSpan.started_at < window.end,
+                RagSpan.status != "ok",
+            )
+        )
+        .group_by(RagSpan.error_category, RagSpan.stage)
+        .order_by(sa.desc("total"))
+    )
+
+    return [
+        (category or "unclassified", stage, int(total))
+        for category, stage, total in rows
+    ]
+
+
+def retry_after_seen(
+    session: Session,
+    window: TimeWindow,
+) -> float | None:
+    """
+    The longest retry-after a provider asked for in this window.
+
+    Only some rate limits carry one. None means "none was offered", which
+    is different from zero and must not be rendered as "retry now".
+    """
+
+    rows = session.scalars(
+        sa.select(RagSpan.meta).where(
+            sa.and_(
+                RagSpan.started_at >= window.start,
+                RagSpan.started_at < window.end,
+                RagSpan.error_category == "rate_limit",
+            )
+        )
+    )
+
+    waits = [
+        float(meta["retry_after_seconds"])
+        for meta in rows
+        if isinstance(meta, dict)
+        and isinstance(meta.get("retry_after_seconds"), int | float)
+    ]
+
+    return max(waits) if waits else None
+
+
 def route_counts(
     session: Session,
     window: TimeWindow,

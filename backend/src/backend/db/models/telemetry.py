@@ -46,6 +46,11 @@ class RagTrace(Base):
 
     error_type: Mapped[str | None] = mapped_column(sa.String(128))
 
+    # What kind of failure, as opposed to which exception class. A column
+    # rather than a metadata key because the error panel groups by it, and
+    # an alert on "rate limited" has to be able to filter in SQL.
+    error_category: Mapped[str | None] = mapped_column(sa.String(32))
+
     # Promoted out of `meta` into columns because both are primary
     # dashboard dimensions - success and error rates group by status class,
     # and per-route latency groups by route. Querying them inside a JSON
@@ -139,6 +144,7 @@ class RagSpan(Base):
     )
 
     error_type: Mapped[str | None] = mapped_column(sa.String(128))
+    error_category: Mapped[str | None] = mapped_column(sa.String(32))
 
     started_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
@@ -169,4 +175,7 @@ class RagSpan(Base):
         # trace is written last. The composite above cannot serve that
         # query: started_at is not its leading column.
         sa.Index("ix_rag_spans_started_at", "started_at"),
+        # "What kind of thing is failing, over this window" - the error
+        # panel's only query.
+        sa.Index("ix_rag_spans_error_category", "error_category", "started_at"),
     )

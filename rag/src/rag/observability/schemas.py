@@ -81,6 +81,11 @@ class SpanRecord:
     parent_span_id: str | None = None
     error_type: str | None = None
 
+    # What kind of failure this was - rate limit, timeout, upstream, auth,
+    # validation, internal. The type name says which exception class was
+    # raised; this says what an operator should do about it.
+    error_category: str | None = None
+
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -106,6 +111,7 @@ class TraceRecord:
     user_id: str | None = None
 
     error_type: str | None = None
+    error_category: str | None = None
 
     environment: str | None = None
     app_version: str | None = None

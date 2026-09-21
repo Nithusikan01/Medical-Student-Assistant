@@ -44,6 +44,7 @@ from rag.observability.context import (
     reset_stage,
     reset_trace,
 )
+from rag.observability.errors import describe
 from rag.observability.protocol import TraceRecorder
 from rag.observability.sanitize import sanitize_metadata
 from rag.observability.schemas import (
@@ -81,6 +82,7 @@ class _Handle:
     """
 
     __slots__ = (
+        "_error_category",
         "_error_type",
         "_metadata",
         "_start_perf",
@@ -94,6 +96,7 @@ class _Handle:
         self._metadata: dict[str, Any] = {}
         self._status = SpanStatus.OK
         self._error_type: str | None = None
+        self._error_category: str | None = None
         self._started_at = datetime.now(UTC) if recording else None
         self._start_perf = time.perf_counter() if recording else None
 
@@ -111,11 +114,35 @@ class _Handle:
             logger.exception("Failed to attach telemetry metadata.")
 
     def mark_error(self, error: BaseException) -> None:
+        """
+        Record that this unit of work failed, and what kind of failure it
+        was.
+
+        Classification happens here rather than at the call sites because
+        every span and trace already passes through this one method - a
+        taxonomy applied by hand would be a taxonomy with holes in it.
+
+        Nothing derived from the exception's *message* is stored. Provider
+        messages change without notice and routinely echo the key or
+        endpoint the request was sent with.
+        """
+
         if not self.recording:
             return
 
         self._status = SpanStatus.ERROR
         self._error_type = type(error).__name__
+
+        try:
+            details = describe(error)
+
+            self._error_category = details.pop("error_category", None)
+
+            # Status code and retry-after, when the provider supplied them.
+            if details:
+                self._metadata.update(details)
+        except Exception:
+            logger.exception("Failed to classify a telemetry error.")
 
     def _duration_ms(self) -> float:
         if self._start_perf is None:
@@ -161,6 +188,7 @@ class SpanHandle(_Handle):
             duration_ms=self._duration_ms(),
             status=self._status,
             error_type=self._error_type,
+            error_category=self._error_category,
             metadata=sanitize_metadata(self._metadata),
         )
 
@@ -238,6 +266,7 @@ class TraceHandle(_Handle):
             duration_ms=self._duration_ms(),
             status=self._status,
             error_type=self._error_type,
+            error_category=self._error_category,
             environment=self.environment,
             app_version=self.app_version,
             metadata=sanitize_metadata(self._metadata),
