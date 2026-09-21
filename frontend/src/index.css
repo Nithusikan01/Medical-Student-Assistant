@@ -1389,8 +1389,12 @@ a:hover {
   background: var(--accent);
 }
 
+/* The way back up, under a page's tagline.
+   The negative top margin this carried was tuned for the dashboard
+   header, where it sat under a heading rather than a paragraph; on the
+   sub-pages it pulled the link into the tagline's descenders. */
 .mon-links {
-  margin: -8px 0 0;
+  margin: 6px 0 0;
   font-size: 13px;
 }
 
@@ -1654,6 +1658,76 @@ a:hover {
 /* A value that is deliberately absent - "not recorded", "no comment" -
    rather than a number rendered dim. Zero and unknown must not look
    alike anywhere in this dashboard. */
+/* The admin destinations, mounted on the dashboard.
+   Cards rather than a line of links: these are the three places an admin
+   goes, and a destination that looks like body text gets read as body
+   text. Each says what it is for, because "Users" alone does not
+   distinguish a roster from a usage report. */
+.admin-nav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0 0 1.4rem;
+}
+
+.admin-nav-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.admin-nav-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-pill);
+}
+
+.admin-nav-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.admin-nav-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.admin-nav-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.admin-nav-copy strong {
+  font-size: 0.92rem;
+}
+
+.admin-nav-copy span {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+@media (max-width: 900px) {
+  .admin-nav {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* The answer before the page finishes loading.
    Most visits to a dashboard end at the first ninety pixels, so the three
    numbers that decide whether to keep reading sit there. The left rule

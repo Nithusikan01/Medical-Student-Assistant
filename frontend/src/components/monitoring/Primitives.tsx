@@ -182,3 +182,71 @@ export function Panel({
 export function EmptyState({ message }: { message: string }) {
   return <p className="mon-empty">{message}</p>;
 }
+
+/**
+ * Consumption against a configured ceiling.
+ *
+ * Moved here with the Model usage panel when the library page was split:
+ * it is a spend view, and spend is the dashboard's question rather than
+ * the document library's.
+ *
+ * A model with no configured limit gets the number and no track. Drawing
+ * an empty bar would imply a ceiling that does not exist, and an unlimited
+ * model would look perpetually fine rather than unmeasured.
+ */
+export function UsageMeter({
+  label,
+  used,
+  limit,
+}: {
+  label: string;
+  used: number;
+  limit: number | null;
+}) {
+  const level = meterLevel(used, limit);
+
+  const width =
+    limit === null || limit <= 0 ? 0 : Math.min(100, (used / limit) * 100);
+
+  return (
+    <div className="usage-meter">
+      <div className="usage-meter-label">
+        <span>{label}</span>
+        <span>
+          {formatNumber(used)}
+          {limit !== null && ` / ${formatNumber(limit)}`}
+        </span>
+      </div>
+      {limit !== null && (
+        <div className="usage-meter-track">
+          <div
+            className="usage-meter-fill"
+            data-level={level === "ok" ? undefined : level}
+            style={{ width: `${width}%` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function meterLevel(
+  used: number,
+  limit: number | null,
+): "ok" | "warning" | "danger" {
+  if (limit === null || limit <= 0) {
+    return "ok";
+  }
+
+  const ratio = used / limit;
+
+  if (ratio >= 1) {
+    return "danger";
+  }
+
+  if (ratio >= 0.8) {
+    return "warning";
+  }
+
+  return "ok";
+}

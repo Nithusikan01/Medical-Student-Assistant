@@ -6,117 +6,24 @@ import {
   listDocuments,
   uploadDocument,
 } from "../api/documents";
-import { getModelUsage } from "../api/usage";
-import { deleteUser, listUsers, updateUserRole } from "../api/users";
-import { useAuth } from "../auth/useAuth";
+import { formatSize } from "../components/admin/Primitives";
 import {
-  Activity,
   ArrowLeft,
   Document,
   Spinner,
   Trash,
   Upload,
-  Users,
 } from "../components/Icons";
 import { ThemeToggle } from "../components/ThemeToggle";
-import type {
-  AdminUserSummary,
-  DocumentSummary,
-  ModelUsageInfo,
-} from "../types";
+import type { DocumentSummary } from "../types";
 
-function formatSize(bytes: number | null): string {
-  if (bytes === null) {
-    return "—";
-  }
-
-  if (bytes < 1024 * 1024) {
-    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  }
-
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function formatTokens(n: number): string {
-  return n.toLocaleString();
-}
-
-function meterLevel(used: number, limit: number | null): "ok" | "warning" | "danger" {
-  if (limit === null || limit <= 0) {
-    return "ok";
-  }
-
-  const ratio = used / limit;
-
-  if (ratio >= 1) {
-    return "danger";
-  }
-
-  if (ratio >= 0.8) {
-    return "warning";
-  }
-
-  return "ok";
-}
-
-function UsageMeter({
-  label,
-  used,
-  limit,
-}: {
-  label: string;
-  used: number;
-  limit: number | null;
-}) {
-  const level = meterLevel(used, limit);
-  const width = limit === null || limit <= 0
-    ? 0
-    : Math.min(100, (used / limit) * 100);
-
-  return (
-    <div className="usage-meter">
-      <div className="usage-meter-label">
-        <span>{label}</span>
-        <span>
-          {formatTokens(used)}
-          {limit !== null && ` / ${formatTokens(limit)}`}
-        </span>
-      </div>
-      {limit !== null && (
-        <div className="usage-meter-track">
-          <div
-            className="usage-meter-fill"
-            data-level={level === "ok" ? undefined : level}
-            style={{ width: `${width}%` }}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
 
 export function AdminDocumentsPage() {
-  const { user: currentUser } = useAuth();
-
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [uploading, setUploading] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const [users, setUsers] = useState<AdminUserSummary[]>([]);
-  const [usersError, setUsersError] = useState<string | null>(null);
-
-  const [modelUsage, setModelUsage] = useState<ModelUsageInfo[]>([]);
-  const [usageError, setUsageError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -131,26 +38,6 @@ export function AdminDocumentsPage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
-
-  useEffect(() => {
-    listUsers()
-      .then(setUsers)
-      .catch((caught) => {
-        setUsersError(
-          caught instanceof Error ? caught.message : "Could not load users.",
-        );
-      });
-  }, []);
-
-  useEffect(() => {
-    getModelUsage()
-      .then((response) => setModelUsage(response.models))
-      .catch((caught) => {
-        setUsageError(
-          caught instanceof Error ? caught.message : "Could not load model usage.",
-        );
-      });
-  }, []);
 
   const upload = async (file: File) => {
     setError(null);
@@ -194,71 +81,6 @@ export function AdminDocumentsPage() {
     }
   };
 
-  const removeUser = async (target: AdminUserSummary) => {
-    setUsersError(null);
-
-    // Deleting an admin needs a stronger confirmation than a plain OK/Cancel
-    // - typing the email back proves intent rather than a reflex click.
-    if (target.role === "admin") {
-      const typed = window.prompt(
-        `This permanently deletes the admin account "${target.email}", ` +
-          `including their conversations. This cannot be undone.\n\n` +
-          `Type their email to confirm.`,
-      );
-
-      if (typed === null) {
-        return;
-      }
-
-      if (typed.trim().toLowerCase() !== target.email.toLowerCase()) {
-        setUsersError("Email did not match - nothing was deleted.");
-        return;
-      }
-    } else if (
-      !window.confirm(
-        `Delete ${target.email}? Their conversations go with them. This cannot be undone.`,
-      )
-    ) {
-      return;
-    }
-
-    try {
-      await deleteUser(target.id, { confirm: target.role === "admin" });
-      setUsers((previous) => previous.filter((row) => row.id !== target.id));
-    } catch (caught) {
-      setUsersError(
-        caught instanceof Error ? caught.message : "Could not delete user.",
-      );
-    }
-  };
-
-  const toggleRole = async (target: AdminUserSummary) => {
-    setUsersError(null);
-    const nextRole = target.role === "admin" ? "user" : "admin";
-
-    const confirmed = window.confirm(
-      nextRole === "admin"
-        ? `Make ${target.email} an admin? They will be able to manage the ` +
-            `document library and every user, including deleting them.`
-        : `Remove admin access from ${target.email}?`,
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      const updated = await updateUserRole(target.id, nextRole);
-      setUsers((previous) =>
-        previous.map((row) => (row.id === updated.id ? updated : row)),
-      );
-    } catch (caught) {
-      setUsersError(
-        caught instanceof Error ? caught.message : "Could not update role.",
-      );
-    }
-  };
-
   return (
     <div className="admin-shell">
       <div className="admin-bar">
@@ -272,12 +94,15 @@ export function AdminDocumentsPage() {
       <div className="admin-body">
         <div className="admin-inner">
           <div>
-            <h1>Library</h1>
+            {/* Named for the card that leads here and for the route, not
+                for the word the body copy uses. "Library" reads better in
+                a sentence; it reads as a different page in a heading. */}
+            <h1>Documents</h1>
             <p className="tagline">
               Everyone queries these documents. Only admins can change them.
             </p>
             <p className="mon-links">
-              <Link to="/admin/monitoring">Admin dashboard &rarr;</Link>
+              <Link to="/admin/monitoring">&larr; Admin dashboard</Link>
             </p>
           </div>
 
@@ -410,155 +235,6 @@ export function AdminDocumentsPage() {
             </div>
           )}
 
-          <div className="admin-section">
-            <h2>Users</h2>
-            <p className="tagline">
-              Everyone who has registered, newest first.
-            </p>
-
-            {usersError && (
-              <p className="upload-status upload-error">{usersError}</p>
-            )}
-
-            {users.length === 0 ? (
-              !usersError && (
-                <div className="empty-state">
-                  <span className="empty-state-icon">
-                    <Users size={24} strokeWidth={1.5} />
-                  </span>
-                  <div>
-                    <strong>No one has joined yet</strong>
-                    <p>Registered users will show up here.</p>
-                  </div>
-                </div>
-              )
-            ) : (
-              <div className="table-card">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>User</th>
-                      <th>Role</th>
-                      <th>Status</th>
-                      <th>Joined</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map((user) => {
-                      const isSelf = user.id === currentUser?.id;
-
-                      return (
-                        <tr key={user.id}>
-                          <td>
-                            <span className="file-cell">
-                              <Users />
-                              {user.full_name ?? user.email}
-                            </span>
-                            {user.full_name && (
-                              <span className="cell-sub">{user.email}</span>
-                            )}
-                          </td>
-                          <td>
-                            <span
-                              className={`badge ${
-                                user.role === "admin"
-                                  ? "badge-processing"
-                                  : "badge-ready"
-                              }`}
-                            >
-                              <span className="badge-dot" />
-                              {user.role}
-                            </span>
-                          </td>
-                          <td className="dim">
-                            {user.is_active ? "Active" : "Inactive"}
-                          </td>
-                          <td className="dim">{formatDate(user.created_at)}</td>
-                          <td>
-                            <span className="row-actions">
-                              <button
-                                type="button"
-                                className="btn btn-secondary btn-small"
-                                onClick={() => void toggleRole(user)}
-                              >
-                                {user.role === "admin"
-                                  ? "Remove admin"
-                                  : "Make admin"}
-                              </button>
-
-                              <button
-                                type="button"
-                                className="btn btn-danger btn-small"
-                                disabled={isSelf}
-                                title={
-                                  isSelf
-                                    ? "You cannot delete your own account."
-                                    : undefined
-                                }
-                                onClick={() => void removeUser(user)}
-                              >
-                                <Trash size={13} />
-                                Delete
-                              </button>
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <div className="admin-section">
-            <h2>Model usage</h2>
-            <p className="tagline">
-              Tokens spent per model, today and this month. Groq's daily
-              limits are its published free-tier quotas; Gemini has no
-              configured limit.
-            </p>
-
-            {usageError && (
-              <p className="upload-status upload-error">{usageError}</p>
-            )}
-
-            {modelUsage.length === 0 ? (
-              !usageError && (
-                <div className="empty-state">
-                  <span className="empty-state-icon">
-                    <Activity size={24} strokeWidth={1.5} />
-                  </span>
-                  <div>
-                    <strong>No usage yet</strong>
-                    <p>Token usage will show up here once questions are asked.</p>
-                  </div>
-                </div>
-              )
-            ) : (
-              <div className="usage-grid">
-                {modelUsage.map((model) => (
-                  <div className="usage-card" key={model.id}>
-                    <div className="usage-card-header">
-                      <strong>{model.label}</strong>
-                      <span className="cell-sub">{model.provider}</span>
-                    </div>
-                    <UsageMeter
-                      label="Today"
-                      used={model.daily_tokens_used}
-                      limit={model.daily_token_limit}
-                    />
-                    <UsageMeter
-                      label="This month"
-                      used={model.monthly_tokens_used}
-                      limit={model.monthly_token_limit}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       </div>
     </div>
