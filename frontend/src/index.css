@@ -23,6 +23,41 @@
     0 12px 32px -12px rgba(19, 24, 25, 0.12);
   --shadow-pill: 0 1px 2px rgba(19, 24, 25, 0.1);
 
+  /* --- chart tokens -------------------------------------------------
+     Steps chosen for the chart surface, not reused from the UI accent:
+     --accent reads gray as a large fill (chroma 0.087, under the 0.1
+     floor) and the dark accent sits above the dark lightness band. Every
+     value below was checked against this app's own surfaces rather than
+     assumed - lightness band, chroma floor, CVD separation, normal-vision
+     separation and contrast.
+
+     The outcome colours encode two different things on purpose. A failed
+     request is a service status, so it takes the critical red. A 4xx is
+     not - it is the auth or validation layer working correctly - so it
+     takes a categorical hue instead. That split is also what makes the
+     pair legible: amber-vs-red is the classic deuteranopia collision
+     (worst pair measured 4.0-5.7 dE here), while violet-vs-red clears it
+     with room to spare (22.7 light / 23.0 dark, against a target of 8). */
+  --chart-surface: var(--surface);
+  --chart-grid: #e6eaeb;
+  --chart-axis: #c3cccd;
+  --chart-ink: #5c686c;
+
+  /* Single-series fills: magnitude, one hue, never a ramp across
+     nominal categories. */
+  --chart-series-1: #00809b;
+
+  /* Request outcomes. Succeeded is the de-emphasised bulk - the reader is
+     looking for the other two. */
+  --chart-ok: #b7c2c4;
+  --chart-client-error: #4a3aa7;
+  --chart-failed: #b3261e;
+
+  /* Retrieval origin, a three-way part-to-whole. */
+  --chart-cat-1: #2a78d6;
+  --chart-cat-2: #eb6834;
+  --chart-cat-3: #1baf7a;
+
   --font-ui: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
   --font-display: "IBM Plex Serif", Georgia, serif;
   --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
@@ -54,6 +89,22 @@
   --danger-soft: #33191a;
   --shadow-card: none;
   --shadow-pill: none;
+
+  /* Selected for the dark surface from the same hues, not flipped:
+     each step was re-checked against #141a1c. */
+  --chart-grid: #232c2f;
+  --chart-axis: #34403f;
+  --chart-ink: #94a1a5;
+
+  --chart-series-1: #2fa3b8;
+
+  --chart-ok: #46545a;
+  --chart-client-error: #9085e9;
+  --chart-failed: #e0574e;
+
+  --chart-cat-1: #3987e5;
+  --chart-cat-2: #d95926;
+  --chart-cat-3: #199e70;
 
   color-scheme: dark;
 }
@@ -1284,4 +1335,323 @@ a:hover {
     overflow-x: auto;
     white-space: nowrap;
   }
+}
+
+/* ------------------------------------------------------------ monitoring */
+
+.mon-page {
+  gap: 20px;
+}
+
+/* Refetching holds the previous render at reduced opacity rather than
+   flashing a skeleton, so nothing jumps when the range changes. */
+.mon-page[data-stale="true"] {
+  opacity: 0.55;
+  transition: opacity 120ms ease-out;
+}
+
+.mon-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* One filter row, above everything it scopes. */
+.mon-ranges {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  background: var(--raised);
+  border-radius: 999px;
+}
+
+.mon-range {
+  min-width: 44px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.mon-range:hover {
+  color: var(--text);
+}
+
+.mon-range[aria-pressed="true"] {
+  color: var(--on-accent);
+  font-weight: var(--on-accent-weight);
+  background: var(--accent);
+}
+
+.mon-links {
+  margin: -8px 0 0;
+  font-size: 13px;
+}
+
+.mon-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.mon-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.mon-tile-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Proportional figures: tabular-nums makes a standalone number look loose
+   at this size. The tables below use tabular-nums instead. */
+.mon-tile-value {
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+.mon-tile[data-tone="warning"] .mon-tile-value {
+  color: var(--warning);
+}
+
+.mon-tile[data-tone="danger"] .mon-tile-value {
+  color: var(--danger);
+}
+
+.mon-tile-detail {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.mon-panel {
+  padding: 18px 20px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.mon-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.mon-panel-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.mon-panel-head p {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  max-width: 68ch;
+}
+
+.mon-subhead {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* Sized to include the axis band, so the card never grows a tiny nested
+   scrollbar around a plot that fits but whose labels do not. */
+.mon-chart {
+  width: 100%;
+  overflow: visible;
+}
+
+.mon-empty {
+  margin: 0;
+  padding: 18px 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.mon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 22px;
+}
+
+.mon-meters {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.mon-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mon-meter-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.mon-meter-label strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.mon-meter-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--raised);
+  overflow: hidden;
+}
+
+.mon-meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--chart-series-1);
+}
+
+.mon-meter-fill[data-tone="warning"] {
+  background: var(--warning);
+}
+
+.mon-meter-fill[data-tone="danger"] {
+  background: var(--danger);
+}
+
+.mon-meter-caption {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* A 2px surface gap between segments, not a border around each. */
+.mon-origin-bar {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.mon-origin-segment:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.mon-origin-segment:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.mon-origin-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.mon-origin-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mon-origin-legend strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.mon-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.mon-rerank {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.mon-table {
+  margin-top: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mon-table td:not(:first-child),
+.mon-table th:not(:first-child) {
+  text-align: right;
+}
+
+/* Every chart has a table twin; it is collapsed, not absent. */
+.mon-table-toggle {
+  margin-top: 6px;
+}
+
+.mon-table-toggle summary {
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.mon-table-toggle summary:hover {
+  color: var(--text);
+}
+
+@media (max-width: 640px) {
+  .mon-ranges {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+/* Shared by the outcome legend and the retrieval-origin legend: labels in
+   ink, identity in the swatch. */
+.mon-legend,
+.mon-origin-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.mon-legend {
+  justify-content: center;
+}
+
+.mon-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mon-boot {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
 }

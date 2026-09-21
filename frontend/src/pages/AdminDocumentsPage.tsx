@@ -276,6 +276,9 @@ export function AdminDocumentsPage() {
             <p className="tagline">
               Everyone queries these documents. Only admins can change them.
             </p>
+            <p className="mon-links">
+              <Link to="/admin/monitoring">Monitoring &rarr;</Link>
+            </p>
           </div>
 
           <div className="dropzone">
