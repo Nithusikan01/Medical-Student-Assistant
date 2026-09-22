@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth/useAuth";
-import { ArrowRight, BookMark } from "../components/Icons";
+import { AuthPanel } from "../components/AuthPanel";
+import { ArrowRight } from "../components/Icons";
 import { ThemeToggle } from "../components/ThemeToggle";
 
 const MIN_PASSWORD_LENGTH = 12;
@@ -46,83 +47,87 @@ export function RegisterPage() {
 
   return (
     <div className="auth-page">
-      <div className="auth-bar">
-        <span className="wordmark">
-          <BookMark size={22} />
-          Anamnesis
-        </span>
-        <ThemeToggle />
-      </div>
+      <AuthPanel
+        quote="“The good physician treats the disease; the great physician treats the patient who has the disease.”"
+        author="Sir William Osler"
+        credit="Physician, 1849–1919"
+      />
 
-      <div className="auth-body">
-        <form className="auth-card" onSubmit={submit}>
-          <h1>Create an account</h1>
-          <p className="tagline">Your chats stay private to you.</p>
+      <div className="auth-form-side">
+        <div className="auth-bar">
+          <ThemeToggle />
+        </div>
 
-          <div className="field">
-            <label htmlFor="register-email">Email</label>
-            <input
-              id="register-email"
-              type="email"
-              value={email}
-              autoComplete="email"
-              required
-              onChange={(event) => setEmail(event.target.value)}
-            />
-          </div>
+        <div className="auth-body">
+          <form className="auth-card" onSubmit={submit}>
+            <h1>Create an account</h1>
+            <p className="tagline">Your chats stay private to you.</p>
 
-          <div className="field">
-            <label htmlFor="register-name">
-              Name <span className="field-optional">optional</span>
-            </label>
-            <input
-              id="register-name"
-              type="text"
-              value={fullName}
-              autoComplete="name"
-              onChange={(event) => setFullName(event.target.value)}
-            />
-          </div>
+            <div className="field">
+              <label htmlFor="register-email">Email</label>
+              <input
+                id="register-email"
+                type="email"
+                value={email}
+                autoComplete="email"
+                required
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </div>
 
-          <div className="field">
-            <label htmlFor="register-password">Password</label>
-            <input
-              id="register-password"
-              type="password"
-              value={password}
-              autoComplete="new-password"
-              minLength={MIN_PASSWORD_LENGTH}
-              required
-              onChange={(event) => setPassword(event.target.value)}
-            />
-            <span className="field-hint">
-              At least {MIN_PASSWORD_LENGTH} characters.
-            </span>
-          </div>
+            <div className="field">
+              <label htmlFor="register-name">
+                Name <span className="field-optional">optional</span>
+              </label>
+              <input
+                id="register-name"
+                type="text"
+                value={fullName}
+                autoComplete="name"
+                onChange={(event) => setFullName(event.target.value)}
+              />
+            </div>
 
-          <div className="field">
-            <label htmlFor="register-invite">
-              Invite code <span className="field-optional">if required</span>
-            </label>
-            <input
-              id="register-invite"
-              type="text"
-              value={inviteCode}
-              onChange={(event) => setInviteCode(event.target.value)}
-            />
-          </div>
+            <div className="field">
+              <label htmlFor="register-password">Password</label>
+              <input
+                id="register-password"
+                type="password"
+                value={password}
+                autoComplete="new-password"
+                minLength={MIN_PASSWORD_LENGTH}
+                required
+                onChange={(event) => setPassword(event.target.value)}
+              />
+              <span className="field-hint">
+                At least {MIN_PASSWORD_LENGTH} characters.
+              </span>
+            </div>
 
-          {error && <p className="form-error">{error}</p>}
+            <div className="field">
+              <label htmlFor="register-invite">
+                Invite code <span className="field-optional">if required</span>
+              </label>
+              <input
+                id="register-invite"
+                type="text"
+                value={inviteCode}
+                onChange={(event) => setInviteCode(event.target.value)}
+              />
+            </div>
 
-          <button type="submit" className="btn btn-block" disabled={busy}>
-            {busy ? "Creating…" : "Create account"}
-            {!busy && <ArrowRight />}
-          </button>
+            {error && <p className="form-error">{error}</p>}
 
-          <p className="auth-switch">
-            Already registered? <Link to="/login">Sign in</Link>
-          </p>
-        </form>
+            <button type="submit" className="btn btn-block" disabled={busy}>
+              {busy ? "Creating…" : "Create account"}
+              {!busy && <ArrowRight />}
+            </button>
+
+            <p className="auth-switch">
+              Already registered? <Link to="/login">Sign in</Link>
+            </p>
+          </form>
+        </div>
       </div>
     </div>
   );
