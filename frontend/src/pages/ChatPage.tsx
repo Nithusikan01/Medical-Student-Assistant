@@ -26,7 +26,7 @@ export function ChatPage() {
   const [topK, setTopK] = useState(5);
   const [online, setOnline] = useState<boolean | null>(null);
 
-  const { messages, pending, loading, error, ask, rate } =
+  const { messages, pending, loading, error, missing, ask, rate } =
     useConversation(conversationId);
   const { models, selectedModel, selectModel } = useGenerationModels();
 
@@ -75,6 +75,13 @@ export function ChatPage() {
       cancelled = true;
     };
   }, [conversationId, navigate, refreshConversations]);
+
+  // Fall back to the default landing (newest conversation, or a new one).
+  useEffect(() => {
+    if (missing) {
+      navigate("/", { replace: true });
+    }
+  }, [missing, navigate]);
 
   const startNew = async () => {
     const created = await createConversation();
