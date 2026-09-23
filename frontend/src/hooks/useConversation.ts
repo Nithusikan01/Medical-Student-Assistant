@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { ApiError } from "../api/client";
 import { askQuestion, getConversation } from "../api/conversations";
 import { rateAnswer, withdrawRating } from "../api/feedback";
 import type { FeedbackRating, SourceChunk } from "../types";
@@ -23,6 +24,9 @@ export function useConversation(conversationId: string | null) {
   const [pending, setPending] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The route names a conversation this user cannot see - deleted, or
+  // someone else's. The page should move on rather than show an error.
+  const [missing, setMissing] = useState(false);
 
   // Hydrate from the server whenever the route's conversation changes, so
   // history survives a reload and is shared across devices.
@@ -36,6 +40,7 @@ export function useConversation(conversationId: string | null) {
 
     setLoading(true);
     setError(null);
+    setMissing(false);
 
     getConversation(conversationId)
       .then((detail) => {
@@ -55,7 +60,13 @@ export function useConversation(conversationId: string | null) {
         );
       })
       .catch((caught) => {
-        if (!cancelled) {
+        if (cancelled) {
+          return;
+        }
+
+        if (caught instanceof ApiError && caught.status === 404) {
+          setMissing(true);
+        } else {
           setError(
             caught instanceof Error
               ? caught.message
@@ -167,5 +178,5 @@ export function useConversation(conversationId: string | null) {
     [],
   );
 
-  return { messages, pending, loading, error, ask, rate };
+  return { messages, pending, loading, error, missing, ask, rate };
 }

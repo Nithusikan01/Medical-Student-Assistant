@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useNavigate } from "react-router-dom";
 
 import * as authApi from "../api/auth";
 import { attemptSilentRefresh, setAuthLostHandler } from "../api/client";
@@ -27,6 +28,7 @@ interface AuthContextValue {
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
 
   // Stays false until the silent refresh settles, so a page reload does not
@@ -86,7 +88,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     await authApi.logout();
     setUser(null);
-  }, []);
+    // Go to the login page ourselves rather than letting ProtectedRoute do
+    // it: the guard remembers the current path as "from", and the next
+    // person to sign in would be sent into this user's conversation - which
+    // is a 404 for them.
+    navigate("/login", { replace: true });
+  }, [navigate]);
 
   const value = useMemo(
     () => ({ user, ready, login, register, logout }),
