@@ -138,6 +138,8 @@ PDF file -> DocumentLoader -> TextChunker -> Embedder -> VectorDataProcessor -> 
 ```
 conversation_id + question
   -> PersistentConversationMemory (Postgres-backed, per conversation, hydrated on each build)
+  -> SmallTalkResponder --recognised--> canned welcome/thanks/farewell, done
+       (greetings and the like, matched on the raw question before anything else runs)
   -> QueryRewriter (LLM call: folds conversation history into a standalone query)
        skipped on the opening turn, where there is no history to fold in
   -> ResponseCache lookup on the standalone query  --hit--> cached answer + sources, done
@@ -158,6 +160,33 @@ conversation_id + question
 `backend/services/conversation_store.py::PersistentConversationMemory` subclasses the engine's `ConversationMemory` and write-throughs every message to Postgres. It deliberately tracks two separate views: `messages` holds only turns since the last summary checkpoint (`Conversation.summary_checkpoint_message_id`) — this is what `HistoryAwareRAGService` checks against `SUMMARY_TRIGGER` — while `_recent` is a fixed-size window over the *full* history and is what actually goes into the prompt. Hydrating full history into `messages` too would make the trigger condition permanently true past the trigger length and fire an extra Gemini call every turn, forever; `update_summary` advances the checkpoint and clears `messages` back to empty.
 
 `session_manager` in `HistoryAwareRAGService`'s constructor is typed against `rag/conversation/store.py::ConversationStore` (a Protocol with one method, `get_memory()`); the engine's own in-process `SessionManager` satisfies it structurally and is still what the unit tests use, but `backend/services/conversation_store.py::PersistentConversationStore` is what production wires up. Not one line of `SessionManager` changed to make this work — that's the point of the protocol seam.
+
+### Small talk
+
+`rag/conversation/small_talk.py::SmallTalkResponder` answers the turns that are not asking the
+corpus anything — "hi", "good morning", "who are you", "thanks", "bye", "ok" — before the query
+rewriter runs. Without it a greeting is indistinguishable from a retrieval failure: "hi"
+retrieves whichever chunks sit nearest in the index, the prompt's grounding rule fires on them,
+and the first message a user ever sends is answered with *I don't know based on the provided
+document*. That is the pipeline behaving correctly on a question it should never have been
+asked, which is why the fix is a branch in front of it rather than a change to the prompt.
+
+Pattern matching, not an LLM classifier: the set is small and closed, matching is anchored
+against the *whole* normalised message, and a canned reply cannot promise a capability the
+application does not have. Anything not positively recognised falls through to retrieval
+untouched — "hi, what is the pathophysiology of sepsis?" included — which is the safe direction
+for it to fail in, since a missed greeting costs one clumsy answer while a swallowed question
+costs a real one. `rag/tests/unit/test_small_talk.py` fixes both halves of that as data: a table
+of turns that must be recognised, and a table of questions that must not be.
+
+The check sits after the user turn is written to memory and before the rewrite, so a "thanks" on
+turn five costs no LLM call either. The reply is never cached (there is nothing to save, and an
+entry keyed on "hi" would occupy a cache sized for real questions) and emits a `Stage.SMALL_TALK`
+span carrying the intent — the only thing that separates "answered without retrieving" from
+"retrieved and found nothing" on a trace, since both produce no generation span and no sources.
+`SmallTalkConfig` (`enabled`, `assistant_name`, `corpus_description`, from `SMALL_TALK_ENABLED`
+/ `ASSISTANT_NAME` / `ASSISTANT_DESCRIPTION`) keeps the application's name out of `rag/`;
+`enabled=false` restores the strictly-retrieval behaviour.
 
 ### Response cache
 

@@ -9,6 +9,7 @@ from rag.cache.semantic_cache import InMemorySemanticCache
 from rag.config.component_configs import GenerationConfig
 from rag.config.settings import load_settings
 from rag.conversation.query_rewriter import QueryRewriter
+from rag.conversation.small_talk import SmallTalkResponder
 from rag.conversation.summarizer import ConversationSummarizer
 from rag.embeddings.pinecone_embedder import PineconeEmbedder
 from rag.indexes.bm25_index import BM25Index
@@ -517,6 +518,8 @@ def build_hybrid_retriever() -> HybridRetriever:
 
 @lru_cache
 def build_history_aware_rag_service() -> HistoryAwareRAGService:
+    settings = load_settings()
+
     tracer = build_tracer()
 
     hybrid_retriever = build_hybrid_retriever()
@@ -559,6 +562,7 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
         query_rewriter=query_rewriter,
         summarizer=summarizer,
         response_cache=build_response_cache(),
+        small_talk=SmallTalkResponder(settings.small_talk_config()),
         tracer=tracer,
     )
 
