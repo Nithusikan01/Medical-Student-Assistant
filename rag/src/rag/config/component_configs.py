@@ -84,4 +84,4 @@ class SmallTalkConfig:
     assistant_name: str = "Anamnesis"
     # What the corpus is, as a noun phrase completing "I'm <name>, your
     # ...". Deployment-specific: another class uploads other material.
-    corpus_description: str = "study assistant for this class's document library"
+    corpus_description: str = "study assistant for the class library"

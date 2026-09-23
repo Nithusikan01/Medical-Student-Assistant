@@ -127,6 +127,25 @@ def test_a_time_of_day_greeting_is_mirrored(responder, message, expected):
     assert reply.text.startswith(expected)
 
 
+@pytest.mark.parametrize("message", ["hi", "who are you?", "what can you do"])
+def test_the_welcome_never_asks_the_reader_to_supply_documents(responder, message):
+    """
+    The library is shared and admin-maintained - a student has nothing to
+    upload. An introduction that implies otherwise sends them looking for
+    a feature they do not have and would not be allowed to use.
+    """
+
+    reply = responder.reply_to(message)
+
+    assert reply is not None
+
+    text = reply.text.lower()
+
+    assert "upload" not in text
+    assert "your document" not in text
+    assert "your file" not in text
+
+
 def test_thanks_does_not_re_introduce_the_assistant(responder):
     reply = responder.reply_to("thank you")
 
