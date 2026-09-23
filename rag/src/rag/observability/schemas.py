@@ -25,6 +25,7 @@ class Stage(str, Enum):
 
     # Query path
     MEMORY_LOAD = "memory_load"
+    SMALL_TALK = "small_talk"
     QUERY_REWRITE = "query_rewrite"
     CACHE_LOOKUP = "cache_lookup"
     RETRIEVAL = "retrieval"

@@ -68,3 +68,20 @@ class CacheConfig:
     # question is worse than missing, and this corpus is study material.
     similarity_threshold: float = 0.95
     store_context_free_only: bool = True
+
+
+@dataclass(frozen=True)
+class SmallTalkConfig:
+    """
+    How the assistant introduces itself when there is nothing to retrieve.
+
+    `enabled` turns the whole short-circuit off, which sends greetings
+    back down the retrieval path - the behaviour it exists to replace,
+    kept reachable because it is the strictly grounded one.
+    """
+
+    enabled: bool = True
+    assistant_name: str = "Anamnesis"
+    # What the corpus is, as a noun phrase completing "I'm <name>, your
+    # ...". Deployment-specific: another class uploads other material.
+    corpus_description: str = "study assistant for this class's document library"

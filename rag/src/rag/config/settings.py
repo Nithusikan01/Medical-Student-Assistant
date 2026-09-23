@@ -11,6 +11,7 @@ from rag.config.component_configs import (
     PineconeEmbeddingConfig,
     PineconeRerankConfig,
     RetrievalConfig,
+    SmallTalkConfig,
 )
 
 
@@ -85,6 +86,17 @@ class Settings:
     response_cache_store_context_free_only: bool = True
 
     # ------------------------------------------------------------------
+    # Small talk
+    #
+    # Greetings and thank-yous answered without retrieval, so the
+    # grounding rule in the prompt never fires on a turn that was not
+    # asking the corpus anything.
+    # ------------------------------------------------------------------
+    small_talk_enabled: bool = True
+    assistant_name: str = "Anamnesis"
+    assistant_description: str = "study assistant for this class's document library"
+
+    # ------------------------------------------------------------------
     # Component Configurations
     # ------------------------------------------------------------------
     def pinecone_config(self) -> PineconeConfig:
@@ -132,6 +144,13 @@ class Settings:
             ttl_seconds=self.response_cache_ttl_seconds,
             similarity_threshold=self.response_cache_similarity_threshold,
             store_context_free_only=self.response_cache_store_context_free_only,
+        )
+
+    def small_talk_config(self) -> SmallTalkConfig:
+        return SmallTalkConfig(
+            enabled=self.small_talk_enabled,
+            assistant_name=self.assistant_name,
+            corpus_description=self.assistant_description,
         )
 
     def retrieval_config(self) -> RetrievalConfig:
@@ -218,5 +237,11 @@ def load_settings() -> Settings:
         response_cache_store_context_free_only=_env_bool(
             "RESPONSE_CACHE_STORE_CONTEXT_FREE_ONLY",
             True,
+        ),
+        small_talk_enabled=_env_bool("SMALL_TALK_ENABLED", True),
+        assistant_name=os.getenv("ASSISTANT_NAME", "Anamnesis"),
+        assistant_description=os.getenv(
+            "ASSISTANT_DESCRIPTION",
+            "study assistant for this class's document library",
         ),
     )

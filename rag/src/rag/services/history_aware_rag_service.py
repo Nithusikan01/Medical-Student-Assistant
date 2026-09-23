@@ -5,6 +5,7 @@ from rag.cache.protocol import ResponseCache
 from rag.cache.schemas import CacheLookup
 from rag.cache.semantic_cache import NullResponseCache
 from rag.conversation.query_rewriter import QueryRewriter
+from rag.conversation.small_talk import SmallTalkResponder
 from rag.conversation.store import ConversationStore
 from rag.conversation.summarizer import ConversationSummarizer
 from rag.llm.prompt_builder import PromptBuilder
@@ -31,20 +32,21 @@ class HistoryAwareRAGService:
               ▼
         Conversation Memory
               │
-              ▼
-         Query Rewriting
-              │
-              ▼
-      Retrieval (+ Reranking)
-              │
-              ▼
-        Prompt Construction
-              │
-              ▼
-         LLM Generation
-              │
-              ▼
-        Memory / Summary Update
+              ├────► Small Talk ──────────────────┐
+              ▼      (greeting, thanks, farewell) │
+         Query Rewriting                          │
+              │                                   │
+              ▼                                   │
+      Retrieval (+ Reranking)                     │
+              │                                   │
+              ▼                                   │
+        Prompt Construction                       │
+              │                                   │
+              ▼                                   │
+         LLM Generation                           │
+              │                                   │
+              ▼                                   │
+        Memory / Summary Update  ◄────────────────┘
     """
 
     SUMMARY_TRIGGER = 12
@@ -58,6 +60,7 @@ class HistoryAwareRAGService:
         summarizer: ConversationSummarizer,
         *,
         response_cache: ResponseCache | None = None,
+        small_talk: SmallTalkResponder | None = None,
         tracer: Tracer | None = None,
     ) -> None:
         self.query_service = query_service
@@ -73,6 +76,13 @@ class HistoryAwareRAGService:
             response_cache if response_cache is not None else NullResponseCache()
         )
         self._caching = response_cache is not None
+
+        # Unlike the cache, this defaults to *on*: a pipeline that answers
+        # "hello" with "I don't know based on the provided document" is
+        # not a configuration choice anyone would make deliberately. Pass
+        # a responder built with `SmallTalkConfig(enabled=False)` to get
+        # the strictly-retrieval behaviour back.
+        self.small_talk = small_talk if small_talk is not None else SmallTalkResponder()
 
         # The stages this service owns directly. Retrieval, reranking,
         # rewriting and summarisation are instrumented by the components
@@ -139,6 +149,46 @@ class HistoryAwareRAGService:
             memory.add_message(
                 role="user",
                 content=question,
+            )
+
+        #
+        # 1b. A turn that is not asking the corpus anything
+        #
+        # Checked on the raw question rather than the rewritten one, and
+        # before the rewriter runs: "hi" has nothing to fold conversation
+        # history into, and rewriting it would spend an LLM call to
+        # produce a query for a search that should never happen.
+        #
+        # Answered but never cached. There is nothing to save - no
+        # retrieval, no generation - and an entry keyed on "hi" would sit
+        # in a cache sized for real questions.
+        small_talk = self.small_talk.reply_to(question)
+
+        if small_talk is not None:
+
+            logger.info(
+                "Answering conversation '%s' as small talk (%s).",
+                conversation_id,
+                small_talk.intent.value,
+            )
+
+            # A span rather than nothing at all, because "answered without
+            # retrieving" is exactly the thing an operator wants to be
+            # able to separate from "retrieved and found nothing": both
+            # produce a trace with no generation span and no sources.
+            with self.tracer.span(Stage.SMALL_TALK) as span:
+
+                answer = small_talk.text
+
+                span.set(
+                    intent=small_talk.intent.value,
+                    answer_chars=len(answer),
+                )
+
+            return self._finish(
+                memory=memory,
+                answer=answer,
+                chunks=[],
             )
 
         #

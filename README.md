@@ -47,6 +47,9 @@ traffic cannot produce it.
 - A two-tier response cache (exact text, then semantic similarity) keyed on the *rewritten*,
   context-free form of the question, so a class asking the same thing pays for retrieval and
   generation once
+- Greetings, thank-yous and farewells are recognised and welcomed before retrieval runs, so
+  "hi" is answered with an introduction rather than "I don't know based on the provided
+  document" — anything not positively recognised as small talk still goes to the corpus
 - Readers can rate an answer up or down, with an optional note; the rating is tied to the
   trace that produced the answer
 

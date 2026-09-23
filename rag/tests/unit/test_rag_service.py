@@ -341,3 +341,86 @@ def test_no_cache_means_no_change_in_behaviour():
 
     assert mock_query_service.search.call_count == 2
     assert mock_generator.generate.call_count == 2
+
+
+# ----------------------------------------------------------------------
+# Small talk
+# ----------------------------------------------------------------------
+
+
+def test_a_greeting_is_welcomed_rather_than_retrieved():
+    """
+    The whole point: "hi" must not reach the grounding rule in the prompt
+    and come back as "I don't know based on the provided document."
+    """
+
+    (
+        service,
+        mock_query_service,
+        mock_generator,
+        _,
+        mock_query_rewriter,
+        _,
+        mock_memory,
+    ) = build_service(has_context=False)
+
+    answer, chunks = service.answer_with_sources(
+        conversation_id="conversation_1",
+        question="Hi!",
+    )
+
+    assert "Anamnesis" in answer
+    assert chunks == []
+
+    mock_query_service.search.assert_not_called()
+    mock_generator.generate.assert_not_called()
+    mock_query_rewriter.rewrite.assert_not_called()
+
+    # Both turns are still recorded, so reloading the conversation replays
+    # the exchange the user actually saw.
+    assert mock_memory.add_message.call_count == 2
+
+
+def test_a_greeting_mid_conversation_still_skips_the_rewriter():
+    """
+    Recognised on the raw question, before the rewrite - so "thanks" on
+    turn five costs no LLM call either.
+    """
+
+    service, mock_query_service, mock_generator, _, mock_query_rewriter, *_ = (
+        build_service(has_context=True)
+    )
+
+    service.answer(conversation_id="conversation_1", question="Thank you!")
+
+    mock_query_service.search.assert_not_called()
+    mock_generator.generate.assert_not_called()
+    mock_query_rewriter.rewrite.assert_not_called()
+
+
+def test_a_greeting_is_never_cached():
+    cache = build_cache()
+
+    service, *_ = build_service(response_cache=cache, has_context=False)
+
+    service.answer(conversation_id="conversation_1", question="hello")
+
+    assert cache.stats().entries == 0
+    assert cache.stats().stores == 0
+
+
+def test_a_question_that_opens_with_a_greeting_is_still_retrieved():
+    service, mock_query_service, mock_generator, *_ = build_service(
+        generated_text="Answer",
+        has_context=False,
+    )
+
+    answer = service.answer(
+        conversation_id="conversation_1",
+        question="Hi, what is the recommended dose?",
+    )
+
+    assert answer == "Answer"
+
+    mock_query_service.search.assert_called_once()
+    mock_generator.generate.assert_called_once()
