@@ -253,7 +253,7 @@ class SmallTalkResponder:
         return (
             f"I'm {self.config.assistant_name}, your "
             f"{self.config.corpus_description}. Ask me anything from the "
-            "material that has been uploaded - a definition, a concept "
+            "course material it already holds - a definition, a concept "
             "you'd like explained, what a guideline says - and I'll answer "
             "from those documents and show you the passages I used.\n\n"
             "What would you like to look up?"
@@ -262,13 +262,15 @@ class SmallTalkResponder:
     def _who_i_am(self) -> str:
         return (
             f"I'm {self.config.assistant_name}, your "
-            f"{self.config.corpus_description}. I answer from the documents "
-            "that have been uploaded here and from nothing else, and every "
-            "answer lists the passages it came from so you can check them.\n\n"
-            "You can ask me to explain a concept, define a term, summarise a "
-            "topic, or find what the material says about something - and you "
-            "can keep asking follow-up questions, because I remember the rest "
-            "of this conversation.\n\n"
-            "If something isn't in the library, I'll tell you so rather than "
-            "guess. What are you studying?"
+            f"{self.config.corpus_description}. The library is shared by your "
+            "whole class and looked after for you, so there is nothing for "
+            "you to set up - just ask.\n\n"
+            "Everything I tell you comes from the documents already in it and "
+            "from nothing else, and every answer lists the passages it came "
+            "from so you can check them. You can ask me to explain a concept, "
+            "define a term, summarise a topic, or find what the material says "
+            "about something - and you can keep asking follow-up questions, "
+            "because I remember the rest of this conversation.\n\n"
+            "If something isn't in the library yet, I'll tell you so rather "
+            "than guess. What are you studying?"
         )

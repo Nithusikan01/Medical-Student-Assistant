@@ -94,7 +94,7 @@ class Settings:
     # ------------------------------------------------------------------
     small_talk_enabled: bool = True
     assistant_name: str = "Anamnesis"
-    assistant_description: str = "study assistant for this class's document library"
+    assistant_description: str = "study assistant for the class library"
 
     # ------------------------------------------------------------------
     # Component Configurations
@@ -242,6 +242,6 @@ def load_settings() -> Settings:
         assistant_name=os.getenv("ASSISTANT_NAME", "Anamnesis"),
         assistant_description=os.getenv(
             "ASSISTANT_DESCRIPTION",
-            "study assistant for this class's document library",
+            "study assistant for the class library",
         ),
     )
