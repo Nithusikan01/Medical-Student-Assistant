@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { checkHealth } from "../api/client";
@@ -11,10 +11,19 @@ import {
 import { useAuth } from "../auth/useAuth";
 import { ChatPanel } from "../components/ChatPanel";
 import { ConversationSidebar } from "../components/ConversationSidebar";
-import { BookMark, Gauge, SignOut } from "../components/Icons";
+import {
+  BookMark,
+  Close,
+  Gauge,
+  Menu,
+  NewChat,
+  PanelLeftClose,
+  SignOut,
+} from "../components/Icons";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useConversation } from "../hooks/useConversation";
 import { useGenerationModels } from "../hooks/useGenerationModels";
+import { useSidebar } from "../hooks/useSidebar";
 import type { ConversationSummary } from "../types";
 
 export function ChatPage() {
@@ -29,6 +38,29 @@ export function ChatPage() {
   const { messages, pending, loading, error, missing, ask, rate } =
     useConversation(conversationId);
   const { models, selectedModel, selectModel } = useGenerationModels();
+  const { narrow, collapsed, drawerOpen, toggle, closeDrawer } = useSidebar();
+
+  // Focus follows the sidebar: into it when it opens, back to the button
+  // that reopens it when it closes, so a keyboard user is never left on an
+  // element that has just been hidden. Skipped on the first render.
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const sidebarButtonRef = useRef<HTMLButtonElement>(null);
+  const sidebarShown = narrow ? drawerOpen : !collapsed;
+  const previouslyShown = useRef(sidebarShown);
+
+  useEffect(() => {
+    if (previouslyShown.current === sidebarShown) {
+      return;
+    }
+    previouslyShown.current = sidebarShown;
+
+    (sidebarShown ? sidebarButtonRef : toggleRef).current?.focus();
+  }, [sidebarShown]);
+
+  // Picking a conversation in the drawer is the end of what it was open for.
+  useEffect(() => {
+    closeDrawer();
+  }, [conversationId, closeDrawer]);
 
   const refreshConversations = useCallback(async () => {
     const rows = await listConversations().catch(() => []);
@@ -107,30 +139,51 @@ export function ChatPage() {
     (conversation) => conversation.id === conversationId,
   );
 
-  return (
-    <div className="app">
-      <aside className="sidebar">
-        <span className="wordmark">
-          <BookMark />
-          Anamnesis
-        </span>
+  const status = (
+    <div className="status">
+      <span
+        className={`dot ${
+          online === null ? "" : online ? "dot-online" : "dot-offline"
+        }`}
+      />
+      {online === null
+        ? "Checking…"
+        : online
+          ? "Connected"
+          : "API unreachable"}
+    </div>
+  );
 
-        <div className="status">
-          <span
-            className={`dot ${
-              online === null
-                ? ""
-                : online
-                  ? "dot-online"
-                  : "dot-offline"
-            }`}
-          />
-          {online === null
-            ? "Checking…"
-            : online
-              ? "Connected"
-              : "API unreachable"}
+  const appClass = [
+    "app",
+    collapsed ? "sidebar-collapsed" : "",
+    drawerOpen ? "drawer-open" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <div className={appClass}>
+      <aside id="chat-sidebar" className="sidebar" aria-label="Conversations">
+        <div className="sidebar-head">
+          <span className="wordmark">
+            <BookMark />
+            Anamnesis
+          </span>
+
+          <button
+            ref={sidebarButtonRef}
+            type="button"
+            className="head-button"
+            aria-label={narrow ? "Close menu" : "Collapse sidebar"}
+            title={narrow ? "Close menu" : "Collapse sidebar (Ctrl+B)"}
+            onClick={narrow ? closeDrawer : toggle}
+          >
+            {narrow ? <Close /> : <PanelLeftClose />}
+          </button>
         </div>
+
+        {status}
 
         <ConversationSidebar
           conversations={conversations}
@@ -161,23 +214,78 @@ export function ChatPage() {
             </Link>
           )}
 
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => void logout()}
-          >
-            <SignOut />
-            Sign out
-          </button>
+          <div className="account-actions">
+            {/* The chat header has no room for the theme switch on a phone,
+                so the drawer carries it instead. */}
+            {narrow && <ThemeToggle compact />}
+
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => void logout()}
+            >
+              <SignOut />
+              Sign out
+            </button>
+          </div>
         </div>
       </aside>
 
+      {narrow && (
+        <div
+          className="drawer-scrim"
+          aria-hidden="true"
+          onClick={closeDrawer}
+        />
+      )}
+
       <div className="chat">
         <div className="chat-head">
-          <span className="chat-title">
-            {active?.title ?? "New conversation"}
-          </span>
-          <ThemeToggle compact />
+          {!sidebarShown && (
+            <button
+              ref={toggleRef}
+              type="button"
+              className="head-button"
+              aria-label={narrow ? "Open menu" : "Open sidebar"}
+              aria-controls="chat-sidebar"
+              aria-expanded={false}
+              title={narrow ? "Open menu" : "Open sidebar (Ctrl+B)"}
+              onClick={toggle}
+            >
+              <Menu />
+            </button>
+          )}
+
+          {collapsed && (
+            <>
+              <span className="wordmark chat-head-wordmark">
+                <BookMark size={18} />
+                Anamnesis
+              </span>
+              <span className="chat-head-divider" aria-hidden="true" />
+            </>
+          )}
+
+          <div className="chat-head-text">
+            <span className="chat-title">
+              {active?.title ?? "New conversation"}
+            </span>
+            {narrow && status}
+          </div>
+
+          {!sidebarShown && (
+            <button
+              type="button"
+              className={narrow ? "head-button" : "head-button head-button-outlined"}
+              aria-label="New chat"
+              title="New chat"
+              onClick={() => void startNew()}
+            >
+              <NewChat size={narrow ? 20 : 17} />
+            </button>
+          )}
+
+          {!narrow && <ThemeToggle compact />}
         </div>
 
         <ChatPanel

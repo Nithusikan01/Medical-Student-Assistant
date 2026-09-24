@@ -189,3 +189,49 @@ export function Gauge({ size = 15, strokeWidth = 1.7 }: IconProps) {
     </svg>
   );
 }
+
+export function Menu({ size = 20, strokeWidth = 1.8 }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth)}>
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </svg>
+  );
+}
+
+export function Close({ size = 20, strokeWidth = 1.8 }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth)}>
+      <path d="M6 6l12 12M18 6 6 18" />
+    </svg>
+  );
+}
+
+/** A panel with its left rail and an inward chevron: "tuck the sidebar away". */
+export function PanelLeftClose({ size = 18, strokeWidth = 1.7 }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth)}>
+      <rect x="3" y="4" width="18" height="16" rx="2.5" />
+      <path d="M9 4v16" />
+      <path d="M15 10l-2 2 2 2" />
+    </svg>
+  );
+}
+
+export function NewChat({ size = 20, strokeWidth = 1.7 }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth)}>
+      <path d="M12 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20h11a2.5 2.5 0 0 0 2.5-2.5V12" />
+      <path d="M18.4 3.6a2 2 0 0 1 2.8 2.8L13 14.6l-3.6.8.8-3.6Z" />
+    </svg>
+  );
+}
+
+export function Sliders({ size = 18, strokeWidth = 1.7 }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth)}>
+      <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
+      <circle cx="16" cy="7" r="2" />
+      <circle cx="10" cy="17" r="2" />
+    </svg>
+  );
+}

@@ -617,6 +617,67 @@ a:hover {
   display: grid;
   grid-template-columns: 288px minmax(0, 1fr);
   height: 100vh;
+  /* The dynamic unit tracks a phone's browser chrome sliding in and out;
+     plain vh is the fallback where it is not supported. */
+  height: 100dvh;
+  /* index.html opts into viewport-fit=cover for the bottom safe area; this
+     keeps a landscape iPhone's notch off the sidebar and header. */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: -4px 0 -10px;
+}
+
+/* Square icon-only buttons in the sidebar and chat headers. */
+.head-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.head-button:hover {
+  background: var(--raised);
+  color: var(--text);
+}
+
+.head-button-outlined {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* Collapsed on a wide screen: the sidebar goes entirely and the reading
+   column centres, rather than hugging the left edge of a now much wider
+   pane. Narrow screens never collapse; they use the drawer instead. */
+@media (min-width: 901px) {
+  .app.sidebar-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app.sidebar-collapsed .sidebar {
+    display: none;
+  }
+
+  .app.sidebar-collapsed .messages,
+  .app.sidebar-collapsed .composer {
+    padding-left: max(28px, calc((100% - 760px) / 2));
+    padding-right: max(28px, calc((100% - 760px) / 2));
+  }
 }
 
 .sidebar {
@@ -833,6 +894,20 @@ a:hover {
   text-decoration: none;
 }
 
+.account-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.account-actions .btn-ghost {
+  justify-content: flex-start;
+}
+
+.account-actions .theme-toggle + .btn {
+  margin-left: auto;
+}
+
 /* ------------------------------------------------------------------ chat */
 
 .chat {
@@ -848,11 +923,31 @@ a:hover {
 .chat-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px 28px;
+  gap: 12px;
+  min-height: 60px;
+  padding: 10px 28px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+}
+
+.chat-head-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.chat-head-wordmark {
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.chat-head-divider {
+  width: 1px;
+  height: 20px;
+  flex-shrink: 0;
+  background: var(--border);
 }
 
 .chat-title {
@@ -1165,8 +1260,20 @@ a:hover {
   color: var(--muted);
 }
 
-.composer .btn {
+.composer .composer-submit {
   margin-left: auto;
+}
+
+.composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+/* The phone composer's round settings and send buttons. Wide screens use
+   the labelled controls in .composer-actions instead. */
+.composer-icon-button {
+  display: none;
 }
 
 /* ------------------------------------------------------------ admin page */
@@ -1472,20 +1579,210 @@ a:hover {
 
 @media (max-width: 900px) {
   .app {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
+  /* The sidebar becomes a drawer over the chat. visibility (delayed on the
+     way out so the slide can finish) takes the closed drawer out of the tab
+     order and the accessibility tree, which a transform alone does not. */
   .sidebar {
-    border-right: none;
-    border-bottom: 1px solid var(--border);
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    width: min(312px, 86vw);
+    gap: 18px;
+    padding: 6px 12px calc(18px + env(safe-area-inset-bottom))
+      calc(16px + env(safe-area-inset-left));
+    box-shadow: 8px 0 32px rgba(19, 24, 25, 0.18);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform 220ms ease,
+      visibility 0s linear 220ms;
   }
 
-  .messages,
-  .composer,
+  .app.drawer-open .sidebar {
+    transform: none;
+    visibility: visible;
+    transition: transform 220ms ease;
+  }
+
+  .drawer-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: rgba(19, 24, 25, 0.42);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 220ms ease;
+  }
+
+  .app.drawer-open .drawer-scrim {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .sidebar-head {
+    min-height: 56px;
+    margin: 0 0 -8px;
+  }
+
+  .sidebar-head .wordmark {
+    font-size: 17px;
+  }
+
+  /* Touch targets: 44px wherever a finger lands. */
+  .head-button {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+  }
+
+  .sidebar .btn,
+  .admin-link {
+    min-height: 44px;
+  }
+
+  .conversation-link {
+    padding: 10px;
+  }
+
+  .conversation-title {
+    font-size: 14px;
+  }
+
+  .conversation-meta {
+    font-size: 12px;
+  }
+
   .chat-head {
-    padding-left: 18px;
-    padding-right: 18px;
+    gap: 4px;
+    min-height: 56px;
+    padding: 6px;
+  }
+
+  .chat-head-text {
+    padding: 0 4px;
+  }
+
+  .chat-title {
+    font-size: 15px;
+  }
+
+  .chat-head .status {
+    gap: 6px;
+    padding: 0;
+    font-size: 11px;
+  }
+
+  .chat-head .dot {
+    width: 6px;
+    height: 6px;
+  }
+
+  .messages {
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .message-user {
+    max-width: 85%;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  .message-assistant {
+    max-width: none;
+    padding: 14px;
+  }
+
+  .message-body {
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  .composer {
+    gap: 10px;
+    padding: 10px 10px calc(14px + env(safe-area-inset-bottom));
+  }
+
+  /* 16px keeps iOS from zooming the page when the field is focused.
+     field-sizing grows the box with the question; where it is unsupported
+     the box stays one line tall and scrolls. */
+  .composer textarea {
+    min-height: 44px;
+    max-height: 160px;
+    padding: 11px 16px;
+    border-radius: 22px;
+    background: var(--bg);
+    font-size: 16px;
+    line-height: 1.3;
+    resize: none;
+    field-sizing: content;
+  }
+
+  @supports not (field-sizing: content) {
+    .composer textarea {
+      height: 44px;
+    }
+  }
+
+  .composer-icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .composer-settings-toggle[aria-expanded="true"] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+  }
+
+  .composer-send {
+    border-color: transparent;
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+
+  .composer-send:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Folded away until the settings button opens it, then shown above the
+     question box. */
+  .composer-actions {
+    display: none;
+    order: -1;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 0 4px;
+  }
+
+  .composer-actions-open {
+    display: flex;
+  }
+
+  .composer-hint,
+  .composer .composer-submit {
+    display: none;
+  }
+
+  .model-select-trigger,
+  .top-k input {
+    min-height: 40px;
   }
 
   .data-table {
@@ -1671,6 +1968,32 @@ a:hover {
   opacity: 1;
   color: var(--accent);
   border-color: var(--accent);
+}
+
+/* No hover on touch screens. The active conversation's rename and delete
+   stay visible - only the active one, so a stray tap while scrolling cannot
+   delete a row - and the thumbs get a finger-sized box. */
+@media (hover: none) {
+  .conversation-list li.active .conversation-actions {
+    opacity: 1;
+  }
+
+  .icon-button {
+    padding: 10px;
+  }
+
+  .feedback-button {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .app.drawer-open .sidebar,
+  .drawer-scrim {
+    transition: none;
+  }
 }
 
 .feedback-button:focus-visible {
