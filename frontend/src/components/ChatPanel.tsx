@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { ChatMessage } from "../hooks/useConversation";
 import type { FeedbackRating, GenerationModelInfo } from "../types";
-import { Send, Spinner, ThumbDown, ThumbUp } from "./Icons";
+import { Send, Sliders, Spinner, ThumbDown, ThumbUp } from "./Icons";
 import { ModelSelect } from "./ModelSelect";
 import { SourceList } from "./SourceList";
 
@@ -36,6 +36,9 @@ export function ChatPanel({
   onRate,
 }: ChatPanelProps) {
   const [draft, setDraft] = useState("");
+  // Phones only: the model and source controls fold away behind a button so
+  // the question box keeps the whole width. Wide screens always show them.
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -119,21 +122,51 @@ export function ChatPanel({
           submit();
         }}
       >
-        <textarea
-          value={draft}
-          rows={2}
-          placeholder="Ask a question about the ingested documents…"
-          disabled={pending}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              submit();
-            }
-          }}
-        />
+        <div className="composer-row">
+          <button
+            type="button"
+            className="composer-icon-button composer-settings-toggle"
+            aria-label="Answer settings"
+            aria-expanded={settingsOpen}
+            aria-controls="composer-settings"
+            title="Answer settings"
+            onClick={() => setSettingsOpen((open) => !open)}
+          >
+            <Sliders />
+          </button>
 
-        <div className="composer-actions">
+          <textarea
+            value={draft}
+            rows={2}
+            aria-label="Question"
+            placeholder="Ask about the library…"
+            disabled={pending}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                submit();
+              }
+            }}
+          />
+
+          <button
+            type="submit"
+            className="composer-icon-button composer-send"
+            aria-label={pending ? "Asking…" : "Ask"}
+            title="Ask"
+            disabled={pending || draft.trim().length === 0}
+          >
+            {pending ? <Spinner /> : <Send size={18} />}
+          </button>
+        </div>
+
+        <div
+          id="composer-settings"
+          className={
+            settingsOpen ? "composer-actions composer-actions-open" : "composer-actions"
+          }
+        >
           <ModelSelect
             models={models}
             selectedModel={selectedModel}
@@ -159,7 +192,7 @@ export function ChatPanel({
 
           <button
             type="submit"
-            className="btn"
+            className="btn composer-submit"
             disabled={pending || draft.trim().length === 0}
           >
             <Send />
