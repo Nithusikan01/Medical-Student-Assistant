@@ -137,8 +137,8 @@ export function AdminUsersPage() {
                 </div>
               )
             ) : (
-              <div className="table-card">
-                <table className="data-table">
+              <div className="table-card table-card-stack">
+                <table className="data-table cards-on-phone user-table">
                   <thead>
                     <tr>
                       <th>User</th>
@@ -154,7 +154,7 @@ export function AdminUsersPage() {
 
                       return (
                         <tr key={user.id}>
-                          <td>
+                          <td className="user-name">
                             <span className="file-cell">
                               <Users />
                               {user.full_name ?? user.email}
@@ -163,7 +163,7 @@ export function AdminUsersPage() {
                               <span className="cell-sub">{user.email}</span>
                             )}
                           </td>
-                          <td>
+                          <td className="user-role">
                             <span
                               className={`badge ${
                                 user.role === "admin"
@@ -175,11 +175,13 @@ export function AdminUsersPage() {
                               {user.role}
                             </span>
                           </td>
-                          <td className="dim">
+                          <td className="dim user-status">
                             {user.is_active ? "Active" : "Inactive"}
                           </td>
-                          <td className="dim">{formatDate(user.created_at)}</td>
-                          <td>
+                          <td className="dim user-joined">
+                            {formatDate(user.created_at)}
+                          </td>
+                          <td className="user-actions">
                             <span className="row-actions">
                               <button
                                 type="button"

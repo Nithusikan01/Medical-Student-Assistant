@@ -155,7 +155,7 @@ export function AdminTraceDetailPage() {
                   title="LLM calls"
                   description="Every call the request made, not only the one that produced the answer."
                 >
-                  <table className="data-table mon-table">
+                  <table className="data-table mon-table cards-on-phone llm-calls">
                     <thead>
                       <tr>
                         <th>Stage</th>
@@ -169,12 +169,22 @@ export function AdminTraceDetailPage() {
                     <tbody>
                       {detail.tokens.map((call, index) => (
                         <tr key={`${call.stage}-${index}`}>
-                          <td>{call.stage.replace(/_/g, " ")}</td>
-                          <td>{call.model_id}</td>
-                          <td>{formatNumber(call.prompt_tokens)}</td>
-                          <td>{formatNumber(call.completion_tokens)}</td>
-                          <td>{formatNumber(call.total_tokens)}</td>
-                          <td>{formatCost(call.estimated_cost_usd)}</td>
+                          <td className="call-stage">
+                            {call.stage.replace(/_/g, " ")}
+                          </td>
+                          <td className="call-model">{call.model_id}</td>
+                          <td data-label="Prompt">
+                            {formatNumber(call.prompt_tokens)}
+                          </td>
+                          <td data-label="Completion">
+                            {formatNumber(call.completion_tokens)}
+                          </td>
+                          <td data-label="Total">
+                            {formatNumber(call.total_tokens)}
+                          </td>
+                          <td data-label="Cost">
+                            {formatCost(call.estimated_cost_usd)}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

@@ -170,8 +170,8 @@ export function AdminDocumentsPage() {
               </div>
             </div>
           ) : (
-            <div className="table-card">
-              <table className="data-table">
+            <div className="table-card table-card-stack">
+              <table className="data-table cards-on-phone doc-table">
                 <thead>
                   <tr>
                     <th>Document</th>
@@ -186,7 +186,7 @@ export function AdminDocumentsPage() {
                 <tbody>
                   {documents.map((document) => (
                     <tr key={document.id}>
-                      <td>
+                      <td className="doc-name">
                         <span className="file-cell">
                           <Document />
                           {document.filename}
@@ -197,7 +197,7 @@ export function AdminDocumentsPage() {
                           </span>
                         )}
                       </td>
-                      <td>
+                      <td className="doc-status">
                         <span className={`badge badge-${document.status}`}>
                           {document.status === "processing" ||
                           document.status === "deleting" ? (
@@ -208,17 +208,21 @@ export function AdminDocumentsPage() {
                           {document.status}
                         </span>
                       </td>
-                      <td className="numeric">
+                      {/* data-label names each figure once the header row
+                          is hidden and the row becomes a card on a phone. */}
+                      <td className="numeric doc-pages" data-label="Pages">
                         {document.page_count ?? <span className="dim">—</span>}
                       </td>
-                      <td className="numeric">{document.chunk_count}</td>
-                      <td className="numeric dim">
+                      <td className="numeric doc-chunks" data-label="Chunks">
+                        {document.chunk_count}
+                      </td>
+                      <td className="numeric dim doc-size" data-label="Size">
                         {formatSize(document.size_bytes)}
                       </td>
-                      <td className="dim">
+                      <td className="dim doc-by">
                         {document.uploaded_by_email ?? "—"}
                       </td>
-                      <td style={{ textAlign: "right" }}>
+                      <td className="doc-actions" style={{ textAlign: "right" }}>
                         <button
                           type="button"
                           className="btn btn-danger btn-small"

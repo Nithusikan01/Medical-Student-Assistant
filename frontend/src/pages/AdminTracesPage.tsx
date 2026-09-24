@@ -130,7 +130,7 @@ export function AdminTracesPage() {
             <input
               type="text"
               value={lookup}
-              placeholder="Open a trace id (the X-Trace-ID from a response)"
+              placeholder="Paste an X-Trace-ID"
               onChange={(event) => setLookup(event.target.value)}
               aria-label="Trace id"
             />
@@ -180,7 +180,7 @@ export function AdminTracesPage() {
             {traces.length === 0 && !loading ? (
               <p className="mon-empty">No traces match in this window.</p>
             ) : (
-              <table className="data-table mon-table wf-list">
+              <table className="data-table mon-table wf-list cards-on-phone">
                 <thead>
                   <tr>
                     <th>When</th>
@@ -193,9 +193,13 @@ export function AdminTracesPage() {
                 <tbody>
                   {traces.map((trace) => (
                     <tr key={trace.trace_id} data-failed={failed(trace)}>
-                      <td>{new Date(trace.started_at).toLocaleTimeString()}</td>
-                      <td>{trace.route ?? "unmatched"}</td>
-                      <td>
+                      <td className="wf-when">
+                        {new Date(trace.started_at).toLocaleTimeString()}
+                      </td>
+                      <td className="wf-route-cell">
+                        {trace.route ?? "unmatched"}
+                      </td>
+                      <td className="wf-status-cell">
                         {/* Status as a number and a word, never colour
                             alone. */}
                         <span className="wf-status" data-failed={failed(trace)}>
@@ -203,8 +207,10 @@ export function AdminTracesPage() {
                           {trace.error_type ? ` · ${trace.error_type}` : ""}
                         </span>
                       </td>
-                      <td>{formatMs(trace.duration_ms)}</td>
-                      <td>
+                      <td className="wf-duration-cell">
+                        {formatMs(trace.duration_ms)}
+                      </td>
+                      <td className="wf-id-cell">
                         <Link
                           to={`/admin/traces/${trace.trace_id}`}
                           className="wf-id"
