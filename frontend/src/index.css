@@ -2789,3 +2789,451 @@ a:hover {
   cursor: pointer;
   text-decoration: underline;
 }
+
+/* ---------------------------------------------- admin pages on a phone */
+
+/* Below 640px a table's columns stop fitting side by side, and a table that
+   scrolls sideways hides whatever sits at its right edge - usually the
+   actions. Tables marked .cards-on-phone turn each row into a card instead:
+   the header row is hidden (still read by screen readers), each cell is
+   placed by grid-area, and cells holding a bare figure name themselves from
+   data-label. Tables without the class, the dashboard's, keep scrolling. */
+@media (max-width: 640px) {
+  .admin-bar {
+    min-height: 56px;
+    padding: 6px 12px 6px 6px;
+  }
+
+  .back-link {
+    min-height: 44px;
+    padding: 0 10px;
+    font-size: 14px;
+  }
+
+  .admin-body {
+    padding: 22px 16px 40px;
+  }
+
+  .admin-inner {
+    gap: 18px;
+  }
+
+  .admin-inner h1 {
+    font-size: 24px;
+  }
+
+  .mon-links a {
+    display: inline-block;
+    padding: 6px 0;
+    font-size: 14px;
+  }
+
+  .mon-panel {
+    padding: 14px;
+  }
+
+  .empty-state {
+    padding: 40px 20px;
+  }
+
+  /* Upload: the copy, then a full-width button under it. */
+  .dropzone {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 18px;
+  }
+
+  .dropzone-copy {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .dropzone > .btn {
+    flex-basis: 100%;
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  /* ---- tables as cards ---- */
+
+  .data-table.cards-on-phone,
+  .cards-on-phone tbody {
+    display: block;
+    overflow: visible;
+    white-space: normal;
+  }
+
+  .cards-on-phone thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .cards-on-phone tr {
+    display: grid;
+    align-items: center;
+    gap: 10px 12px;
+    padding: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .cards-on-phone tr:last-child {
+    border-bottom: none;
+  }
+
+  .data-table.cards-on-phone td,
+  .mon-table.cards-on-phone td:not(:first-child) {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    text-align: left;
+  }
+
+  .cards-on-phone td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 2px;
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .cards-on-phone .btn-small {
+    min-height: 44px;
+    padding: 0 14px;
+    border-radius: 10px;
+    font-size: 14px;
+  }
+
+  /* The library and the roster: one card per row, not one bordered table. */
+  .table-card-stack {
+    background: none;
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+  }
+
+  .table-card-stack .cards-on-phone tr,
+  .table-card-stack .cards-on-phone tr:last-child {
+    margin-bottom: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+
+  /* Documents */
+  .doc-table tr {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-areas:
+      "name name status"
+      "pages chunks size"
+      "by by actions";
+  }
+
+  .doc-name {
+    grid-area: name;
+    align-self: start;
+    overflow-wrap: anywhere;
+  }
+
+  .doc-name .file-cell {
+    align-items: flex-start;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+
+  .doc-name .file-cell svg {
+    margin-top: 2px;
+  }
+
+  .doc-status {
+    grid-area: status;
+    align-self: start;
+    justify-self: end;
+  }
+
+  .doc-table td.numeric {
+    padding: 10px 0;
+    border-top: 1px solid var(--raised);
+    border-bottom: 1px solid var(--raised);
+    font-size: 14px;
+  }
+
+  .doc-pages {
+    grid-area: pages;
+  }
+
+  .doc-chunks {
+    grid-area: chunks;
+  }
+
+  .doc-size {
+    grid-area: size;
+  }
+
+  .doc-by {
+    grid-area: by;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .doc-by::before {
+    content: "Added by ";
+  }
+
+  .doc-actions {
+    grid-area: actions;
+    justify-self: end;
+  }
+
+  /* Users */
+  .user-table tr {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name name role"
+      "status joined joined"
+      "actions actions actions";
+    column-gap: 6px;
+  }
+
+  .user-name {
+    grid-area: name;
+    overflow-wrap: anywhere;
+  }
+
+  .user-name .file-cell {
+    font-size: 15px;
+  }
+
+  .user-role {
+    grid-area: role;
+    align-self: start;
+    justify-self: end;
+  }
+
+  .user-status,
+  .user-joined {
+    font-size: 13px;
+  }
+
+  .user-status {
+    grid-area: status;
+  }
+
+  .user-joined {
+    grid-area: joined;
+  }
+
+  .user-joined::before {
+    content: "· Joined ";
+  }
+
+  .user-actions {
+    grid-area: actions;
+  }
+
+  .user-actions .row-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  /* Traces: two lines per request, and the whole card opens it. */
+  .mon-ranges {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+  }
+
+  .mon-range {
+    min-width: 0;
+    min-height: 38px;
+    padding: 0;
+  }
+
+  .wf-lookup input,
+  .wf-route {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .wf-lookup-go {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .wf-filters {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .wf-filters label {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .wf-filters input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    accent-color: var(--accent);
+  }
+
+  .wf-route {
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* Status gets a line of its own: "no response · client_disconnect"
+     wraps, and sharing a line with the time let the two collide. */
+  .wf-list tr {
+    position: relative;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "route duration"
+      "status status"
+      "when id";
+    gap: 3px 10px;
+    padding: 12px 30px 12px 0;
+  }
+
+  .wf-list tr::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    width: 7px;
+    height: 7px;
+    border-top: 1.8px solid var(--muted);
+    border-right: 1.8px solid var(--muted);
+    transform: translateY(-50%) rotate(45deg);
+  }
+
+  .wf-route-cell {
+    grid-area: route;
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .wf-duration-cell {
+    grid-area: duration;
+    justify-self: end;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .wf-status-cell,
+  .wf-when {
+    font-size: 12.5px;
+  }
+
+  .wf-status-cell {
+    grid-area: status;
+  }
+
+  .wf-when {
+    grid-area: when;
+    color: var(--muted);
+  }
+
+  .wf-id-cell {
+    grid-area: id;
+    justify-self: end;
+  }
+
+  /* Stretches the trace link over its card, so the tap target is the row
+     rather than twelve characters of id. */
+  .wf-list .wf-id::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  .wf-more {
+    width: 100%;
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  /* One trace */
+  .mon-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .mon-tile {
+    min-width: 0;
+    padding: 12px;
+  }
+
+  .mon-tile-value {
+    font-size: 20px;
+  }
+
+  /* Label and duration on one line, the bar full width beneath them. */
+  .wf-bar-row {
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    min-height: 48px;
+    padding: 8px 0;
+  }
+
+  .wf-label {
+    flex: 1 1 auto;
+    font-size: 14px;
+  }
+
+  .wf-duration {
+    flex: 0 0 auto;
+    font-size: 12.5px;
+  }
+
+  .wf-track {
+    order: 3;
+    flex: 0 0 100%;
+    height: 10px;
+  }
+
+  .wf-meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wf-meta dt,
+  .wf-meta dd {
+    font-size: 13px;
+  }
+
+  .llm-calls tr {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-areas: "stage stage model model";
+    padding: 12px 0;
+  }
+
+  .call-stage {
+    grid-area: stage;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .mon-table.cards-on-phone td.call-model {
+    grid-area: model;
+    justify-self: end;
+    font-size: 13px;
+    color: var(--muted);
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+}
