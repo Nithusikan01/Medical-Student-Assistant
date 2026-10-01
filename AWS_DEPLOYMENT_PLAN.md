@@ -1,5 +1,11 @@
 # AWS Deployment Runbook
 
+> **Superseded — archived for when traffic justifies it.** The live deployment moved to a
+> single Lightsail instance (~$13/month instead of ~$55–65) — see `LIGHTSAIL_DEPLOYMENT.md`.
+> S3, CloudFront and the frontend workflow below are still in use; the ALB, ECS, RDS, ECR and
+> Secrets Manager sections describe infrastructure that has been (or is being) torn down. Kept
+> because it is a complete, verified recipe for the higher-availability setup.
+
 This is a record of the actual, working deployment of this application to AWS — every
 resource that exists, in the order that lets you rebuild the whole thing from an empty AWS
 account without hitting the dead ends this session hit along the way. It replaces an earlier,

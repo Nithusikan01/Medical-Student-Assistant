@@ -424,8 +424,8 @@ shared one would live in `backend/` without the service changing.
 
 - Python 3.11 or newer
 - Node.js 18 or newer (for the frontend)
-- A PostgreSQL database (this deploys to AWS RDS — see `AWS_DEPLOYMENT_PLAN.md`; any Postgres
-  works for local development)
+- A PostgreSQL database (production runs it in a container next to the API — see
+  `LIGHTSAIL_DEPLOYMENT.md`; any Postgres works for local development)
 - Pinecone API key and index name
 - Google Gemini API key
 - Optional: a Groq API key, to offer the Groq-hosted models in the picker
@@ -1063,7 +1063,10 @@ npm run build
 - Pinecone index name is not separated per environment, so a document deleted in a
   development deployment is also deleted in production if they share `PINECONE_INDEX_NAME`.
 - No custom domain yet — the live deployment is reachable only via CloudFront's default
-  `*.cloudfront.net` domain (deferred per `AWS_DEPLOYMENT_PLAN.md` section 1.11).
+  `*.cloudfront.net` domain, and CloudFront reaches the API through an `sslip.io` hostname for
+  the server's static IP (see "Adding a domain later" in `LIGHTSAIL_DEPLOYMENT.md`).
+- The backend is a single Lightsail instance with Postgres on the same disk — no redundancy,
+  and backups are daily snapshots.
 - API startup builds the embedder, vector store, BM25 index, and reranker clients, so cold
   start time depends on Pinecone/Gemini reachability even though no model weights are
   downloaded by default.
@@ -1100,39 +1103,36 @@ cd backend; python scripts\evaluate_retrieval.py data\evaluation\example.json
 
 ## Deployment
 
-Live on AWS: ECS Fargate (backend container) + RDS (PostgreSQL) + S3/CloudFront (frontend, with
-the same CloudFront distribution fronting the API so the two stay same-origin — required
-because the refresh cookie is `SameSite=Lax`). Every AWS resource is still named with the
-`medical-student-assistant` prefix the project was built under. Those names are load-bearing —
-they appear in `backend-deploy.yml`, `task-definition.json` and the Secrets Manager ARNs — and
-renaming them in the repository would point CI at resources that do not exist. Renaming them in
-AWS means recreating the infrastructure, so the prefix stays; it is internal and no user sees
-it. `AWS_DEPLOYMENT_PLAN.md` in the repository root
-is the full runbook this deployment was built from — architecture decisions (read section 0
-first), the one-time AWS setup, and the CI/CD design.
+Live on AWS at low fixed cost (~$13/month): one **Lightsail** instance runs the API, PostgreSQL
+and Caddy with Docker Compose (`deploy/lightsail/`), and **S3/CloudFront** serves the frontend.
+The same CloudFront distribution also forwards `/api/*` and `/health*` to the instance, so the
+two stay same-origin, which the `SameSite=Lax` refresh cookie requires. Caddy refuses any
+request that lacks CloudFront's secret `X-Origin-Verify` header, so the API can only be reached
+through CloudFront. `LIGHTSAIL_DEPLOYMENT.md` is the full runbook: architecture and cost, the
+one-time setup (including moving day-to-day access off the root user), the migration from the
+earlier stack, and operations. `AWS_DEPLOYMENT_PLAN.md` documents that earlier ECS Fargate + ALB
++ RDS stack. It has been retired for cost, and the file is kept for when traffic justifies the
+redundancy again. AWS resources still carry the `medical-student-assistant` prefix the project
+was built under.
 
 Deploys are automated via GitHub Actions on every push to `main`:
 
-- **`.github/workflows/backend-deploy.yml`**: runs the engine + backend test suites, builds and
-  pushes the Docker image to ECR, registers a new ECS task definition revision, runs
-  `alembic upgrade head` as a one-off ECS task **against that exact revision** before touching
-  the live service, and only then updates the ECS service — a failed migration stops the
-  workflow before the service is ever pointed at code that expects a schema that isn't there
-  yet. Triggers only on changes under `backend/`, `rag/`, or the `Dockerfile`.
+- **`.github/workflows/backend-deploy.yml`**: runs the engine + backend test suites, then
+  builds the Docker image and pushes it to GHCR (tagged with the commit SHA) using the
+  workflow's own `GITHUB_TOKEN`. It copies `deploy/lightsail/` to the server over SSH (host key
+  pinned via a secret) and runs `deploy.sh` there, which pulls the image, runs `alembic upgrade
+  head`, and only then recreates the containers. A failed migration or health check fails the
+  job and leaves the previous containers running. Triggers on changes under `backend/`, `rag/`,
+  `deploy/lightsail/`, or the `Dockerfile`. Repository secrets: `LIGHTSAIL_HOST`,
+  `LIGHTSAIL_USER`, `LIGHTSAIL_SSH_KEY`, `LIGHTSAIL_KNOWN_HOSTS`.
 - **`.github/workflows/frontend-deploy.yml`**: builds the frontend, syncs `dist/` to the S3
   bucket (`--delete`, so old fingerprinted bundles from previous builds don't pile up), and
   invalidates the CloudFront cache so visitors get the new build immediately rather than a
-  stale cached one. Triggers only on changes under `frontend/`.
-- **`backend/deploy/task-definition.json`**: the checked-in baseline task definition (roles,
-  CPU/memory, port mapping, non-secret env vars, and references to the Secrets Manager secret
-  for credentials) that the backend workflow renders a new image tag into on every run. Every
-  provider key the app offers has to be listed here — a missing `GROQ_API_KEY` entry is why
-  the deployed model picker once showed Gemini only while local development showed all four.
-
-Both workflows authenticate to AWS via **OIDC** (a GitHub Actions-specific IAM role,
-`medical-student-assistant-github-actions`, trusted only for pushes to `main` in this exact
-repo) rather than long-lived access keys stored as secrets — the only repository secret
-involved is `AWS_ROLE_ARN`.
+  stale cached one. Triggers only on changes under `frontend/`. Authenticates to AWS via
+  **OIDC** (the IAM role `medical-student-assistant-github-actions`, trusted only for pushes to
+  `main` in this repo), so the only AWS-related secret is `AWS_ROLE_ARN`.
+- **`deploy/lightsail/.env.example`**: every variable the server's `/opt/msa/.env` needs. The
+  real file lives only on the server.
 
 Two things to do on a fresh deployment, neither of which the app does for you: run
 `scripts/seed_model_pricing.py` with verified rates (otherwise cost reads "not priced"), and
