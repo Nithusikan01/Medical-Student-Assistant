@@ -22,7 +22,7 @@ Browser ──HTTPS──> CloudFront  d1u7p8d1507l08.cloudfront.net   (TLS at t
 Lightsail instance (Ubuntu 24.04, 2 GB) — docker compose, /opt/msa
    caddy     :80   403 unless X-Origin-Verify matches, else proxy to backend:8000
    backend         ghcr.io/nithusikan01/medical-student-assistant-backend:<sha>
-   postgres        postgres:17-alpine, named volume `pgdata`, no published port
+   postgres        postgres:18-alpine, named volume `pgdata`, no published port
 ```
 
 Why it looks like this:
@@ -147,8 +147,8 @@ instance used purely as an SSH tunnel. Do this at a quiet time — anything writ
 stack after the dump is not carried over.
 
 1. **RDS** → the instance → **Actions → Take snapshot** (safety net). Note the **engine
-   version**: `postgres:17-alpine` in `docker-compose.yml` must be the same major version or
-   newer — change the tag before going further if RDS is newer than 17.
+   version** (18.3 at the time of this move): `postgres:18-alpine` in `docker-compose.yml` must
+   be the same major version or newer — change the tag before going further if RDS is newer.
 2. **EC2** → **Launch instance**: Amazon Linux 2023, `t3.micro`, a new key pair, subnet
    `subnet-0d7efb05e950dd1ea` (public), auto-assign public IP **on**. Security groups:
    `task-sg` (which `rds-sg` already trusts on 5432) **plus** a new temporary group allowing
@@ -160,7 +160,7 @@ stack after the dump is not carried over.
    ssh -i <ec2-key>.pem -N -L 5433:medical-student-assistant-db.c3ugy24cq1u0.ap-south-1.rds.amazonaws.com:5432 ec2-user@<ec2-public-ip>
 
    # second terminal, from the repo root; prompts for the RDS master password
-   docker run --rm -it -v "$PWD:/out" postgres:17-alpine \
+   docker run --rm -it -v "$PWD:/out" postgres:18-alpine \
      pg_dump -h host.docker.internal -p 5433 -U postgres -d medical_assistant \
      -Fc --no-owner --no-privileges -f /out/msa.dump
    ```

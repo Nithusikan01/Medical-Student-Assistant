@@ -18,8 +18,9 @@ x-logging: &logging
 services:
   postgres:
     # Must be the same major version as the RDS instance the data is restored
-    # from, or newer - pg_restore will not load a dump into an older server.
-    image: postgres:17-alpine
+    # from (18.3), or newer - pg_restore will not load a dump into an older
+    # server.
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
@@ -28,8 +29,11 @@ services:
     # Sized for a 2 GB box shared with the API; no ports published, so only
     # containers on this compose network can reach it.
     command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=30"]
+    # From 18 the image keeps its data in a versioned subdirectory
+    # (/var/lib/postgresql/18/docker) and refuses to start if a volume is
+    # mounted at the old .../data path, so the mount point is the parent.
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d medical_assistant"]
       interval: 5s
