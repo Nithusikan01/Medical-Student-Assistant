@@ -1,0 +1,4 @@
+# Files that run on the Linux server must keep LF endings even when checked
+# out on Windows with core.autocrlf=true - bash fails on a trailing \r.
+*.sh text eol=lf
+deploy/lightsail/** text eol=lf
