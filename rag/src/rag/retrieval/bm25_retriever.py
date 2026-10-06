@@ -26,6 +26,17 @@ class BM25Retriever(BaseRetriever):
         self.bm25_index = bm25_index
         self.tracer = tracer if tracer is not None else Tracer()
 
+    @property
+    def document_ids(self) -> frozenset[str]:
+        """
+        The documents the lexical index currently searches.
+
+        HybridRetriever uses this as the set of documents that may appear in
+        an answer at all - see the comment there for why.
+        """
+
+        return self.bm25_index.document_ids
+
     def retrieve(
         self,
         query: str,

@@ -424,3 +424,27 @@ def test_a_question_that_opens_with_a_greeting_is_still_retrieved():
 
     mock_query_service.search.assert_called_once()
     mock_generator.generate.assert_called_once()
+
+
+def test_an_answer_generated_across_a_corpus_change_is_not_cached():
+    # Ingesting or deleting a document empties the cache. A question that
+    # was already past its lookup must not refill it with an answer drawn
+    # from the corpus as it was before.
+    cache = build_cache()
+    service, query_service, generator, *_ = build_service(
+        response_cache=cache,
+        has_context=False,
+    )
+
+    def search_while_a_document_is_deleted(**kwargs):
+        cache.invalidate()
+        return [make_retrieved_chunk(chunk_id="old", text="From a deleted book.")]
+
+    query_service.search.side_effect = search_while_a_document_is_deleted
+
+    service.answer_with_sources(conversation_id="c", question="What is sepsis?")
+    query_service.search.side_effect = None
+    service.answer_with_sources(conversation_id="c", question="What is sepsis?")
+
+    assert generator.generate.call_count == 2
+    assert cache.stats().extra["stale"] == 1

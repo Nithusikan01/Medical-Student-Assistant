@@ -14,12 +14,12 @@ class PersistentConversationMemory(ConversationMemory):
     """
     Conversation memory backed by the database.
 
-    `messages` deliberately holds only the turns *after* the stored summary's
-    checkpoint, because HistoryAwareRAGService summarises whenever
-    len(messages) reaches its trigger. Hydrating the full history would leave
-    that condition permanently true and fire an extra LLM call every turn
-    forever. Prompt context comes from `_recent` instead, which tracks the
-    last N messages overall.
+    The two views are the base class's (see ConversationMemory); this class
+    only loads them from, and writes them to, the database. Hydrating
+    restores both: `messages` from the turns *after* the stored summary's
+    checkpoint - loading the full history would leave the summary trigger
+    permanently true and fire an extra LLM call every turn forever - and the
+    recent window from the newest turns overall.
     """
 
     def __init__(
@@ -34,7 +34,6 @@ class PersistentConversationMemory(ConversationMemory):
         self._session_factory = session_factory
         self.conversation_id = conversation_id
         self.last_assistant_message_id: int | None = None
-        self._recent: list[ChatMessage] = []
 
         self._hydrate()
 
@@ -101,13 +100,6 @@ class PersistentConversationMemory(ConversationMemory):
             if role == "assistant":
                 self.last_assistant_message_id = row.id
 
-        self._recent = (self._recent + [ChatMessage(role=role, content=content)])[
-            -self.max_recent_messages :
-        ]
-
-    def get_recent_messages(self) -> list[ChatMessage]:
-        return self._recent
-
     def update_summary(self, summary: str) -> None:
         super().update_summary(summary)
 
@@ -128,10 +120,6 @@ class PersistentConversationMemory(ConversationMemory):
             )
 
             session.commit()
-
-        # Everything up to the checkpoint is now represented by the summary,
-        # so the trigger starts counting again from zero.
-        self.messages = []
 
     def attach_sources(self, sources: list[dict[str, Any]]) -> None:
         if self.last_assistant_message_id is None:

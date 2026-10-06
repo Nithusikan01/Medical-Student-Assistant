@@ -11,7 +11,10 @@ class ConversationSummarizer:
 
     def summarize(self, memory: ConversationMemory) -> str:
 
-        messages = memory.get_recent_messages()
+        # Every turn since the last summary, not the prompt's recent window:
+        # the window is shorter than the summary trigger, and the turns it
+        # leaves out would be lost once the checkpoint moves past them.
+        messages = list(memory.messages)
 
         conversation_text = "\n".join(f"{m.role}: {m.content}" for m in messages)
 

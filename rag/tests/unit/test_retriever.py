@@ -1,9 +1,12 @@
+from dataclasses import replace
 from unittest.mock import Mock
 
+from rag.indexes.bm25_index import BM25Index
+from rag.retrieval.bm25_retriever import BM25Retriever
 from rag.retrieval.dense_retriever import DenseRetriever
 from rag.retrieval.hybrid_retriever import HybridRetriever
 from rag.retrieval.schemas import RetrievalMethod, RetrievedChunk
-from tests.unit.helpers import make_retrieved_chunk, make_search_result
+from tests.unit.helpers import make_chunk, make_retrieved_chunk, make_search_result
 
 
 def test_dense_retrieve_returns_retrieved_chunks():
@@ -134,3 +137,49 @@ def test_hybrid_retriever_returns_empty_when_sources_are_empty():
     retriever = HybridRetriever(dense_retriever, bm25_retriever)
 
     assert retriever.retrieve("query") == []
+
+
+def _dense_hit(chunk_id: str, document_id: str) -> RetrievedChunk:
+    chunk = make_retrieved_chunk(chunk_id, f"text of {chunk_id}")
+
+    return RetrievedChunk(
+        id=chunk.id,
+        text=chunk.text,
+        score=chunk.score,
+        metadata=replace(chunk.metadata, document_id=document_id),
+    )
+
+
+def test_hybrid_drops_dense_hits_from_documents_that_are_not_ready():
+    # The BM25 index holds only `ready` documents; Pinecone can still hold
+    # vectors from a failed upload or a stalled delete. Those must not
+    # reach an answer.
+    bm25 = BM25Retriever(BM25Index([make_chunk(0, "sepsis", document_id="ready")]))
+    dense = Mock()
+    dense.retrieve.return_value = [
+        _dense_hit("ready_chunk_7", "ready"),
+        _dense_hit("failed_chunk_0", "failed-upload"),
+    ]
+
+    results = HybridRetriever(dense, bm25).retrieve("unrelated words", top_k=5)
+
+    assert [chunk.id for chunk in results] == ["ready_chunk_7"]
+
+
+def test_hybrid_returns_nothing_when_no_document_is_ready():
+    bm25 = BM25Retriever(BM25Index([]))
+    dense = Mock()
+    dense.retrieve.return_value = [_dense_hit("stale_chunk_0", "deleting")]
+
+    assert HybridRetriever(dense, bm25).retrieve("anything") == []
+
+
+def test_hybrid_keeps_dense_hits_when_the_lexical_side_cannot_say():
+    # A lexical retriever with no `document_ids` - a stub, or another
+    # implementation - keeps the old, unfiltered behaviour.
+    bm25 = Mock(spec=["retrieve"])
+    bm25.retrieve.return_value = []
+    dense = Mock()
+    dense.retrieve.return_value = [_dense_hit("x_chunk_0", "anything")]
+
+    assert [c.id for c in HybridRetriever(dense, bm25).retrieve("q")] == ["x_chunk_0"]
