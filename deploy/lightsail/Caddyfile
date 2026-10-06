@@ -1,0 +1,15 @@
+# Port 80 is open to the internet (Lightsail's firewall cannot allow only
+# CloudFront the way the old ALB's prefix-list rule did), so CloudFront sends a
+# secret header on every origin request and anything without it is refused.
+# That keeps the API reachable only through CloudFront, which is what the
+# same-origin refresh cookie design depends on.
+#
+# Once a domain exists, replace ":80" with it and Caddy obtains a Let's
+# Encrypt certificate by itself (open port 443 in the Lightsail firewall too).
+
+:80 {
+	@denied not header X-Origin-Verify {$ORIGIN_SECRET}
+	respond @denied 403
+
+	reverse_proxy backend:8000
+}

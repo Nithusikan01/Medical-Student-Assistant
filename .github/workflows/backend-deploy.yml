@@ -8,6 +8,7 @@ on:
       - "rag/**"
       - "Dockerfile"
       - ".dockerignore"
+      - "deploy/lightsail/**"
       - ".github/workflows/backend-deploy.yml"
   workflow_dispatch:
 
@@ -17,24 +18,16 @@ concurrency:
   group: deploy-backend
   cancel-in-progress: false
 
-# id-token: write is what lets this workflow exchange its own OIDC token for
-# temporary AWS credentials - no long-lived access keys stored as secrets.
+# packages: write pushes the image to GHCR with the workflow's own
+# GITHUB_TOKEN - no registry credentials stored anywhere. The same token
+# (read-only use) lets the server pull it, and expires when the job ends.
 permissions:
-  id-token: write
   contents: read
+  packages: write
 
 env:
-  AWS_REGION: ap-south-1
-  ECR_REGISTRY: 519035820911.dkr.ecr.ap-south-1.amazonaws.com
-  ECR_REPOSITORY: medical-student-assistant-backend
-  ECS_CLUSTER: medical-student-assistant-cluster
-  ECS_SERVICE: medical-student-assistant-service
-  CONTAINER_NAME: backend
-  # Same subnet/security group the manual migration task used: public
-  # subnet (so it can reach Pinecone/Gemini with no NAT Gateway) and the
-  # task security group (which rds-sg trusts for port 5432).
-  MIGRATION_SUBNET: subnet-0d7efb05e950dd1ea
-  TASK_SECURITY_GROUP: sg-08dc9e7b00a8940b8
+  # GHCR names must be lowercase.
+  IMAGE_NAME: ghcr.io/nithusikan01/medical-student-assistant-backend
 
 jobs:
   deploy:
@@ -57,71 +50,38 @@ jobs:
           pytest rag/tests/unit -q
           pytest backend/tests/unit backend/tests/api -q
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - uses: aws-actions/amazon-ecr-login@v2
-
+      # Built here rather than on the server: a 2 GB instance should spend its
+      # memory serving requests, not compiling wheels.
       - name: Build and push image
         run: |
-          IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}"
-          docker build -t "$IMAGE" -f Dockerfile .
-          docker push "$IMAGE"
-          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker build -t "$IMAGE_NAME:${{ github.sha }}" -t "$IMAGE_NAME:latest" -f Dockerfile .
+          docker push "$IMAGE_NAME:${{ github.sha }}"
+          docker push "$IMAGE_NAME:latest"
 
-      # Registered as its own revision, ahead of the migration step, so the
-      # migration task below runs against the *exact* image and dependency
-      # versions that are about to go live - not the family's current
-      # (still-old) latest revision.
-      - name: Register a new task definition revision
-        id: register
+      # The host key is pinned from a secret rather than ssh-keyscan'd here, so
+      # a spoofed host can't receive the deploy (or the registry token).
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.LIGHTSAIL_KNOWN_HOSTS }}
         run: |
-          jq --arg IMAGE "$IMAGE" \
-             '.containerDefinitions[0].image = $IMAGE' \
-             backend/deploy/task-definition.json > rendered-task-definition.json
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat >> ~/.ssh/config <<EOF
+          Host lightsail
+            HostName ${{ secrets.LIGHTSAIL_HOST }}
+            User ${{ secrets.LIGHTSAIL_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+          EOF
 
-          NEW_ARN=$(aws ecs register-task-definition \
-            --cli-input-json file://rendered-task-definition.json \
-            --query 'taskDefinition.taskDefinitionArn' --output text)
-
-          echo "Registered $NEW_ARN"
-          echo "task_definition_arn=$NEW_ARN" >> "$GITHUB_OUTPUT"
-
-      # Schema first: code that expects a column must never reach users
-      # before the column exists. A failure here stops the workflow before
-      # the "Deploy to ECS" step, so a broken migration never reaches the
-      # live service - it just never gets updated.
-      - name: Apply database migrations
+      # deploy.sh migrates before it restarts anything and exits non-zero if
+      # the migration or the health check fails, which fails this job.
+      - name: Deploy to Lightsail
         run: |
-          TASK_ARN=$(aws ecs run-task \
-            --cluster "$ECS_CLUSTER" \
-            --task-definition "${{ steps.register.outputs.task_definition_arn }}" \
-            --launch-type FARGATE \
-            --network-configuration "awsvpcConfiguration={subnets=[$MIGRATION_SUBNET],securityGroups=[$TASK_SECURITY_GROUP],assignPublicIp=ENABLED}" \
-            --overrides "{\"containerOverrides\":[{\"name\":\"$CONTAINER_NAME\",\"command\":[\"alembic\",\"upgrade\",\"head\"]}]}" \
-            --query 'tasks[0].taskArn' --output text)
-
-          echo "Migration task: $TASK_ARN"
-          aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN"
-
-          EXIT_CODE=$(aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" \
-            --query 'tasks[0].containers[0].exitCode' --output text)
-          echo "Migration exit code: $EXIT_CODE"
-
-          if [ "$EXIT_CODE" != "0" ]; then
-            echo "Migration failed - the service will NOT be updated." >&2
-            exit 1
-          fi
-
-      - name: Deploy to ECS
-        run: |
-          aws ecs update-service \
-            --cluster "$ECS_CLUSTER" \
-            --service "$ECS_SERVICE" \
-            --task-definition "${{ steps.register.outputs.task_definition_arn }}" \
-            --force-new-deployment
-
-          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+          scp deploy/lightsail/docker-compose.yml deploy/lightsail/Caddyfile deploy/lightsail/deploy.sh lightsail:/opt/msa/
+          echo "${{ secrets.GITHUB_TOKEN }}" | ssh lightsail "docker login ghcr.io -u '${{ github.actor }}' --password-stdin"
+          ssh lightsail "bash /opt/msa/deploy.sh '${{ github.sha }}'"
