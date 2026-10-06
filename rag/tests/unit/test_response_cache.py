@@ -421,3 +421,45 @@ def test_stats_count_hits_by_how_they_were_matched():
     assert stats.misses == 1
     assert stats.stores == 1
     assert stats.entries == 1
+
+
+# ----------------------------------------------------------------------
+# An answer retrieved before an invalidation is not stored after it
+# ----------------------------------------------------------------------
+
+
+def test_an_answer_from_before_an_invalidation_is_not_stored():
+    cache = build_cache()
+    query = {"query": "What is the dose?", "top_k": 5, "model_id": "m"}
+
+    # A question misses and starts retrieving from the current corpus...
+    lookup = cache.lookup(**query)
+    # ...a document is deleted while it is still being answered...
+    cache.invalidate()
+    # ...and its answer, built from the old corpus, arrives afterwards.
+    cache.store(**query, answer="1g", chunks=CHUNKS, generation=lookup.generation)
+
+    assert cache.lookup(**query).match == MATCH_MISS
+    assert cache.stats().extra["stale"] == 1
+
+
+def test_an_answer_from_the_current_corpus_is_stored():
+    cache = build_cache()
+    query = {"query": "What is the dose?", "top_k": 5, "model_id": "m"}
+
+    cache.invalidate()
+    lookup = cache.lookup(**query)
+    cache.store(**query, answer="1g", chunks=CHUNKS, generation=lookup.generation)
+
+    assert cache.lookup(**query).match == MATCH_EXACT
+    assert cache.stats().extra["stale"] == 0
+
+
+def test_a_store_without_a_generation_is_still_accepted():
+    # Callers that predate the generation keep their old behaviour.
+    cache = build_cache()
+    cache.invalidate()
+
+    store(cache)
+
+    assert cache.lookup(query="What is the dose?", top_k=5, model_id="m").hit

@@ -36,6 +36,7 @@ class ResponseCache(Protocol):
         chunks: list[RetrievedChunk],
         query_embedding: list[float] | None = None,
         context_free: bool = True,
+        generation: int | None = None,
     ) -> None:
         """
         Offer an answer for caching.
@@ -46,6 +47,12 @@ class ResponseCache(Protocol):
         be wrong; whether that rules the entry out is the implementation's
         policy, which is why the caller reports the fact rather than
         applying it.
+
+        `generation` is the value the matching `lookup` returned. If the
+        cache has been invalidated since, the answer was retrieved from a
+        corpus that no longer exists and must be dropped: a question still
+        in flight when a document is deleted would otherwise store its
+        answer *after* the invalidation meant to remove it.
         """
         ...
 

@@ -87,8 +87,15 @@ def test_recent_messages_are_capped(session_factory, user):
 
     recent = memory.get_recent_messages()
 
-    assert len(recent) == 4
-    assert recent[-1].content == "question 9"
+    # Exact contents, not just the length: the window is maintained by the
+    # engine's base class, and a subclass that also appended would repeat
+    # every message while still holding four.
+    assert [message.content for message in recent] == [
+        "question 6",
+        "question 7",
+        "question 8",
+        "question 9",
+    ]
 
 
 def test_updating_the_summary_moves_the_checkpoint_and_clears_the_trigger(

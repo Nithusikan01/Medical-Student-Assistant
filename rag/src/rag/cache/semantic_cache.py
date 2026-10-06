@@ -43,6 +43,7 @@ class NullResponseCache:
         chunks: list[RetrievedChunk],
         query_embedding: list[float] | None = None,
         context_free: bool = True,
+        generation: int | None = None,
     ) -> None:
         return None
 
@@ -90,6 +91,10 @@ class InMemorySemanticCache:
         self._lock = threading.Lock()
         self._entries: OrderedDict[CacheScope, CacheEntry] = OrderedDict()
 
+        # Bumped by every invalidation. A lookup reports the value it saw and
+        # `store` refuses an answer whose lookup predates the latest bump.
+        self._generation = 0
+
         # Stacked unit vectors for the semantic tier, rebuilt lazily and
         # dropped on every mutation. Scanning a few hundred entries is one
         # matrix multiply; rebuilding it per lookup would not be.
@@ -105,6 +110,7 @@ class InMemorySemanticCache:
         self._expired = 0
         self._evicted = 0
         self._rejected = 0
+        self._stale = 0
 
     # ------------------------------------------------------------------
     # Reads
@@ -129,6 +135,7 @@ class InMemorySemanticCache:
         with self._lock:
             self._drop_expired()
 
+            generation = self._generation
             entry = self._entries.get(scope)
 
             if entry is not None:
@@ -142,13 +149,14 @@ class InMemorySemanticCache:
                     similarity=1.0,
                     query_embedding=entry.embedding,
                     entry_count=len(self._entries),
+                    generation=generation,
                 )
 
             has_candidates = bool(self._entries)
             entry_count = len(self._entries)
 
         if not self._config.semantic_enabled or self._embedder is None:
-            return self._miss(entry_count=entry_count)
+            return self._miss(entry_count=entry_count, generation=generation)
 
         # Outside the lock on purpose: with hosted inference this is a
         # network call, and holding the lock across it would serialise
@@ -156,10 +164,14 @@ class InMemorySemanticCache:
         embedding = self._embed(query)
 
         if embedding is None:
-            return self._miss(entry_count=entry_count)
+            return self._miss(entry_count=entry_count, generation=generation)
 
         if not has_candidates:
-            return self._miss(entry_count=entry_count, embedding=embedding)
+            return self._miss(
+                entry_count=entry_count,
+                embedding=embedding,
+                generation=generation,
+            )
 
         with self._lock:
             match = self._nearest(embedding, bucket=(top_k, model_id))
@@ -170,6 +182,7 @@ class InMemorySemanticCache:
                 return CacheLookup(
                     query_embedding=embedding,
                     entry_count=len(self._entries),
+                    generation=generation,
                 )
 
             matched_scope, similarity = match
@@ -190,6 +203,7 @@ class InMemorySemanticCache:
                 similarity=similarity,
                 query_embedding=embedding,
                 entry_count=len(self._entries),
+                generation=generation,
             )
 
     # ------------------------------------------------------------------
@@ -206,6 +220,7 @@ class InMemorySemanticCache:
         chunks: list[RetrievedChunk],
         query_embedding: list[float] | None = None,
         context_free: bool = True,
+        generation: int | None = None,
     ) -> None:
         if not self._config.enabled or not answer:
             return
@@ -242,6 +257,15 @@ class InMemorySemanticCache:
         )
 
         with self._lock:
+            # Checked here, under the lock the insert takes, so an
+            # invalidation cannot land between the check and the write.
+            if generation is not None and generation != self._generation:
+                self._stale += 1
+
+                logger.info("Dropped an answer retrieved before the corpus changed.")
+
+                return
+
             self._entries[scope] = entry
             self._entries.move_to_end(scope)
             self._stores += 1
@@ -259,6 +283,7 @@ class InMemorySemanticCache:
             self._entries.clear()
             self._forget_matrix()
             self._invalidations += 1
+            self._generation += 1
 
         if dropped:
             logger.info(
@@ -283,6 +308,7 @@ class InMemorySemanticCache:
                     "expired": self._expired,
                     "evicted": self._evicted,
                     "rejected": self._rejected,
+                    "stale": self._stale,
                 },
             )
 
@@ -295,11 +321,16 @@ class InMemorySemanticCache:
         *,
         entry_count: int,
         embedding: list[float] | None = None,
+        generation: int | None = None,
     ) -> CacheLookup:
         with self._lock:
             self._misses += 1
 
-        return CacheLookup(query_embedding=embedding, entry_count=entry_count)
+        return CacheLookup(
+            query_embedding=embedding,
+            entry_count=entry_count,
+            generation=generation,
+        )
 
     def _embed(self, query: str) -> list[float] | None:
         if self._embedder is None:
