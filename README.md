@@ -1105,7 +1105,7 @@ cd backend; python scripts\evaluate_retrieval.py data\evaluation\example.json
 
 Live on AWS at low fixed cost (~$13/month): one **Lightsail** instance runs the API, PostgreSQL
 and Caddy with Docker Compose (`deploy/lightsail/`), and **S3/CloudFront** serves the frontend.
-The same CloudFront distribution also forwards `/api/*` and `/health*` to the instance, so the
+The same CloudFront distribution also forwards `/api/*` and `/health/*` to the instance, so the
 two stay same-origin, which the `SameSite=Lax` refresh cookie requires. Caddy refuses any
 request that lacks CloudFront's secret `X-Origin-Verify` header, so the API can only be reached
 through CloudFront. `LIGHTSAIL_DEPLOYMENT.md` is the full runbook: architecture and cost, the

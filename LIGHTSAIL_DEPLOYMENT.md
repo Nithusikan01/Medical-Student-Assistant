@@ -14,8 +14,9 @@ kept as the blueprint for when traffic does justify it.
 
 ```
 Browser ──HTTPS──> CloudFront  d1u7p8d1507l08.cloudfront.net   (TLS at the edge)
-                     ├─ /*                -> S3 bucket (frontend build)           unchanged
-                     └─ /api/*, /health*  -> Lightsail instance, HTTP :80
+                     ├─ /* (Default)      -> S3 bucket (frontend build)
+                     │                       + viewer-request function spa-index-rewrite
+                     └─ /api/*, /health/* -> Lightsail instance, HTTP :80
                                              origin host <static-ip-dashed>.sslip.io
                                              + header X-Origin-Verify: <secret>
 
@@ -218,9 +219,14 @@ itself is untouched — **no re-ingestion is needed**.
    - **Add custom header**: `X-Origin-Verify` = the `ORIGIN_SECRET` from `.env`
    - **Response timeout**: 60 seconds (a long generation or a book upload can exceed the
      default 30)
-2. **Behaviors**: edit `/api/*` and `/health*` → change the origin to the new one. Keep
-   **CachingDisabled** and **AllViewerExceptHostHeader** exactly as they are.
-3. Wait for **Deploying → Enabled**.
+2. **Behaviors**: edit **only** `/api/*` and `/health/*` → change the origin to the new one.
+   Keep **CachingDisabled** and **AllViewerExceptHostHeader** exactly as they are.
+   **Do not touch `Default (*)`**, which must stay on the S3 origin, and change which origin a
+   behavior uses on the **Behaviors** tab, never by editing an origin's domain on the
+   **Origins** tab. Both mistakes happened during this move and took the site down; see
+   Troubleshooting.
+3. Wait for **Deploying → Enabled**, then compare against
+   [CloudFront configuration](#cloudfront-configuration) below.
 
 **Rollback** at any point before Step 7: switch the two behaviors back to the ALB origin.
 
@@ -280,8 +286,8 @@ After 1–2 days without problems, in this order:
 
 ## Step 8 — Budget alert
 
-**Billing → Budgets → Create budget** → monthly cost budget, **$15**, email alerts at **80%**
-actual and **100%** forecasted.
+**Billing → Budgets → Create budget** → **Use a template → Monthly cost budget**, **$15**, your
+email. The template alerts at 85% and 100% of actual spend and when the forecast passes 100%.
 
 ---
 
@@ -299,6 +305,56 @@ actual and **100%** forecasted.
 | OS updates | Security updates install automatically; `sudo reboot` occasionally, and the containers come back by themselves (`restart: unless-stopped`) |
 | Restore from backup | Lightsail → **Snapshots** → create a new instance from one, move the static IP to it |
 | Off-box DB copy | `docker compose exec -T postgres pg_dump -U postgres -Fc medical_assistant > backup.dump`, then `scp` it off |
+
+## CloudFront configuration
+
+What distribution `E39FPVC302KYZF` must look like. Check against this after any edit in the
+CloudFront console. Every row has been wrong at least once, and each one fails differently.
+
+| Behavior | Origin | Cache policy | Origin request policy | Viewer request function |
+|---|---|---|---|---|
+| `/api/*` | `lightsail-backend` | CachingDisabled | AllViewerExceptHostHeader | none |
+| `/health/*` | `lightsail-backend` | CachingDisabled | AllViewerExceptHostHeader | none |
+| `Default (*)` | `medical-student-assistant-frontend-519035820911.s3.ap-south-1.amazonaws.com` | CachingOptimized | none | `spa-index-rewrite` |
+
+- **Origins**: the S3 bucket (with an origin access control) and `lightsail-backend`
+  (`<static-ip-dashed>.sslip.io`, HTTP only, port 80, header `X-Origin-Verify`, response
+  timeout 60 s). Nothing else.
+- **Error pages**: **empty**. Custom error responses apply to every behavior, so a
+  `404 → /index.html, 200` rule also rewrites the API's real 404s into HTML, and the app
+  shows `Unexpected token '<' ... is not valid JSON`. Client-side routes are handled by
+  `spa-index-rewrite` instead (CloudFront Functions → published, `cloudfront-js-2.0`):
+
+  ```js
+  function handler(event) {
+    var request = event.request;
+    if (!request.uri.includes('.')) {
+      request.uri = '/index.html';
+    }
+    return request;
+  }
+  ```
+
+Quick check from any machine. Each line should print the status shown in its comment:
+
+```bash
+U=https://d1u7p8d1507l08.cloudfront.net
+curl -s -o /dev/null -w "%{http_code} %{content_type}\n" $U/                               # 200 text/html
+curl -s -o /dev/null -w "%{http_code} %{content_type}\n" $U/c/abc                          # 200 text/html
+curl -s -o /dev/null -w "%{http_code} %{content_type}\n" $U/health/health                  # 200 application/json
+curl -s -o /dev/null -w "%{http_code} %{content_type}\n" $U/api/this-route-does-not-exist  # 404 application/json
+```
+
+## Troubleshooting (things that happened during the move)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Homepage returns `404 {"detail":"Not Found"}` from `uvicorn` | `Default (*)` points at the backend (Lightsail or the old ALB) instead of S3 | Behaviors → `Default (*)` → origin = the S3 bucket |
+| Every path, `/api/*` included, returns S3 `AccessDenied` XML | The `lightsail-backend` **origin** had its domain changed to the S3 bucket, so all behaviors using it hit S3 with no access control | Origins → `lightsail-backend` → domain back to `<ip>.sslip.io`, HTTP only, header restored |
+| `/` returns 200 with `X-Cache: Error from cloudfront`; an unknown `/api/...` path returns `200 text/html` | Custom error responses are serving `index.html`, and `spa-index-rewrite` is not attached | Attach the function to `Default (*)` (viewer request), then delete every row on **Error pages** |
+| `spa-index-rewrite` is missing from the function dropdown | The function is unpublished (or was never created in this account) | Functions → create it as above → **Publish** tab → Publish function |
+| SSH to a temporary EC2 instance times out | The home connection's public IP changed, and the security group allows only the old one | Security group → SSH rule → Source **My IP** again |
+| Postgres 18 container refuses to start with a volume at `/var/lib/postgresql/data` | The 18 image stores data in `/var/lib/postgresql/18/docker` | Mount the volume at `/var/lib/postgresql` (already done in `docker-compose.yml`) |
 
 ## Adding a domain later
 
