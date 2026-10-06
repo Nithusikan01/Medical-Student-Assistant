@@ -2,11 +2,20 @@ import logging
 import time
 
 from google import genai
+from google.genai import types
 
 from rag.config.component_configs import GenerationConfig
 from rag.llm.schemas import LLMResponse, TokenUsage
 
 logger = logging.getLogger(__name__)
+
+# Gemini is never given tools here, so automatic function calling has nothing
+# to call. Left at the SDK default (on), every request still goes through the
+# SDK's AFC loop, which logs a warning recommending Chat.send_message on the
+# first call. Disabling it sends the request straight to the model.
+_REQUEST_CONFIG = types.GenerateContentConfig(
+    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+)
 
 
 def _extract_usage(response) -> TokenUsage | None:
@@ -81,6 +90,7 @@ class GeminiGenerator:
                 response = self.client.models.generate_content(
                     model=self.model_name,
                     contents=prompt,
+                    config=_REQUEST_CONFIG,
                 )
 
                 text = getattr(
