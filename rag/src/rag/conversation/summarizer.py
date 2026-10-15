@@ -4,7 +4,8 @@ from rag.conversation.memory import ConversationMemory
 from rag.llm.protocol import TextGenerator
 from rag.observability import Stage, Tracer, generation_metadata
 
-_PROMPT = dedent("""
+_PROMPT = dedent(
+    """
     You maintain a compact running summary of a study conversation.
 
     Existing summary:
@@ -22,7 +23,8 @@ _PROMPT = dedent("""
     - Keep it concise.
 
     Return ONLY the updated summary.
-    """).strip()
+    """
+).strip()
 
 
 class ConversationSummarizer:

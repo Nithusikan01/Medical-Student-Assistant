@@ -39,7 +39,8 @@ class PromptBuilder:
 
         # The rules are assembled before dedent, then substituted in, so a
         # multi-line value cannot break dedent's common-indent detection.
-        prompt = dedent("""
+        prompt = dedent(
+            """
             You are a study assistant answering questions about {corpus}.
 
             Rules:
@@ -71,7 +72,8 @@ class PromptBuilder:
             {question}
 
             Answer:
-            """).format(
+            """
+        ).format(
             corpus=self.config.corpus_description,
             no_answer=self.config.no_answer_text,
             summary=summary or "No summary available.",

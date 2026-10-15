@@ -6,7 +6,8 @@ from rag.observability import Stage, Tracer, generation_metadata
 # Formatted rather than an f-string inside dedent: substituting multi-line
 # conversation text first leaves lines at column zero, dedent then finds no
 # common indent, and the model receives the whole prompt indented.
-_PROMPT = dedent("""
+_PROMPT = dedent(
+    """
     You rewrite a follow-up question into a standalone search query for a
     document search engine.
 
@@ -31,7 +32,8 @@ _PROMPT = dedent("""
       written.
     - If the question is already standalone, output it unchanged.
     - Do NOT answer the question and do NOT explain.
-    """).strip()
+    """
+).strip()
 
 
 class QueryRewriter:
