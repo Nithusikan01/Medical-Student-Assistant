@@ -41,7 +41,9 @@ def test_generate_success():
 def test_generate_skips_the_sdk_afc_loop_and_its_warning(monkeypatch, caplog):
     # Runs the real SDK client, stopping only at the network call, so this
     # fails if a future google-genai release stops honouring `disable`.
-    sent_response = Mock(text="Hello AI", usage_metadata=None)
+    # candidates=[]: newer SDKs inspect it to decide whether to continue a
+    # truncated generation, and a bare Mock attribute is not subscriptable.
+    sent_response = Mock(text="Hello AI", usage_metadata=None, candidates=[])
     monkeypatch.setattr(Models, "_logged_afc_warning", False)
     monkeypatch.setattr(Models, "_generate_content", Mock(return_value=sent_response))
     generator = GeminiGenerator(
