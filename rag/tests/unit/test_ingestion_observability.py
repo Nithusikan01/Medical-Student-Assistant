@@ -93,8 +93,8 @@ class StubChunker:
 
 
 class StubEmbedder:
-    def embed_batch(self, chunks):
-        return list(chunks)
+    def embed_documents(self, texts):
+        return [[0.0] for _ in texts]
 
 
 class StubProcessor:

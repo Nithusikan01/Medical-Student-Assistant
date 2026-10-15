@@ -3,7 +3,7 @@ from typing import Any
 
 from rag.cache.protocol import ResponseCache
 from rag.cache.schemas import CacheLookup
-from rag.cache.semantic_cache import NullResponseCache
+from rag.conversation.memory import ConversationMemory
 from rag.conversation.query_rewriter import QueryRewriter
 from rag.conversation.small_talk import SmallTalkResponder
 from rag.conversation.store import ConversationStore
@@ -49,7 +49,9 @@ class HistoryAwareRAGService:
         Memory / Summary Update  ◄────────────────┘
     """
 
+    # Defaults only; the application passes its configured values.
     SUMMARY_TRIGGER = 12
+    CANDIDATE_K = 30
 
     def __init__(
         self,
@@ -61,6 +63,9 @@ class HistoryAwareRAGService:
         *,
         response_cache: ResponseCache | None = None,
         small_talk: SmallTalkResponder | None = None,
+        prompt_builder: PromptBuilder | None = None,
+        candidate_k: int = CANDIDATE_K,
+        summary_trigger: int = SUMMARY_TRIGGER,
         tracer: Tracer | None = None,
     ) -> None:
         self.query_service = query_service
@@ -70,12 +75,13 @@ class HistoryAwareRAGService:
         self.query_rewriter = query_rewriter
         self.summarizer = summarizer
 
-        # Keyword-only and defaulted to a cache that remembers nothing, so
-        # every existing caller keeps the behaviour it had.
-        self.response_cache: ResponseCache = (
-            response_cache if response_cache is not None else NullResponseCache()
-        )
-        self._caching = response_cache is not None
+        self.candidate_k = candidate_k
+        self.summary_trigger = summary_trigger
+
+        # None means caching is off - not a do-nothing cache - so the trace
+        # can tell "caching is off" (no cache_lookup span) apart from "every
+        # question was new" (a span recording a miss).
+        self.response_cache = response_cache
 
         # Unlike the cache, this defaults to *on*: a pipeline that answers
         # "hello" with "I don't know based on the provided document" is
@@ -83,6 +89,12 @@ class HistoryAwareRAGService:
         # a responder built with `SmallTalkConfig(enabled=False)` to get
         # the strictly-retrieval behaviour back.
         self.small_talk = small_talk if small_talk is not None else SmallTalkResponder()
+
+        # Injected so the application owns the prompt's wording - what the
+        # corpus is, and what to say when it has no answer.
+        self.prompt_builder = (
+            prompt_builder if prompt_builder is not None else PromptBuilder()
+        )
 
         # The stages this service owns directly. Retrieval, reranking,
         # rewriting and summarisation are instrumented by the components
@@ -94,7 +106,7 @@ class HistoryAwareRAGService:
         conversation_id: str,
         question: str,
         top_k: int = 5,
-        candidate_k: int = 30,
+        candidate_k: int | None = None,
         generator: TextGenerator | None = None,
         model_id: str | None = None,
     ) -> tuple[str, list[RetrievedChunk]]:
@@ -207,9 +219,12 @@ class HistoryAwareRAGService:
                 recent_messages=memory.get_recent_messages(),
             )
 
-            logger.info(
-                "Rewritten query: %s",
-                standalone_query,
+            # Lengths, not text: questions are user content, and the log
+            # file outlives the conversation they belong to.
+            logger.debug(
+                "Rewrote the question (%d -> %d chars).",
+                len(question),
+                len(standalone_query),
             )
 
         else:
@@ -254,16 +269,13 @@ class HistoryAwareRAGService:
         chunks = self.query_service.search(
             query=standalone_query,
             top_k=top_k,
-            candidate_k=candidate_k,
+            candidate_k=candidate_k if candidate_k is not None else self.candidate_k,
             use_reranker=True,
-            # Spent already, by the semantic tier above. Passing it saves
-            # dense retrieval embedding the same text a second time.
-            query_embedding=lookup.query_embedding,
         )
 
         if not chunks:
 
-            answer = "I couldn't find relevant information " "in the documents."
+            answer = self.prompt_builder.no_context_answer
 
             # Cached like any other answer. It can only go stale when the
             # corpus gains the document that would have answered it, and
@@ -293,7 +305,7 @@ class HistoryAwareRAGService:
         #
         with self.tracer.span(Stage.CONTEXT_BUILD) as span:
 
-            prompt = PromptBuilder.build_prompt(
+            prompt = self.prompt_builder.build_prompt(
                 question=question,
                 chunks=chunks,
                 summary=memory.get_summary(),
@@ -348,6 +360,7 @@ class HistoryAwareRAGService:
         conversation_id: str,
         question: str,
         top_k: int = 5,
+        candidate_k: int | None = None,
         generator: TextGenerator | None = None,
         model_id: str | None = None,
     ) -> str:
@@ -359,6 +372,7 @@ class HistoryAwareRAGService:
             conversation_id=conversation_id,
             question=question,
             top_k=top_k,
+            candidate_k=candidate_k,
             generator=generator,
             model_id=model_id,
         )
@@ -372,7 +386,7 @@ class HistoryAwareRAGService:
     def _finish(
         self,
         *,
-        memory: Any,
+        memory: ConversationMemory,
         answer: str,
         chunks: list[RetrievedChunk],
     ) -> tuple[str, list[RetrievedChunk]]:
@@ -393,7 +407,7 @@ class HistoryAwareRAGService:
         #
         # 7. Update conversation summary
         #
-        if len(memory.messages) >= self.SUMMARY_TRIGGER:
+        if len(memory.messages) >= self.summary_trigger:
 
             logger.debug("Updating conversation summary.")
 
@@ -421,7 +435,7 @@ class HistoryAwareRAGService:
         span for it: nothing ran, so there is nothing to time.
         """
 
-        if not self._caching:
+        if self.response_cache is None:
             return CacheLookup()
 
         with self.tracer.span(
@@ -471,7 +485,7 @@ class HistoryAwareRAGService:
         that acts on it sits next to the configuration that sets it.
         """
 
-        if not self._caching:
+        if self.response_cache is None:
             return
 
         self.response_cache.store(
@@ -480,6 +494,5 @@ class HistoryAwareRAGService:
             model_id=model_id,
             answer=answer,
             chunks=chunks,
-            query_embedding=lookup.query_embedding,
             context_free=not has_context,
         )

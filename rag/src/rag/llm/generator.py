@@ -5,7 +5,9 @@ from google import genai
 from google.genai import types
 
 from rag.config.component_configs import GenerationConfig
+from rag.llm.retry import EmptyResponseError, retry_delay, should_retry
 from rag.llm.schemas import LLMResponse, TokenUsage
+from rag.observability import classify
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +102,7 @@ class GeminiGenerator:
                 )
 
                 if not text:
-                    raise RuntimeError("Gemini returned an empty response.")
+                    raise EmptyResponseError("Gemini returned an empty response.")
 
                 latency = time.perf_counter() - start_time
 
@@ -120,22 +122,27 @@ class GeminiGenerator:
                     usage=_extract_usage(response),
                 )
 
-            # Deliberately broad: this is a retry wrapper around a third-party
-            # client, and any failure it raises - transport, quota, or an
-            # empty response - is worth one more attempt. Narrowing this would
-            # let an unlisted error escape the retry entirely.
+            # Broad on purpose: any failure is caught so it can be
+            # classified. Whether it is retried is should_retry's decision -
+            # a rejected key or an invalid request fails the same way every
+            # time, so only transient failures get another attempt.
             except Exception as exc:  # noqa: BLE001
 
                 last_error = exc
 
+                # The category and type, never the message: provider
+                # messages can echo the key or endpoint the call was sent to.
                 logger.warning(
-                    "Generation attempt %d/%d failed: %s",
+                    "Generation attempt %d/%d failed (%s, %s).",
                     attempt,
                     self.max_retries + 1,
-                    exc,
+                    type(exc).__name__,
+                    classify(exc).value,
                 )
 
-                if attempt <= self.max_retries:
-                    time.sleep(self.retry_delay)
+                if attempt > self.max_retries or not should_retry(exc):
+                    break
+
+                time.sleep(retry_delay(exc, attempt, self.retry_delay))
 
         raise RuntimeError("Gemini generation failed.") from last_error

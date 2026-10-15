@@ -67,16 +67,14 @@ class CacheLookup:
     """
     The result of a lookup, hit or miss.
 
-    A miss is a value rather than `None` because a miss still carries
-    something the caller wants: the query embedding the semantic tier just
-    computed. Handing it back lets dense retrieval reuse it instead of
-    embedding the same text a second time.
+    A miss is a value rather than `None` because a miss still carries what
+    the trace records about it: how it was looked for, and how full the
+    cache was.
     """
 
     match: str = MATCH_MISS
     entry: CacheEntry | None = None
     similarity: float | None = None
-    query_embedding: list[float] | None = None
     entry_count: int = 0
 
     @property

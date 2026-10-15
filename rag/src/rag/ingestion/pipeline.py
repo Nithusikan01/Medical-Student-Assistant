@@ -1,11 +1,12 @@
 import logging
+from contextlib import nullcontext
 from pathlib import Path
 
-from rag.ingestion.bm25 import BM25CorpusBuilder
+from rag.embeddings.base import TextEmbedder
 from rag.ingestion.chunker import TextChunker
 from rag.ingestion.document_loader import DocumentLoader
-from rag.ingestion.embedder import Embedder
 from rag.ingestion.processor import VectorDataProcessor
+from rag.ingestion.schemas import DocumentChunk, EmbeddedChunk
 from rag.ingestion.sinks import ChunkSink
 from rag.observability import Stage, Tracer
 from rag.vectorstore.base import VectorStoreInterface
@@ -51,11 +52,10 @@ class IngestionPipeline:
         self,
         loader: DocumentLoader,
         chunker: TextChunker,
-        embedder: Embedder,
+        embedder: TextEmbedder,
         processor: VectorDataProcessor,
         vector_store: VectorStoreInterface,
         batch_size: int,
-        bm25_corpus_path: str | Path | None = None,
         chunk_sink: ChunkSink | None = None,
         tracer: Tracer | None = None,
     ) -> None:
@@ -65,10 +65,10 @@ class IngestionPipeline:
         self.processor = processor
         self.vector_store = vector_store
         self.batch_size = batch_size
-        self.bm25_corpus_path = (
-            Path(bm25_corpus_path) if bm25_corpus_path is not None else None
-        )
-        # Takes precedence over bm25_corpus_path when supplied.
+
+        # Where each batch's chunks go besides the vector store - the BM25
+        # text source. Optional: ingesting vectors only is a valid use. Pass
+        # BM25CorpusBuilder(path) for a file-backed corpus with no database.
         self.chunk_sink = chunk_sink
 
         # Defaults to a tracer that records nothing, so the pipeline stays
@@ -124,20 +124,20 @@ class IngestionPipeline:
                 batch_number = 0
 
                 # A per-call sink wins, since it may be scoped to this document.
-                bm25_builder = chunk_sink or self.chunk_sink
+                sink = chunk_sink or self.chunk_sink
 
-                if bm25_builder is None and self.bm25_corpus_path is not None:
-                    bm25_builder = BM25CorpusBuilder(self.bm25_corpus_path)
-
-                with (
-                    bm25_builder if bm25_builder is not None else _NullContext()
-                ) as builder:
+                # Each batch goes to the sink before it is embedded and
+                # upserted. The two stores are not written atomically: if a
+                # later batch fails, vectors from earlier batches may remain
+                # after the sink discards its rows (the backend's purge
+                # sweeps those by id prefix).
+                with sink if sink is not None else nullcontext() as builder:
                     # -----------------------------------------------------
                     # Process document in batches
                     # -----------------------------------------------------
                     #
                     # Chunking gets no span of its own. chunk_batches is a
-                    # generator, so the splitting happens as each batch is
+                    # generator that splits page by page as batches are
                     # pulled; a span around the loop would re-time the whole
                     # ingestion under a name that claims to be chunking.
                     for batch_number, chunk_batch in enumerate(
@@ -166,7 +166,7 @@ class IngestionPipeline:
                                 Stage.DOCUMENT_EMBEDDING,
                                 chunks=len(chunk_batch),
                             ):
-                                embedded_chunks = self.embedder.embed_batch(chunk_batch)
+                                embedded_chunks = self._embed(chunk_batch)
 
                             # Convert to vector records
                             vector_records = self.processor.prepare(embedded_chunks)
@@ -215,10 +215,21 @@ class IngestionPipeline:
             )
             raise
 
+    def _embed(self, chunks: list[DocumentChunk]) -> list[EmbeddedChunk]:
+        vectors = self.embedder.embed_documents([chunk.text for chunk in chunks])
 
-class _NullContext:
-    def __enter__(self):
-        return None
+        if len(vectors) != len(chunks):
+            raise ValueError(
+                f"Embedder returned {len(vectors)} vectors for {len(chunks)} chunks."
+            )
 
-    def __exit__(self, exc_type, exc_value, traceback) -> bool:
-        return False
+        return [
+            EmbeddedChunk(
+                id=chunk.id,
+                chunk_index=chunk.chunk_index,
+                text=chunk.text,
+                metadata=chunk.metadata,
+                embedding=vector,
+            )
+            for chunk, vector in zip(chunks, vectors, strict=True)
+        ]

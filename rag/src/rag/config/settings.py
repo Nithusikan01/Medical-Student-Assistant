@@ -1,15 +1,16 @@
 import os
 from dataclasses import dataclass
-from pathlib import Path
 
 from rag.config.component_configs import (
     CacheConfig,
     ChunkingConfig,
+    ConversationConfig,
     EmbeddingConfig,
     GenerationConfig,
     PineconeConfig,
     PineconeEmbeddingConfig,
     PineconeRerankConfig,
+    PromptConfig,
     RetrievalConfig,
     SmallTalkConfig,
 )
@@ -26,12 +27,6 @@ class Settings:
     # Optional: enables the Groq-backed generation models. Left empty, those
     # models are simply not offered rather than the app failing to start.
     groq_api_key: str = ""
-
-    # ------------------------------------------------------------------
-    # Storage
-    # ------------------------------------------------------------------
-    storage_path: Path = Path("storage")
-    bm25_corpus_path: Path = Path("storage") / "bm25_corpus.json"
 
     # ------------------------------------------------------------------
     # Chunking
@@ -57,14 +52,20 @@ class Settings:
     hosted_embedding_dimension: int = 1024
     hosted_rerank_model: str = "bge-reranker-v2-m3"
 
+    pinecone_cloud: str = "aws"
+    pinecone_region: str = "us-east-1"
+
     # ------------------------------------------------------------------
     # Retrieval
     # ------------------------------------------------------------------
-    candidate_k: int = 20
-    dense_top_k: int = 20
-    reranking_k: int = 8
-    final_context_k: int = 5
-    similarity_threshold: float = 0.7
+    candidate_k: int = 30
+    rrf_k: int = 60
+
+    # ------------------------------------------------------------------
+    # Conversation
+    # ------------------------------------------------------------------
+    summary_trigger: int = 12
+    max_recent_messages: int = 6
 
     # ------------------------------------------------------------------
     # Generation
@@ -97,12 +98,22 @@ class Settings:
     assistant_description: str = "study assistant for the class library"
 
     # ------------------------------------------------------------------
+    # Prompt
+    #
+    # What the documents are, as a noun phrase completing "questions
+    # about ...". The engine itself is domain-free.
+    # ------------------------------------------------------------------
+    corpus_description: str = "the course material in the class library"
+
+    # ------------------------------------------------------------------
     # Component Configurations
     # ------------------------------------------------------------------
     def pinecone_config(self) -> PineconeConfig:
         return PineconeConfig(
             api_key=self.pinecone_api_key,
             index_name=self.pinecone_index_name,
+            cloud=self.pinecone_cloud,
+            region=self.pinecone_region,
         )
 
     def embedding_config(self) -> EmbeddingConfig:
@@ -153,13 +164,19 @@ class Settings:
             corpus_description=self.assistant_description,
         )
 
+    def prompt_config(self) -> PromptConfig:
+        return PromptConfig(corpus_description=self.corpus_description)
+
     def retrieval_config(self) -> RetrievalConfig:
         return RetrievalConfig(
             candidate_k=self.candidate_k,
-            dense_top_k=self.dense_top_k,
-            reranking_k=self.reranking_k,
-            final_context_k=self.final_context_k,
-            similarity_threshold=self.similarity_threshold,
+            rrf_k=self.rrf_k,
+        )
+
+    def conversation_config(self) -> ConversationConfig:
+        return ConversationConfig(
+            summary_trigger=self.summary_trigger,
+            max_recent_messages=self.max_recent_messages,
         )
 
 
@@ -187,23 +204,20 @@ def load_settings() -> Settings:
     if not gemini_api_key:
         raise ValueError("GEMINI_API_KEY environment variable is not set.")
 
-    storage_path = Path(os.getenv("STORAGE_PATH", "storage"))
-
     return Settings(
         pinecone_api_key=pinecone_api_key,
         pinecone_index_name=pinecone_index_name,
         gemini_api_key=gemini_api_key,
         groq_api_key=groq_api_key,
-        storage_path=storage_path,
-        bm25_corpus_path=storage_path / "bm25_corpus.json",
         chunk_size=int(os.getenv("CHUNK_SIZE", "500")),
         chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "50")),
         embedding_batch_size=int(os.getenv("EMBEDDING_BATCH_SIZE", "32")),
-        candidate_k=int(os.getenv("CANDIDATE_K", "20")),
-        dense_top_k=int(os.getenv("DENSE_TOP_K", "20")),
-        reranking_k=int(os.getenv("RERANKING_K", "8")),
-        final_context_k=int(os.getenv("FINAL_CONTEXT_K", "5")),
-        similarity_threshold=float(os.getenv("SIMILARITY_THRESHOLD", "0.7")),
+        pinecone_cloud=os.getenv("PINECONE_CLOUD", "aws"),
+        pinecone_region=os.getenv("PINECONE_REGION", "us-east-1"),
+        candidate_k=int(os.getenv("CANDIDATE_K", "30")),
+        rrf_k=int(os.getenv("RRF_K", "60")),
+        summary_trigger=int(os.getenv("SUMMARY_TRIGGER", "12")),
+        max_recent_messages=int(os.getenv("MAX_RECENT_MESSAGES", "6")),
         embedding_model_name=os.getenv(
             "EMBEDDING_MODEL_NAME",
             "sentence-transformers/all-MiniLM-L6-v2",
@@ -243,5 +257,9 @@ def load_settings() -> Settings:
         assistant_description=os.getenv(
             "ASSISTANT_DESCRIPTION",
             "study assistant for the class library",
+        ),
+        corpus_description=os.getenv(
+            "CORPUS_DESCRIPTION",
+            "the course material in the class library",
         ),
     )

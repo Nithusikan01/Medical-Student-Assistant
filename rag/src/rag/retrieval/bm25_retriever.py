@@ -1,6 +1,5 @@
 import logging
 
-from rag.config.component_configs import RetrievalConfig
 from rag.indexes.bm25_index import BM25Index
 from rag.observability import Stage, Tracer, summarize_scores
 from rag.retrieval.base import BaseRetriever
@@ -21,27 +20,23 @@ class BM25Retriever(BaseRetriever):
         self,
         bm25_index: BM25Index,
         *,
+        default_top_k: int = 30,
         tracer: Tracer | None = None,
     ) -> None:
         self.bm25_index = bm25_index
+        self.default_top_k = default_top_k
         self.tracer = tracer if tracer is not None else Tracer()
 
     def retrieve(
         self,
         query: str,
         top_k: int | None = None,
-        query_embedding: list[float] | None = None,
     ) -> list[RetrievedChunk]:
         """
         Retrieve the most relevant chunks using BM25 lexical search.
         """
 
-        top_k = RetrievalConfig().candidate_k if top_k is None else top_k
-
-        logger.debug(
-            "Running BM25 retrieval for query: %s",
-            query,
-        )
+        top_k = self.default_top_k if top_k is None else top_k
 
         with self.tracer.span(
             Stage.BM25_RETRIEVAL,
@@ -58,10 +53,7 @@ class BM25Retriever(BaseRetriever):
             )
 
             if not results:
-                logger.warning(
-                    "No BM25 matches found for query: %s",
-                    query,
-                )
+                logger.warning("BM25 retrieval found no matches.")
 
                 span.set(result_count=0)
 

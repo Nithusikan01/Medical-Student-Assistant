@@ -14,12 +14,11 @@ class PersistentConversationMemory(ConversationMemory):
     """
     Conversation memory backed by the database.
 
-    `messages` deliberately holds only the turns *after* the stored summary's
-    checkpoint, because HistoryAwareRAGService summarises whenever
-    len(messages) reaches its trigger. Hydrating the full history would leave
-    that condition permanently true and fire an extra LLM call every turn
-    forever. Prompt context comes from `_recent` instead, which tracks the
-    last N messages overall.
+    Keeps ConversationMemory's two views across restarts: `messages` is
+    hydrated with only the turns *after* the stored summary's checkpoint, and
+    the recent window with the last N turns overall. Hydrating the full
+    history into `messages` would leave the summary trigger permanently true
+    and fire an extra LLM call every turn forever.
     """
 
     def __init__(
@@ -34,7 +33,6 @@ class PersistentConversationMemory(ConversationMemory):
         self._session_factory = session_factory
         self.conversation_id = conversation_id
         self.last_assistant_message_id: int | None = None
-        self._recent: list[ChatMessage] = []
 
         self._hydrate()
 
@@ -101,15 +99,8 @@ class PersistentConversationMemory(ConversationMemory):
             if role == "assistant":
                 self.last_assistant_message_id = row.id
 
-        self._recent = (self._recent + [ChatMessage(role=role, content=content)])[
-            -self.max_recent_messages :
-        ]
-
-    def get_recent_messages(self) -> list[ChatMessage]:
-        return self._recent
-
     def update_summary(self, summary: str) -> None:
-        super().update_summary(summary)
+        super().update_summary(summary)  # also empties `messages`
 
         with self._session_factory() as session:
             newest_id = session.scalar(
@@ -128,10 +119,6 @@ class PersistentConversationMemory(ConversationMemory):
             )
 
             session.commit()
-
-        # Everything up to the checkpoint is now represented by the summary,
-        # so the trigger starts counting again from zero.
-        self.messages = []
 
     def attach_sources(self, sources: list[dict[str, Any]]) -> None:
         if self.last_assistant_message_id is None:
@@ -155,8 +142,14 @@ class PersistentConversationStore:
     a process-wide singleton that outlives any single request.
     """
 
-    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        max_recent_messages: int = 6,
+    ) -> None:
         self._session_factory = session_factory
+        self._max_recent_messages = max_recent_messages
 
     def get_memory(
         self,
@@ -165,4 +158,5 @@ class PersistentConversationStore:
         return PersistentConversationMemory(
             self._session_factory,
             uuid.UUID(str(conversation_id)),
+            max_recent_messages=self._max_recent_messages,
         )

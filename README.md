@@ -541,9 +541,11 @@ Optional — retrieval, chunking and generation:
   model names. The embedding dimension is fixed by the model and a Pinecone index cannot be
   resized, so changing it means creating a new index and re-ingesting.
 - `CHUNK_SIZE` / `CHUNK_OVERLAP`: PDF chunking controls.
-- `CANDIDATE_K` / `DENSE_TOP_K` / `RERANKING_K` / `FINAL_CONTEXT_K` / `SIMILARITY_THRESHOLD`:
-  retrieval tuning; note that `top_k` on the live query path comes from the request body, and
-  `CANDIDATE_K` only applies to `DenseRetriever` calls that pass no explicit `top_k`.
+- `CANDIDATE_K` (default `30`): chunks each retriever returns and the pool the reranker
+  narrows to the request's `top_k`. `RRF_K` (default `60`): the fusion constant.
+- `SUMMARY_TRIGGER` (default `12`) / `MAX_RECENT_MESSAGES` (default `6`): when a conversation
+  is summarised, and how many recent turns go into prompts verbatim.
+- `CORPUS_DESCRIPTION`: what the documents are, as the answer prompt describes them.
 - `GENERATION_MODEL_NAME` (default `gemini-3.1-flash-lite`): the model behind the
   `gemini-flash` catalog entry, and the one used for rewriting and summarization.
 - `STORAGE_PATH` (default `storage`): holds `uploads/` before ingestion deletes them. Relative
@@ -1008,7 +1010,9 @@ npm run build
 - `TelemetryMiddleware` is added before CORS so CORS ends up the outer of the two: a preflight
   is answered without ever reaching telemetry, and the browser can read the trace id because
   CORS exposes it explicitly.
-- Pinecone indexes are created automatically with cosine similarity in AWS `us-east-1`.
+- A missing Pinecone index is created at startup with cosine similarity, in
+  `PINECONE_CLOUD`/`PINECONE_REGION` (default AWS `us-east-1`); an existing index's
+  dimension is checked against the embedder.
 - Embedding and reranking use Pinecone's hosted inference by default
   (`USE_HOSTED_INFERENCE=true`); local Sentence Transformer / cross-encoder models are a
   fallback behind the `local-models` extra. Heavy imports (`sentence-transformers`,
@@ -1018,8 +1022,8 @@ npm run build
   happened to contain. It is built from `ready` documents only, which is why the dashboard
   reports chunks stored and chunks retrievable as two separate numbers.
 - Conversation memory is persisted in PostgreSQL per conversation and survives restarts.
-- `top_k` is accepted by the query API (bounded 1..20); `candidate_k` defaults to `30` inside
-  `HistoryAwareRAGService.answer_with_sources`.
+- `top_k` is accepted by the query API (bounded 1..20); `candidate_k` comes from
+  `CANDIDATE_K` (default `30`).
 - `POST /api/ingest` is a plain `def`, not `async def`, so FastAPI runs the fully synchronous,
   CPU-bound ingestion in a worker thread instead of blocking the event loop.
 - `fastapi` is pinned rather than left open-ended: the route-classification test depends on

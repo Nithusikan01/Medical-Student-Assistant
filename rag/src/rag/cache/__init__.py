@@ -9,7 +9,7 @@ from rag.cache.schemas import (
     CacheScope,
     CacheStats,
 )
-from rag.cache.semantic_cache import InMemorySemanticCache, NullResponseCache
+from rag.cache.semantic_cache import InMemorySemanticCache
 
 __all__ = [
     "MATCH_EXACT",
@@ -20,7 +20,6 @@ __all__ = [
     "CacheScope",
     "CacheStats",
     "InMemorySemanticCache",
-    "NullResponseCache",
     "ResponseCache",
     "normalize_question",
     "question_hash",

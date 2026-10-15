@@ -1,7 +1,6 @@
 import logging
 
 from rag.config.component_configs import PineconeEmbeddingConfig
-from rag.ingestion.schemas import DocumentChunk, EmbeddedChunk
 from rag.utils.exceptions import EmbeddingError
 
 logger = logging.getLogger(__name__)
@@ -56,19 +55,12 @@ class PineconeEmbedder:
             logger.exception("Failed to embed the query.")
             raise EmbeddingError("Failed to embed the query.") from exc
 
-    def embed(self, chunk: DocumentChunk) -> EmbeddedChunk:
-        return self.embed_batch([chunk])[0]
-
-    def embed_batch(
-        self,
-        chunks: list[DocumentChunk],
-    ) -> list[EmbeddedChunk]:
-        if not chunks:
-            logger.warning("No chunks provided for embedding.")
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
             return []
 
         try:
-            vectors = self._embed([chunk.text for chunk in chunks], "passage")
+            vectors = self._embed(texts, "passage")
         except Exception as exc:
             logger.exception(
                 "Failed to generate embeddings using '%s'.",
@@ -85,13 +77,4 @@ class PineconeEmbedder:
             self._dimension,
         )
 
-        return [
-            EmbeddedChunk(
-                id=chunk.id,
-                chunk_index=chunk.chunk_index,
-                text=chunk.text,
-                metadata=chunk.metadata,
-                embedding=vector,
-            )
-            for chunk, vector in zip(chunks, vectors)
-        ]
+        return vectors
