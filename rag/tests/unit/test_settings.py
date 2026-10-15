@@ -72,7 +72,7 @@ def test_the_refusal_names_the_subject_rather_than_your_course():
     assert "I can only answer questions about medicine and the health sciences" in (
         refusal
     )
-    assert "Please ask a medical question" in refusal
+    assert "please ask a medical question" in refusal
     assert "your course" not in refusal
     assert "your lecture notes" not in refusal
 
@@ -89,8 +89,9 @@ def test_the_refusal_follows_the_configured_identity():
 
     refusal = settings.scope_config().refusal_text
 
-    assert refusal.startswith(
+    assert (
         "I'm Hippocrates, your nursing study assistant. I help nursing students revise."
+        in refusal
     )
 
 
@@ -124,3 +125,11 @@ def test_the_greeting_follows_the_scope_subject():
     greeting = SmallTalkResponder(settings.small_talk_config()).reply_to("hi").text
 
     assert "Ask me anything about nursing from the class library" in greeting
+
+
+def test_the_refusal_opens_with_an_apology():
+    """It is the one reply that turns a student's request down."""
+
+    refusal = settings_from_mapping(REQUIRED).scope_config().refusal_text
+
+    assert refusal.startswith("Sorry, I can't help with that question.")

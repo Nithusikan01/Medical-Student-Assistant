@@ -156,7 +156,6 @@ class ScopeConfig:
     in_scope_examples: str = ""
 
     refusal_text: str = (
-        "That question is outside what I can help with. I'm here for the "
-        "subjects in your course material, so try asking about a topic "
-        "from your studies."
+        "Sorry, I can't help with that question. I'm here for the subjects "
+        "in the course material, so please ask about a topic from those."
     )
