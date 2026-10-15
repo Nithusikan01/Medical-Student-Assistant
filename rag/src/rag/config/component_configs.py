@@ -104,7 +104,15 @@ class SmallTalkConfig:
     corpus_description: str = "study assistant for the class library"
     # Who it helps and with what, as one sentence. Said right after the
     # name in every self-introduction, and in the scope guard's reply.
-    purpose: str = "I help you study the course material in the class library."
+    purpose: str = "I help you study and revise."
+    # What the greeting invites questions about, completing "Ask me
+    # anything about ... from the class library", and examples of such
+    # questions. The application names its subject so the greeting and the
+    # scope guard's reply describe the same thing.
+    topics: str = "the course material"
+    examples: str = (
+        "a definition, a concept you'd like explained, what a guideline says"
+    )
 
 
 @dataclass(frozen=True)

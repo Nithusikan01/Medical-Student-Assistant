@@ -187,6 +187,13 @@ class Settings:
             assistant_name=self.assistant_name,
             corpus_description=self.assistant_description,
             purpose=self.assistant_purpose,
+            # The same subject the scope guard answers, so the greeting
+            # never invites a question the guard would then decline.
+            topics=self.scope_subject,
+            examples=(
+                "a condition, a drug, a mechanism, a guideline or a topic "
+                "for a medical exam"
+            ),
         )
 
     def prompt_config(self) -> PromptConfig:
