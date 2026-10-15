@@ -12,7 +12,7 @@ import pytest
 
 from rag.cache.keys import normalize_question, question_hash
 from rag.cache.schemas import MATCH_EXACT, MATCH_MISS, MATCH_SEMANTIC
-from rag.cache.semantic_cache import InMemorySemanticCache, NullResponseCache
+from rag.cache.semantic_cache import InMemorySemanticCache
 from rag.config.component_configs import CacheConfig
 from tests.unit.helpers import make_retrieved_chunk
 
@@ -386,21 +386,6 @@ def test_a_disabled_cache_stores_and_returns_nothing():
 
     assert cache.stats().entries == 0
     assert not cache.lookup(query="What is the dose?", top_k=5, model_id="m").hit
-
-
-def test_the_null_cache_satisfies_the_same_contract():
-    cache = NullResponseCache()
-
-    cache.store(query="q", top_k=5, model_id="m", answer="a", chunks=CHUNKS)
-
-    assert not cache.lookup(query="q", top_k=5, model_id="m").hit
-    assert cache.invalidate() == 0
-    assert cache.stats().entries == 0
-
-
-# ----------------------------------------------------------------------
-# Counters
-# ----------------------------------------------------------------------
 
 
 def test_stats_count_hits_by_how_they_were_matched():

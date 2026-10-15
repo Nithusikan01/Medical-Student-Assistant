@@ -22,36 +22,6 @@ from rag.retrieval.schemas import RetrievedChunk
 logger = logging.getLogger(__name__)
 
 
-class NullResponseCache:
-    """
-    A cache that remembers nothing.
-
-    What the factory wires up when caching is switched off, so the service
-    has one code path instead of a truthiness check around every call.
-    """
-
-    def lookup(self, *, query: str, top_k: int, model_id: str) -> CacheLookup:
-        return CacheLookup()
-
-    def store(
-        self,
-        *,
-        query: str,
-        top_k: int,
-        model_id: str,
-        answer: str,
-        chunks: list[RetrievedChunk],
-        context_free: bool = True,
-    ) -> None:
-        return None
-
-    def invalidate(self) -> int:
-        return 0
-
-    def stats(self) -> CacheStats:
-        return CacheStats()
-
-
 class InMemorySemanticCache:
     """
     Recently answered questions, matched exactly or by meaning.

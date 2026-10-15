@@ -3,7 +3,6 @@ from typing import Any
 
 from rag.cache.protocol import ResponseCache
 from rag.cache.schemas import CacheLookup
-from rag.cache.semantic_cache import NullResponseCache
 from rag.conversation.memory import ConversationMemory
 from rag.conversation.query_rewriter import QueryRewriter
 from rag.conversation.small_talk import SmallTalkResponder
@@ -79,12 +78,10 @@ class HistoryAwareRAGService:
         self.candidate_k = candidate_k
         self.summary_trigger = summary_trigger
 
-        # Keyword-only and defaulted to a cache that remembers nothing, so
-        # every existing caller keeps the behaviour it had.
-        self.response_cache: ResponseCache = (
-            response_cache if response_cache is not None else NullResponseCache()
-        )
-        self._caching = response_cache is not None
+        # None means caching is off - not a do-nothing cache - so the trace
+        # can tell "caching is off" (no cache_lookup span) apart from "every
+        # question was new" (a span recording a miss).
+        self.response_cache = response_cache
 
         # Unlike the cache, this defaults to *on*: a pipeline that answers
         # "hello" with "I don't know based on the provided document" is
@@ -438,7 +435,7 @@ class HistoryAwareRAGService:
         span for it: nothing ran, so there is nothing to time.
         """
 
-        if not self._caching:
+        if self.response_cache is None:
             return CacheLookup()
 
         with self.tracer.span(
@@ -488,7 +485,7 @@ class HistoryAwareRAGService:
         that acts on it sits next to the configuration that sets it.
         """
 
-        if not self._caching:
+        if self.response_cache is None:
             return
 
         self.response_cache.store(
