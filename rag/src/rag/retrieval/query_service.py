@@ -44,7 +44,6 @@ class QueryService:
         top_k: int = 5,
         candidate_k: int = 20,
         use_reranker: bool = True,
-        query_embedding: list[float] | None = None,
     ) -> list[RetrievedChunk]:
         """
         Retrieve the most relevant chunks for a query.
@@ -62,10 +61,6 @@ class QueryService:
             use_reranker:
                 Whether to apply the cross-encoder reranker.
 
-            query_embedding:
-                A vector for `query` the caller already holds, passed
-                through to whichever retriever embeds. Saves embedding the
-                same text twice after a semantic cache miss.
 
         Returns:
             Ranked list of RetrievedChunk objects.
@@ -90,7 +85,6 @@ class QueryService:
             candidates = self.retriever.retrieve(
                 query=query,
                 top_k=candidate_k,
-                query_embedding=query_embedding,
             )
 
             if not candidates:

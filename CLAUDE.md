@@ -216,10 +216,11 @@ catalog id, passed down from `routers/query.py` because the service is handed a 
 and has no other way to know which model it is. Matching is two-tier — a free normalised-text
 hash, then a cosine scan over stored question vectors above
 `RESPONSE_CACHE_SIMILARITY_THRESHOLD` (0.95 by default, deliberately high: serving the answer to
-a *nearly* identical question is worse than missing). A semantic miss hands its embedding back
-so `QueryService.search` can pass it to `DenseRetriever` instead of embedding the same text
-twice — that is what the optional `query_embedding` parameter threaded through `QueryService` →
-`HybridRetriever` → `DenseRetriever` is for.
+a *nearly* identical question is worse than missing). The cache and `DenseRetriever` share one
+`rag/embeddings/memoizing.py::MemoizingEmbedder` (`rag_factory.py::build_query_embedder()`), so a
+semantic miss does not embed the same text twice and the two cannot drift onto different
+models. No retriever takes a precomputed vector; the `query_embedding` span is marked
+`memoized=true` when the vector came from the memo.
 
 Bounded by `RESPONSE_CACHE_MAX_ENTRIES` (LRU) and `RESPONSE_CACHE_TTL_SECONDS`, and emptied
 whenever the corpus changes. It is per-process: two uvicorn workers keep two caches and a

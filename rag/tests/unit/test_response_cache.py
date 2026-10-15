@@ -214,19 +214,25 @@ def test_a_merely_similar_question_is_not_matched():
     assert lookup.match == MATCH_MISS
 
 
-def test_a_semantic_miss_hands_back_the_embedding_it_paid_for():
+def test_cache_and_retrieval_sharing_a_memoizing_embedder_embed_once():
     """
     The saving that makes the semantic tier affordable: dense retrieval
-    reuses this vector instead of embedding the same text again.
+    reuses the vector the cache computed instead of embedding the same
+    text again - by sharing the embedder, not by passing the vector on.
     """
 
-    embedder = StubEmbedder({"what is the dose": [1.0, 0.0, 0.0]})
-    cache = build_cache(embedder)
+    from rag.embeddings.memoizing import MemoizingEmbedder
+
+    inner = StubEmbedder({"what is the dose": [1.0, 0.0, 0.0]})
+    shared = MemoizingEmbedder(inner)
+    cache = build_cache(shared)
 
     lookup = cache.lookup(query="what is the dose", top_k=5, model_id="m")
+    vector = shared.embed_query("what is the dose")  # what retrieval does
 
     assert not lookup.hit
-    assert lookup.query_embedding == pytest.approx([1.0, 0.0, 0.0])
+    assert vector == pytest.approx([1.0, 0.0, 0.0])
+    assert inner.calls == ["what is the dose"]
 
 
 def test_semantic_matching_respects_the_scope():
@@ -264,7 +270,6 @@ def test_an_embedder_that_fails_costs_the_cache_not_the_answer():
     lookup = cache.lookup(query="what dose should be given", top_k=5, model_id="m")
 
     assert not lookup.hit
-    assert lookup.query_embedding is None
 
 
 def test_the_semantic_tier_can_be_switched_off():

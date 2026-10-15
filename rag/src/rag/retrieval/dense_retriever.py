@@ -42,7 +42,6 @@ class DenseRetriever(BaseRetriever):
         self,
         query: str,
         top_k: int | None = None,
-        query_embedding: list[float] | None = None,
     ) -> list[RetrievedChunk]:
         """
         Retrieve the most relevant chunks using dense vector search.
@@ -55,21 +54,16 @@ class DenseRetriever(BaseRetriever):
             # Nested rather than alongside, because embedding the query is
             # part of dense retrieval - keeping it separate is what lets the
             # timeline show whether the embedding call or the vector search
-            # is the slow half.
-            #
-            # Skipped entirely when the caller supplies the vector, and no
-            # span is emitted then: an absent stage means the work did not
-            # happen, which is exactly what is being reported.
-            if query_embedding is None:
+            # is the slow half. A memoizing embedder marks the span when the
+            # vector was already computed (by the response cache).
+            with self.tracer.span(
+                Stage.QUERY_EMBEDDING,
+                model=getattr(self.embedding_model, "model_name", None),
+            ) as embedding_span:
 
-                with self.tracer.span(
-                    Stage.QUERY_EMBEDDING,
-                    model=getattr(self.embedding_model, "model_name", None),
-                ) as embedding_span:
+                query_embedding = self.embedding_model.embed_query(query)
 
-                    query_embedding = self.embedding_model.embed_query(query)
-
-                    embedding_span.set(dimension=len(query_embedding))
+                embedding_span.set(dimension=len(query_embedding))
 
             matches = self.vector_store.query(
                 embedding=query_embedding,

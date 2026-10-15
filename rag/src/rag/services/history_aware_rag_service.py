@@ -274,9 +274,6 @@ class HistoryAwareRAGService:
             top_k=top_k,
             candidate_k=candidate_k if candidate_k is not None else self.candidate_k,
             use_reranker=True,
-            # Spent already, by the semantic tier above. Passing it saves
-            # dense retrieval embedding the same text a second time.
-            query_embedding=lookup.query_embedding,
         )
 
         if not chunks:
@@ -500,6 +497,5 @@ class HistoryAwareRAGService:
             model_id=model_id,
             answer=answer,
             chunks=chunks,
-            query_embedding=lookup.query_embedding,
             context_free=not has_context,
         )

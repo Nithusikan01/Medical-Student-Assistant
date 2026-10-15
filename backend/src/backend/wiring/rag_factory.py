@@ -11,6 +11,7 @@ from rag.config.settings import load_settings
 from rag.conversation.query_rewriter import QueryRewriter
 from rag.conversation.small_talk import SmallTalkResponder
 from rag.conversation.summarizer import ConversationSummarizer
+from rag.embeddings.memoizing import MemoizingEmbedder
 from rag.embeddings.pinecone_embedder import PineconeEmbedder
 from rag.indexes.bm25_index import BM25Index
 from rag.ingestion.schemas import (
@@ -221,6 +222,19 @@ def build_embedder():
     from rag.embeddings.local_embedder import Embedder
 
     return Embedder(settings.embedding_config())
+
+
+@lru_cache
+def build_query_embedder() -> MemoizingEmbedder:
+    """
+    The embedder the query path uses: the response cache and dense retrieval.
+
+    One memoizing wrapper shared by both, so the vector the cache's semantic
+    tier computes is the one retrieval uses, with no parameter threaded
+    between them - and they cannot end up on different models.
+    """
+
+    return MemoizingEmbedder(build_embedder(), tracer=build_tracer())
 
 
 @lru_cache
@@ -446,9 +460,9 @@ def build_response_cache() -> ResponseCache | None:
     lookup span, and an empty `cache_lookup` stage in a trace then means
     "caching is off" instead of "every question was new".
 
-    Shares the process-wide embedder, so the semantic tier costs no extra
-    model or client - only the embedding call itself, which it hands back
-    to dense retrieval on a miss.
+    Shares the query embedder with dense retrieval, so the semantic tier
+    costs no extra model or client, and its embedding call is memoised for
+    retrieval on a miss.
     """
 
     config = load_settings().cache_config()
@@ -459,7 +473,7 @@ def build_response_cache() -> ResponseCache | None:
 
     return InMemorySemanticCache(
         config,
-        build_embedder() if config.semantic_enabled else None,
+        build_query_embedder() if config.semantic_enabled else None,
     )
 
 
@@ -512,7 +526,7 @@ def build_hybrid_retriever() -> HybridRetriever:
     #
     dense_retriever = DenseRetriever(
         vector_store=build_vector_store(),
-        embedding_model=build_embedder(),
+        embedding_model=build_query_embedder(),
         default_top_k=retrieval.candidate_k,
         tracer=tracer,
     )

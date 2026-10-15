@@ -35,7 +35,6 @@ class HybridRetriever(BaseRetriever):
         self,
         query: str,
         top_k: int | None = None,
-        query_embedding: list[float] | None = None,
     ) -> list[RetrievedChunk]:
         """
         Retrieve chunks using hybrid retrieval with Reciprocal Rank Fusion.
@@ -44,7 +43,6 @@ class HybridRetriever(BaseRetriever):
         dense_results = self.dense_retriever.retrieve(
             query=query,
             top_k=top_k,
-            query_embedding=query_embedding,
         )
 
         bm25_results = self.bm25_retriever.retrieve(

@@ -127,7 +127,6 @@ def test_answer_calls_query_service_with_rewritten_query():
         top_k=10,
         candidate_k=30,
         use_reranker=True,
-        query_embedding=None,
     )
     mock_memory.add_message.assert_any_call(
         role="user",
