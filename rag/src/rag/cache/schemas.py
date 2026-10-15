@@ -76,6 +76,10 @@ class CacheLookup:
     entry: CacheEntry | None = None
     similarity: float | None = None
     entry_count: int = 0
+    # Which corpus the cache believed in when this lookup ran. Handed back
+    # to `store`, so an answer retrieved before an invalidation cannot be
+    # stored after it. None from a cache that does not track it.
+    generation: int | None = None
 
     @property
     def hit(self) -> bool:

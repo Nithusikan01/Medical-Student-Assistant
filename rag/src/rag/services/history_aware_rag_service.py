@@ -527,4 +527,7 @@ class HistoryAwareRAGService:
             answer=answer,
             chunks=chunks,
             context_free=not has_context,
+            # The corpus this answer was retrieved from. A document ingested
+            # or deleted while it was being generated makes it stale.
+            generation=lookup.generation,
         )

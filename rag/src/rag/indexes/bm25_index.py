@@ -19,6 +19,7 @@ class _IndexState(NamedTuple):
     documents: list[DocumentChunk]
     tokenized_documents: list[list[str]]
     bm25: BM25Okapi | None
+    document_ids: frozenset[str]
 
 
 class BM25Index:
@@ -45,6 +46,9 @@ class BM25Index:
             documents=documents,
             tokenized_documents=tokenized,
             bm25=BM25Okapi(tokenized) if tokenized else None,
+            document_ids=frozenset(
+                str(chunk.metadata.document_id) for chunk in documents
+            ),
         )
 
         logger.info("BM25 index built successfully.")
@@ -82,6 +86,17 @@ class BM25Index:
     @property
     def bm25(self) -> BM25Okapi | None:
         return self._state.bm25
+
+    @property
+    def document_ids(self) -> frozenset[str]:
+        """
+        Every document this index holds chunks for.
+
+        Built with the index and swapped in with it, so it always describes
+        the same corpus a concurrent search is scoring.
+        """
+
+        return self._state.document_ids
 
     def search(self, query: str, top_k: int = 5) -> list[tuple[DocumentChunk, float]]:
         """

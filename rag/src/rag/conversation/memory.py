@@ -32,7 +32,7 @@ class ConversationMemory:
         message = ChatMessage(role=role, content=content)
 
         self.messages.append(message)
-        self._recent = (self._recent + [message])[-self.max_recent_messages :]
+        self._recent = self._window(self._recent + [message])
 
     def get_recent_messages(self) -> list[ChatMessage]:
         return list(self._recent)
@@ -45,3 +45,10 @@ class ConversationMemory:
 
         # Everything pending is now represented by the summary.
         self.messages = []
+
+    def _window(self, messages: list[ChatMessage]) -> list[ChatMessage]:
+        # A slice of [-0:] is the whole list, not an empty one.
+        if self.max_recent_messages <= 0:
+            return []
+
+        return messages[-self.max_recent_messages :]
