@@ -22,6 +22,8 @@ export interface SourceMetadata {
   // Where a passage that runs across a page break ends. Absent or null on
   // sources saved before chunks could span pages.
   end_page_number?: number | null;
+  // Set only for a web search result (retrieval_method "web").
+  url?: string | null;
   chunk_index: number;
 }
 

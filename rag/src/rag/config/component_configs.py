@@ -160,3 +160,28 @@ class ScopeConfig:
         "question. I'm here for the subjects in the course material, so "
         "please feel free to ask about a topic from those instead."
     )
+
+
+@dataclass(frozen=True)
+class WebSearchConfig:
+    """
+    The web search fallback for medical questions the library cannot answer.
+
+    Off unless an API key is configured. The domains default to none (the
+    whole web); the application supplies a list of trusted sources.
+    """
+
+    enabled: bool = False
+    api_key: str = ""
+    max_results: int = 5
+    # Tavily's "basic" costs one credit per search, "advanced" two.
+    search_depth: str = "basic"
+    include_domains: tuple[str, ...] = ()
+    timeout_seconds: float = 15.0
+    # Put in front of every answer drawn from the web, so a student never
+    # mistakes it for one grounded in the class library.
+    notice: str = (
+        "Note: I couldn't find this in the class library, so this answer "
+        "comes from a web search instead. Please check the web sources "
+        "listed below before relying on it."
+    )

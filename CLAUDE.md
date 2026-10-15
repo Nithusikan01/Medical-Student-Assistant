@@ -93,7 +93,7 @@ The Vite dev server (port 5173) proxies `/api` and `/health` to `http://127.0.0.
 
 Ingestion runs through `POST /api/ingest` (multipart upload) or the frontend's upload panel — there is no CLI ingestion entry point (`main.py` was deleted). Ad-hoc scripts in `backend/scripts/` are for manual smoke testing, not part of the test suite: `ask_cv_from_terminal.py` (interactive Q&A), `smoke_rag.py` / `smoke_retrieval.py` / `smoke_reranker.py` (component smoke checks — named `smoke_` rather than `test_` so pytest cannot collect them), `run_ingestion.py` (BM25 corpus verification, despite the name), `migrate_bm25_corpus.py` (imports a legacy `bm25_corpus.json` into the database), `reset_pinecone.py` (drops and recreates the Pinecone index — destructive), `seed_model_pricing.py` (fills `model_pricing`, without which cost reads "not priced" rather than zero), `evaluate_retrieval.py` (runs a labelled evaluation set against the live retriever — see Offline evaluation below).
 
-Required environment variables (`.env` in `backend/`, templated by `backend/.env.example`): `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `GEMINI_API_KEY`, `DATABASE_URL` (PostgreSQL), `SECRET_KEY` (JWT signing, ≥32 chars), `ADMIN_EMAIL`/`ADMIN_PASSWORD` (seeded on startup, idempotent — an existing password is never overwritten). Retrieval/chunking/embedding/cache variables (`CHUNK_SIZE`, `CANDIDATE_K`, `USE_HOSTED_INFERENCE`, `RESPONSE_CACHE_*`, etc.) are parsed by `rag/src/rag/config/settings.py::settings_from_mapping`, which `backend/src/backend/settings.py::load_settings` calls with `os.environ` (the engine never reads the environment itself — a ruff `TID251` ban on `os.environ`/`os.getenv` enforces it); auth/database variables (`ALLOW_OPEN_REGISTRATION`, `COOKIE_SECURE`, `CORS_ORIGINS`, token TTLs) are read in `backend/src/backend/auth/config.py::load_auth_config` and `backend/src/backend/app.py::cors_origins`. `.env` files are gitignored at any depth; `.env.example` files are committed. Apply migrations before first run: `cd backend; alembic upgrade head` (`0001_auth_tables` through `0013_chunk_page_range`; the later ones add generation usage, telemetry, token cost, an ingestion heartbeat, an error taxonomy, answer feedback and chunk page ranges).
+Required environment variables (`.env` in `backend/`, templated by `backend/.env.example`): `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `GEMINI_API_KEY`, `DATABASE_URL` (PostgreSQL), `SECRET_KEY` (JWT signing, ≥32 chars), `ADMIN_EMAIL`/`ADMIN_PASSWORD` (seeded on startup, idempotent — an existing password is never overwritten). Optional: `TAVILY_API_KEY` (turns on the web search fallback). Retrieval/chunking/embedding/cache variables (`CHUNK_SIZE`, `CANDIDATE_K`, `USE_HOSTED_INFERENCE`, `RESPONSE_CACHE_*`, etc.) are parsed by `rag/src/rag/config/settings.py::settings_from_mapping`, which `backend/src/backend/settings.py::load_settings` calls with `os.environ` (the engine never reads the environment itself — a ruff `TID251` ban on `os.environ`/`os.getenv` enforces it); auth/database variables (`ALLOW_OPEN_REGISTRATION`, `COOKIE_SECURE`, `CORS_ORIGINS`, token TTLs) are read in `backend/src/backend/auth/config.py::load_auth_config` and `backend/src/backend/app.py::cors_origins`. `.env` files are gitignored at any depth; `.env.example` files are committed. Apply migrations before first run: `cd backend; alembic upgrade head` (`0001_auth_tables` through `0013_chunk_page_range`; the later ones add generation usage, telemetry, token cost, an ingestion heartbeat, an error taxonomy, answer feedback and chunk page ranges).
 
 ## Architecture
 
@@ -157,6 +157,8 @@ conversation_id + question
      for generation, then to unranked retrieval order; local cross-encoder only when hosted
      inference is disabled entirely)
   -> PromptBuilder -> GeminiGenerator
+  -> no chunks, or the "I don't know" sentence, and the scope verdict was a confident IN
+       --> WebSearcher (Tavily) -> answer from web pages, prefixed with a notice (see Web search fallback)
   -> answer + structured RetrievedChunk sources
   -> ResponseCache stores the answer (only if the prompt carried no conversation history)
   -> ConversationMemory updated; summarized once message count hits HistoryAwareRAGService.SUMMARY_TRIGGER
@@ -224,6 +226,34 @@ exams.") — so every self-introduction says the same thing. Each check emits a 
 holds the tables of in- and out-of-scope questions the prompt is tuned against; run it with
 `RUN_REAL_RAG_TESTS=1` after changing the prompt, the subject or the model.
 
+### Web search fallback
+
+When the library cannot answer a question that is about the subject, `HistoryAwareRAGService`
+searches the web through `rag/websearch/` and answers from the pages it finds, with
+`WebSearchConfig.notice` ("Note: I couldn't find this in the class library, so this answer
+comes from a web search instead...") in front of the answer. Two triggers: retrieval returned
+no chunks, or the generator replied with the no-answer sentence (`PromptBuilder.is_no_answer`,
+matched loosely on case, punctuation and apostrophes). In the second case the library answer
+is replaced and only web passages go into the second prompt.
+
+It runs only when `ScopeGuard.classify()` returned `"in"`. The guard fails open for refusals,
+so "unclear", "error" and "disabled" still get a library answer, but none of them is evidence
+the question is medical, so none of them reaches the web. With no scope guard wired there is
+no fallback at all (`build_web_searcher()` returns `None`). It fails soft: a failed or empty
+search, or a web answer that is itself the no-answer sentence, leaves the library answer
+standing. The search is restricted to `WEB_SEARCH_INCLUDE_DOMAINS` (a curated list of medical
+sources by default; set it to an empty string for the whole web).
+
+`WebSearcher` is a Protocol (`search(query) -> list[WebResult]`); `TavilySearcher` (the
+`tavily-python` SDK, imported lazily) is the only implementation. The fallback is on when
+`TAVILY_API_KEY` is set and `WEB_SEARCH_ENABLED` is not `false`. Web results become
+`RetrievedChunk`s with `retrieval_method="web"`, `document_id="web"` and the page address in
+`RetrievedChunkMetadata.url`, which the API returns as `SourceMetadata.url` and the frontend
+renders as a link. The search opens a `Stage.WEB_SEARCH` span (`trigger`, `result_count`) and
+the second answer a generation span with `source="web"`. Web answers are cached under the same
+rules as library ones, and the cache is emptied when the corpus changes, so an answer that came
+from the web is not served after the document that answers it is uploaded.
+
 ### Response cache
 
 `rag/cache/` holds answers already given, so a repeated question skips retrieval, reranking and
@@ -286,7 +316,7 @@ All under `rag/src/rag/` unless noted:
 2. `vectorstore/schemas.py`: `VectorRecord`/`VectorRecordMetadata` (what's sent to Pinecone — `to_dict()` drops `None` fields because Pinecone rejects null metadata values) and `SearchResult` (what comes back from a query).
 3. `retrieval/schemas.py`: `RetrievedChunk`/`RetrievedChunkMetadata` (post-retrieval/rerank, carries `dense_score`/`bm25_score`/`hybrid_score`/`rerank_score`/`retrieval_method`).
 
-`ChunkMetadata` is the canonical field set (document_id, filename, source_path, page_number/end_page_number, start_char/end_char, chunk_size, overlap_size) — every field is one the chunker fills; fields nothing populated (section titles, heading levels, element ids, language, tags) were removed rather than carried as permanent nulls. `TextChunker` splits the whole document's text with pages joined by `\n`, so a chunk can span a page break: `page_number` is where it starts, `end_page_number` where it ends (null for chunks ingested before migration 0013), and `start_char`/`end_char` are offsets into that joined text. The other metadata dataclasses mirror it for their stage, and `VectorRecordMetadata.from_dict` ignores keys it does not know, because vectors outlive the code that wrote them. When adding a metadata field, it typically needs updating in all three places plus `BM25Metadata` (`ingestion/bm25/schemas.py`), the API's `SourceMetadata` (`backend/src/backend/schemas/query.py` — note `source_path` is deliberately dropped there, since it's the server's absolute upload path), and the mirrored TypeScript interface in `frontend/src/types.ts`.
+`ChunkMetadata` is the canonical field set (document_id, filename, source_path, page_number/end_page_number, start_char/end_char, chunk_size, overlap_size) — every field is one the chunker fills; fields nothing populated (section titles, heading levels, element ids, language, tags) were removed rather than carried as permanent nulls. `TextChunker` splits the whole document's text with pages joined by `\n`, so a chunk can span a page break: `page_number` is where it starts, `end_page_number` where it ends (null for chunks ingested before migration 0013), and `start_char`/`end_char` are offsets into that joined text. The other metadata dataclasses mirror it for their stage, and `VectorRecordMetadata.from_dict` ignores keys it does not know, because vectors outlive the code that wrote them. When adding a metadata field, it typically needs updating in all three places plus `BM25Metadata` (`ingestion/bm25/schemas.py`), the API's `SourceMetadata` (`backend/src/backend/schemas/query.py` — note `source_path` is deliberately dropped there, since it's the server's absolute upload path, while `url` is set only for web search sources), and the mirrored TypeScript interface in `frontend/src/types.ts`.
 
 ### Offline evaluation
 

@@ -141,3 +141,19 @@ def test_reasoning_without_a_verdict_fails_open():
     guard = ScopeGuard(ReplyingGenerator("It asks about the eyes."), MEDICAL)
 
     assert guard.is_in_scope("What is 2 eyes plus 2 eyes?") is True
+
+
+@pytest.mark.parametrize(
+    "reply, verdict",
+    [("VERDICT: IN", "in"), ("VERDICT: OUT", "out"), ("hmm", "unclear")],
+)
+def test_classify_reports_the_verdict(reply, verdict):
+    assert ScopeGuard(ReplyingGenerator(reply), MEDICAL).classify("q") == verdict
+
+
+def test_classify_reports_a_failed_check_and_a_disabled_guard():
+    failing = ScopeGuard(ReplyingGenerator(error=RuntimeError("down")), MEDICAL)
+    disabled = ScopeGuard(ReplyingGenerator("OUT"), ScopeConfig(enabled=False))
+
+    assert failing.classify("q") == "error"
+    assert disabled.classify("q") == "disabled"

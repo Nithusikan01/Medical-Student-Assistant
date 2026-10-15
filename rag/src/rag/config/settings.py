@@ -14,6 +14,7 @@ from rag.config.component_configs import (
     RetrievalConfig,
     ScopeConfig,
     SmallTalkConfig,
+    WebSearchConfig,
 )
 
 
@@ -130,6 +131,39 @@ class Settings:
     scope_refusal: str = ""
 
     # ------------------------------------------------------------------
+    # Web search fallback
+    #
+    # A medical question the class library cannot answer is searched on
+    # the web (Tavily) instead, and the answer is labelled as such. On only
+    # when TAVILY_API_KEY is set.
+    # ------------------------------------------------------------------
+    tavily_api_key: str = ""
+    web_search_enabled: bool = True
+    web_search_max_results: int = 5
+    web_search_depth: str = "basic"
+    # Sources a medical student can rely on. An empty list searches the
+    # whole web.
+    web_search_include_domains: tuple[str, ...] = (
+        "ncbi.nlm.nih.gov",
+        "nih.gov",
+        "medlineplus.gov",
+        "cdc.gov",
+        "fda.gov",
+        "who.int",
+        "nhs.uk",
+        "nice.org.uk",
+        "msdmanuals.com",
+        "merckmanuals.com",
+        "mayoclinic.org",
+        "clevelandclinic.org",
+        "cochranelibrary.com",
+        "bmj.com",
+        "thelancet.com",
+        "nejm.org",
+    )
+    web_search_notice: str = WebSearchConfig.notice
+
+    # ------------------------------------------------------------------
     # Component Configurations
     # ------------------------------------------------------------------
     def pinecone_config(self) -> PineconeConfig:
@@ -224,6 +258,16 @@ class Settings:
             "library."
         )
 
+    def web_search_config(self) -> WebSearchConfig:
+        return WebSearchConfig(
+            enabled=self.web_search_enabled and bool(self.tavily_api_key),
+            api_key=self.tavily_api_key,
+            max_results=self.web_search_max_results,
+            search_depth=self.web_search_depth,
+            include_domains=self.web_search_include_domains,
+            notice=self.web_search_notice,
+        )
+
     def retrieval_config(self) -> RetrievalConfig:
         return RetrievalConfig(
             candidate_k=self.candidate_k,
@@ -244,6 +288,18 @@ def _bool(values: Mapping[str, str], name: str, default: bool) -> bool:
         return default
 
     return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _domains(raw: str | None, default: tuple[str, ...]) -> tuple[str, ...]:
+    """
+    A comma-separated domain list. Unset keeps the default; set but empty
+    means no restriction - the whole web.
+    """
+
+    if raw is None:
+        return default
+
+    return tuple(domain.strip() for domain in raw.split(",") if domain.strip())
 
 
 def settings_from_mapping(values: Mapping[str, str]) -> Settings:
@@ -335,4 +391,13 @@ def settings_from_mapping(values: Mapping[str, str]) -> Settings:
         scope_subject=values.get("SCOPE_SUBJECT", Settings.scope_subject),
         scope_examples=values.get("SCOPE_EXAMPLES", Settings.scope_examples),
         scope_refusal=values.get("SCOPE_REFUSAL", Settings.scope_refusal),
+        tavily_api_key=values.get("TAVILY_API_KEY", ""),
+        web_search_enabled=_bool(values, "WEB_SEARCH_ENABLED", True),
+        web_search_max_results=int(values.get("WEB_SEARCH_MAX_RESULTS", "5")),
+        web_search_depth=values.get("WEB_SEARCH_DEPTH", "basic"),
+        web_search_include_domains=_domains(
+            values.get("WEB_SEARCH_INCLUDE_DOMAINS"),
+            Settings.web_search_include_domains,
+        ),
+        web_search_notice=values.get("WEB_SEARCH_NOTICE", Settings.web_search_notice),
     )

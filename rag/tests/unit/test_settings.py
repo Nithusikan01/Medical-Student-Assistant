@@ -135,3 +135,36 @@ def test_the_refusal_opens_with_an_apology():
     assert refusal.startswith(
         "Apologies for the inconvenience - I'm not able to help with that question."
     )
+
+
+def test_web_search_is_on_only_with_a_tavily_key():
+    assert not settings_from_mapping(REQUIRED).web_search_config().enabled
+    assert (
+        settings_from_mapping({**REQUIRED, "TAVILY_API_KEY": "tvly-x"})
+        .web_search_config()
+        .enabled
+    )
+    assert (
+        not settings_from_mapping(
+            {**REQUIRED, "TAVILY_API_KEY": "tvly-x", "WEB_SEARCH_ENABLED": "false"}
+        )
+        .web_search_config()
+        .enabled
+    )
+
+
+def test_web_search_domains_default_to_trusted_medical_sources():
+    domains = settings_from_mapping(REQUIRED).web_search_config().include_domains
+
+    assert "ncbi.nlm.nih.gov" in domains
+    assert "who.int" in domains
+
+
+def test_web_search_domains_can_be_replaced_or_opened_up():
+    custom = settings_from_mapping(
+        {**REQUIRED, "WEB_SEARCH_INCLUDE_DOMAINS": "nhs.uk, nice.org.uk"}
+    )
+    whole_web = settings_from_mapping({**REQUIRED, "WEB_SEARCH_INCLUDE_DOMAINS": ""})
+
+    assert custom.web_search_config().include_domains == ("nhs.uk", "nice.org.uk")
+    assert whole_web.web_search_config().include_domains == ()

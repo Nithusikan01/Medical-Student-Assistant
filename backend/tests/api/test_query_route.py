@@ -178,6 +178,29 @@ def test_a_source_spanning_a_page_break_reports_both_pages(
     assert not {"section_title", "heading_level", "language", "tags"} & set(metadata)
 
 
+def test_a_web_source_carries_its_url(
+    client: TestClient, user, auth_headers, rag_service
+):
+    rag_service.sources = [
+        RetrievedChunk(
+            id="web_abc",
+            text="Sepsis is an extreme response to infection.",
+            score=0.9,
+            metadata=RetrievedChunkMetadata(
+                document_id="web",
+                filename="Sepsis - MedlinePlus",
+                source_path="https://medlineplus.gov/sepsis.html",
+                chunk_index=0,
+                url="https://medlineplus.gov/sepsis.html",
+            ),
+        )
+    ]
+
+    metadata = ask(client, user, auth_headers).json()["sources"][0]["metadata"]
+
+    assert metadata["url"] == "https://medlineplus.gov/sepsis.html"
+
+
 def test_the_server_filesystem_path_is_never_disclosed(
     client: TestClient, user, auth_headers, rag_service
 ):

@@ -1,8 +1,10 @@
+import hashlib
 import logging
 from typing import Any
 
 from rag.cache.protocol import ResponseCache
 from rag.cache.schemas import CacheLookup
+from rag.config.component_configs import WebSearchConfig
 from rag.conversation.memory import ConversationMemory
 from rag.conversation.query_rewriter import QueryRewriter
 from rag.conversation.scope_guard import ScopeGuard
@@ -13,7 +15,12 @@ from rag.llm.prompt_builder import PromptBuilder
 from rag.llm.protocol import TextGenerator
 from rag.observability import Stage, Tracer, generation_metadata
 from rag.retrieval.query_service import QueryService
-from rag.retrieval.schemas import RetrievedChunk
+from rag.retrieval.schemas import (
+    RetrievalMethod,
+    RetrievedChunk,
+    RetrievedChunkMetadata,
+)
+from rag.websearch import WebResult, WebSearcher
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +73,8 @@ class HistoryAwareRAGService:
         small_talk: SmallTalkResponder | None = None,
         prompt_builder: PromptBuilder | None = None,
         scope_guard: ScopeGuard | None = None,
+        web_searcher: WebSearcher | None = None,
+        web_notice: str = WebSearchConfig.notice,
         candidate_k: int = CANDIDATE_K,
         summary_trigger: int = SUMMARY_TRIGGER,
         tracer: Tracer | None = None,
@@ -101,6 +110,12 @@ class HistoryAwareRAGService:
         # None, like the cache: no guard means every question is answered,
         # and no scope_check span appears on the trace.
         self.scope_guard = scope_guard
+
+        # The fallback for medical questions the library cannot answer. None
+        # means off. It runs only when the scope guard positively judged the
+        # question in scope, so it needs a guard to be wired at all.
+        self.web_searcher = web_searcher
+        self.web_notice = web_notice
 
         # The stages this service owns directly. Retrieval, reranking,
         # rewriting and summarisation are instrumented by the components
@@ -280,9 +295,13 @@ class HistoryAwareRAGService:
         #
         # The refusal is never cached: a wrong one would then be repeated
         # to everyone who asked the same thing until the cache expired.
-        if self.scope_guard is not None and not self.scope_guard.is_in_scope(
-            standalone_query
-        ):
+        verdict = (
+            self.scope_guard.classify(standalone_query)
+            if self.scope_guard is not None
+            else "unchecked"
+        )
+
+        if verdict == "out":
 
             logger.info(
                 "Declining an out-of-scope question in conversation '%s'.",
@@ -295,6 +314,11 @@ class HistoryAwareRAGService:
                 chunks=[],
             )
 
+        # Only a confident "in" earns a web search: an unclear or failed
+        # check is answered from the library as usual, but is not trusted
+        # enough to send to the web.
+        web_allowed = self.web_searcher is not None and verdict == "in"
+
         #
         # 3. Retrieve supporting chunks
         #
@@ -304,6 +328,31 @@ class HistoryAwareRAGService:
             candidate_k=candidate_k if candidate_k is not None else self.candidate_k,
             use_reranker=True,
         )
+
+        if not chunks and web_allowed:
+
+            web = self._answer_from_web(
+                question=question,
+                query=standalone_query,
+                memory=memory,
+                generator=generator,
+                trigger="no_chunks",
+            )
+
+            if web is not None:
+                answer, chunks = web
+
+                self._remember(
+                    query=standalone_query,
+                    top_k=top_k,
+                    model_id=cache_model_id,
+                    answer=answer,
+                    chunks=chunks,
+                    lookup=lookup,
+                    has_context=has_context,
+                )
+
+                return self._finish(memory=memory, answer=answer, chunks=chunks)
 
         if not chunks:
 
@@ -371,6 +420,25 @@ class HistoryAwareRAGService:
                 answer_chars=len(answer),
                 **generation_metadata(response),
             )
+
+        #
+        # 5a. Nothing in the library answered it
+        #
+        # Retrieval found passages, but the model said they do not answer
+        # the question. For a medical question, look on the web instead; if
+        # that finds nothing usable either, the library's answer stands.
+        if web_allowed and self.prompt_builder.is_no_answer(answer):
+
+            web = self._answer_from_web(
+                question=question,
+                query=standalone_query,
+                memory=memory,
+                generator=generator,
+                trigger="no_answer",
+            )
+
+            if web is not None:
+                answer, chunks = web
 
         #
         # 5b. Remember it
@@ -448,6 +516,75 @@ class HistoryAwareRAGService:
             memory.update_summary(summary)
 
         return answer, chunks
+
+    # ------------------------------------------------------------------
+    # Web search fallback
+    # ------------------------------------------------------------------
+
+    def _answer_from_web(
+        self,
+        *,
+        question: str,
+        query: str,
+        memory: ConversationMemory,
+        generator: TextGenerator | None,
+        trigger: str,
+    ) -> tuple[str, list[RetrievedChunk]] | None:
+        """
+        Answer from a web search, or None to keep the library's answer.
+
+        The answer is grounded the same way a library answer is - the same
+        prompt, with the web passages as its only context - and prefixed
+        with a notice, so a student never mistakes it for something from
+        the class library. None when the search fails, finds nothing, or
+        its passages do not answer the question either.
+        """
+
+        assert self.web_searcher is not None
+
+        with self.tracer.span(Stage.WEB_SEARCH, trigger=trigger) as span:
+
+            try:
+                results = self.web_searcher.search(query)
+            except Exception as exc:  # noqa: BLE001 - a fallback must not fail
+                # The library's answer is still a valid answer; a provider
+                # outage must not turn it into an error.
+                logger.warning(
+                    "Web search failed (%s); keeping the library answer.",
+                    type(exc).__name__,
+                )
+                span.mark_error(exc)
+                return None
+
+            span.set(result_count=len(results))
+
+            if not results:
+                return None
+
+        chunks = [_web_chunk(result, rank) for rank, result in enumerate(results)]
+
+        prompt = self.prompt_builder.build_prompt(
+            question=question,
+            chunks=chunks,
+            summary=memory.get_summary(),
+            recent_messages=memory.get_recent_messages(),
+        )
+
+        with self.tracer.span(Stage.GENERATION, source="web") as span:
+
+            response = (generator or self.generator).generate(prompt)
+
+            span.set(
+                answer_chars=len(response.text or ""),
+                **generation_metadata(response),
+            )
+
+        if not response.text or self.prompt_builder.is_no_answer(response.text):
+            return None
+
+        logger.info("Answered from a web search (%s).", trigger)
+
+        return f"{self.web_notice}\n\n{response.text}", chunks
 
     # ------------------------------------------------------------------
     # Cache
@@ -531,3 +668,26 @@ class HistoryAwareRAGService:
             # or deleted while it was being generated makes it stale.
             generation=lookup.generation,
         )
+
+
+def _web_chunk(result: WebResult, rank: int) -> RetrievedChunk:
+    """
+    A web result in the shape every source takes, so the prompt, the cache
+    and the API handle it like any other.
+    """
+
+    return RetrievedChunk(
+        # Stable per page, so the same page cited twice is the same source.
+        id="web_" + hashlib.sha1(result.url.encode("utf-8")).hexdigest()[:16],
+        text=result.content,
+        metadata=RetrievedChunkMetadata(
+            document_id="web",
+            filename=result.title,
+            source_path=result.url,
+            chunk_index=rank,
+            url=result.url,
+        ),
+        score=result.score,
+        rank=rank + 1,
+        retrieval_method=RetrievalMethod.WEB,
+    )
