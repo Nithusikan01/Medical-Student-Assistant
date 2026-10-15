@@ -68,7 +68,7 @@ def load_bm25_documents(corpus_path: Path) -> list[DocumentChunk]:
 
 
 def build_query_service(corpus_path: Path, use_reranker: bool) -> QueryService:
-    from rag.config.settings import load_settings
+    from backend.settings import load_settings
     from rag.indexes.bm25_index import BM25Index
     from rag.embeddings.local_embedder import Embedder
     from rag.retrieval.bm25_retriever import BM25Retriever

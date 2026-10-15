@@ -5,7 +5,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from rag.config.settings import load_settings
+from backend.settings import load_settings
 from rag.ingestion.bm25 import BM25CorpusBuilder
 from rag.ingestion.chunker import TextChunker
 from rag.ingestion.document_loader import DocumentLoader

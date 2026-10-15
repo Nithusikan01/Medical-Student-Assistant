@@ -7,7 +7,6 @@ from pathlib import Path
 from rag.cache.protocol import ResponseCache
 from rag.cache.semantic_cache import InMemorySemanticCache
 from rag.config.component_configs import GenerationConfig
-from rag.config.settings import load_settings
 from rag.conversation.query_rewriter import QueryRewriter
 from rag.conversation.small_talk import SmallTalkResponder
 from rag.conversation.summarizer import ConversationSummarizer
@@ -44,6 +43,7 @@ from backend.observability import (
     load_telemetry_config,
 )
 from backend.services.conversation_store import PersistentConversationStore
+from backend.settings import load_settings
 from backend.wiring.bm25_loader import load_bm25_documents
 
 logger = logging.getLogger(__name__)
