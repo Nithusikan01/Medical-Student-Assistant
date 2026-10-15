@@ -203,10 +203,14 @@ class Settings:
     def _default_scope_refusal(self) -> str:
         return (
             f"I'm {self.assistant_name}, your {self.assistant_description}. "
-            f"{self.assistant_purpose} That question is outside what I can "
-            "help with, so try asking about something from your course - a "
-            "condition, a drug, a mechanism, an exam topic, or anything from "
-            "your lecture notes."
+            # Names the subject outright rather than "your course": the app
+            # is open to anyone who registers, and a student of another
+            # field would read "your course" as their own.
+            f"{self.assistant_purpose} I can only answer questions about "
+            f"{self.scope_subject}, so I can't help with that one. Please "
+            "ask a medical question instead - for example about a condition, "
+            "a drug, a mechanism or a medical exam topic - and I'll answer "
+            "from the class library."
         )
 
     def retrieval_config(self) -> RetrievalConfig:

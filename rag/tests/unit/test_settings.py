@@ -60,7 +60,21 @@ def test_the_assistant_introduces_itself_as_a_medical_study_assistant():
         assert "help medical students" in text
         assert "prepare for exams" in text
 
-    assert "medicine and the health sciences" not in refusal
+
+def test_the_refusal_names_the_subject_rather_than_your_course():
+    """
+    Students of other fields can register too, and would read "your
+    course" as their own. The refusal says which subject it answers.
+    """
+
+    refusal = settings_from_mapping(REQUIRED).scope_config().refusal_text
+
+    assert "I can only answer questions about medicine and the health sciences" in (
+        refusal
+    )
+    assert "Please ask a medical question" in refusal
+    assert "your course" not in refusal
+    assert "your lecture notes" not in refusal
 
 
 def test_the_refusal_follows_the_configured_identity():
