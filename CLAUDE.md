@@ -190,8 +190,10 @@ turn five costs no LLM call either. The reply is never cached (there is nothing 
 entry keyed on "hi" would occupy a cache sized for real questions) and emits a `Stage.SMALL_TALK`
 span carrying the intent — the only thing that separates "answered without retrieving" from
 "retrieved and found nothing" on a trace, since both produce no generation span and no sources.
-`SmallTalkConfig` (`enabled`, `assistant_name`, `corpus_description`, `purpose`, from
-`SMALL_TALK_ENABLED` / `ASSISTANT_NAME` / `ASSISTANT_DESCRIPTION` / `ASSISTANT_PURPOSE`) keeps the application's name out of `rag/`;
+`SmallTalkConfig` (`enabled`, `assistant_name`, `corpus_description`, `purpose`, `topics`,
+`examples`, from `SMALL_TALK_ENABLED` / `ASSISTANT_NAME` / `ASSISTANT_DESCRIPTION` /
+`ASSISTANT_PURPOSE`, with `topics` taken from `SCOPE_SUBJECT` so the greeting never invites a
+question the scope guard would decline) keeps the application's name out of `rag/`;
 `enabled=false` restores the strictly-retrieval behaviour.
 
 ### Scope guard

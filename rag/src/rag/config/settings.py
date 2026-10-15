@@ -187,6 +187,13 @@ class Settings:
             assistant_name=self.assistant_name,
             corpus_description=self.assistant_description,
             purpose=self.assistant_purpose,
+            # The same subject the scope guard answers, so the greeting
+            # never invites a question the guard would then decline.
+            topics=self.scope_subject,
+            examples=(
+                "a condition, a drug, a mechanism, a guideline or a topic "
+                "for a medical exam"
+            ),
         )
 
     def prompt_config(self) -> PromptConfig:
@@ -202,15 +209,19 @@ class Settings:
 
     def _default_scope_refusal(self) -> str:
         return (
-            f"I'm {self.assistant_name}, your {self.assistant_description}. "
+            # Opens with an apology: this is the one reply that turns a
+            # student's request down.
+            "Apologies for the inconvenience - I'm not able to help with that "
+            f"question. I'm {self.assistant_name}, your "
+            f"{self.assistant_description}. "
             # Names the subject outright rather than "your course": the app
             # is open to anyone who registers, and a student of another
             # field would read "your course" as their own.
             f"{self.assistant_purpose} I can only answer questions about "
-            f"{self.scope_subject}, so I can't help with that one. Please "
-            "ask a medical question instead - for example about a condition, "
-            "a drug, a mechanism or a medical exam topic - and I'll answer "
-            "from the class library."
+            f"{self.scope_subject}. Please feel free to ask a medical question "
+            "instead - for example about a condition, a drug, a mechanism or "
+            "a medical exam topic - and I'll gladly answer it from the class "
+            "library."
         )
 
     def retrieval_config(self) -> RetrievalConfig:

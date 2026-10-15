@@ -257,10 +257,10 @@ class SmallTalkResponder:
 
     def _introduction(self) -> str:
         return (
-            f"{self._identity()} Ask me anything from the course material in "
-            "the class library - a definition, a concept you'd like "
-            "explained, what a guideline says - and I'll answer from those "
-            "documents and show you the passages I used.\n\n"
+            f"{self._identity()} Ask me anything about {self.config.topics} "
+            f"from the class library - {self.config.examples} - and I'll "
+            "answer from those documents and show you the passages I used."
+            "\n\n"
             "What would you like to look up?"
         )
 

@@ -72,7 +72,7 @@ def test_the_refusal_names_the_subject_rather_than_your_course():
     assert "I can only answer questions about medicine and the health sciences" in (
         refusal
     )
-    assert "Please ask a medical question" in refusal
+    assert "Please feel free to ask a medical question" in refusal
     assert "your course" not in refusal
     assert "your lecture notes" not in refusal
 
@@ -89,8 +89,9 @@ def test_the_refusal_follows_the_configured_identity():
 
     refusal = settings.scope_config().refusal_text
 
-    assert refusal.startswith(
+    assert (
         "I'm Hippocrates, your nursing study assistant. I help nursing students revise."
+        in refusal
     )
 
 
@@ -98,3 +99,39 @@ def test_an_explicit_refusal_overrides_the_composed_one():
     settings = settings_from_mapping({**REQUIRED, "SCOPE_REFUSAL": "Not here."})
 
     assert settings.scope_config().refusal_text == "Not here."
+
+
+def test_the_greeting_invites_medical_questions():
+    """
+    The greeting used to invite "anything from the course material", which
+    a student of another field would read as their own course. It names the
+    same subject the scope guard answers, with medical examples.
+    """
+
+    from rag.conversation.small_talk import SmallTalkResponder
+
+    settings = settings_from_mapping(REQUIRED)
+    greeting = SmallTalkResponder(settings.small_talk_config()).reply_to("hi").text
+
+    assert "Ask me anything about medicine and the health sciences" in greeting
+    assert "a topic for a medical exam" in greeting
+    assert "anything from the course material" not in greeting
+
+
+def test_the_greeting_follows_the_scope_subject():
+    from rag.conversation.small_talk import SmallTalkResponder
+
+    settings = settings_from_mapping({**REQUIRED, "SCOPE_SUBJECT": "nursing"})
+    greeting = SmallTalkResponder(settings.small_talk_config()).reply_to("hi").text
+
+    assert "Ask me anything about nursing from the class library" in greeting
+
+
+def test_the_refusal_opens_with_an_apology():
+    """It is the one reply that turns a student's request down."""
+
+    refusal = settings_from_mapping(REQUIRED).scope_config().refusal_text
+
+    assert refusal.startswith(
+        "Apologies for the inconvenience - I'm not able to help with that question."
+    )
