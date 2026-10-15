@@ -78,6 +78,10 @@ black rag\src rag\tests backend\src backend\tests
 ruff check rag\src rag\tests backend\src backend\tests
 ```
 
+CI pins `black==25.1.0`; format with that version (`python -m black` after installing the dev extras), since newer releases lay out some strings differently and fail `black --check`.
+
+Pull requests: enable auto-merge (merge-commit method, matching the existing history) on every PR as soon as it is opened, so it merges once CI is green and nothing else blocks it. Requires "Allow auto-merge" in the repository settings; if enabling it fails, say so rather than merging by hand. A PR stacked on another merges after its base does.
+
 Run the API and the frontend (two terminals):
 
 ```powershell
