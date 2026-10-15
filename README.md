@@ -541,9 +541,11 @@ Optional — retrieval, chunking and generation:
   model names. The embedding dimension is fixed by the model and a Pinecone index cannot be
   resized, so changing it means creating a new index and re-ingesting.
 - `CHUNK_SIZE` / `CHUNK_OVERLAP`: PDF chunking controls.
-- `CANDIDATE_K` / `DENSE_TOP_K` / `RERANKING_K` / `FINAL_CONTEXT_K` / `SIMILARITY_THRESHOLD`:
-  retrieval tuning; note that `top_k` on the live query path comes from the request body, and
-  `CANDIDATE_K` only applies to `DenseRetriever` calls that pass no explicit `top_k`.
+- `CANDIDATE_K` (default `30`): chunks each retriever returns and the pool the reranker
+  narrows to the request's `top_k`. `RRF_K` (default `60`): the fusion constant.
+- `SUMMARY_TRIGGER` (default `12`) / `MAX_RECENT_MESSAGES` (default `6`): when a conversation
+  is summarised, and how many recent turns go into prompts verbatim.
+- `CORPUS_DESCRIPTION`: what the documents are, as the answer prompt describes them.
 - `GENERATION_MODEL_NAME` (default `gemini-3.1-flash-lite`): the model behind the
   `gemini-flash` catalog entry, and the one used for rewriting and summarization.
 - `STORAGE_PATH` (default `storage`): holds `uploads/` before ingestion deletes them. Relative

@@ -1,6 +1,5 @@
 import os
 from dataclasses import dataclass
-from pathlib import Path
 
 from rag.config.component_configs import (
     CacheConfig,
@@ -28,12 +27,6 @@ class Settings:
     # Optional: enables the Groq-backed generation models. Left empty, those
     # models are simply not offered rather than the app failing to start.
     groq_api_key: str = ""
-
-    # ------------------------------------------------------------------
-    # Storage
-    # ------------------------------------------------------------------
-    storage_path: Path = Path("storage")
-    bm25_corpus_path: Path = Path("storage") / "bm25_corpus.json"
 
     # ------------------------------------------------------------------
     # Chunking
@@ -211,15 +204,11 @@ def load_settings() -> Settings:
     if not gemini_api_key:
         raise ValueError("GEMINI_API_KEY environment variable is not set.")
 
-    storage_path = Path(os.getenv("STORAGE_PATH", "storage"))
-
     return Settings(
         pinecone_api_key=pinecone_api_key,
         pinecone_index_name=pinecone_index_name,
         gemini_api_key=gemini_api_key,
         groq_api_key=groq_api_key,
-        storage_path=storage_path,
-        bm25_corpus_path=storage_path / "bm25_corpus.json",
         chunk_size=int(os.getenv("CHUNK_SIZE", "500")),
         chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "50")),
         embedding_batch_size=int(os.getenv("EMBEDDING_BATCH_SIZE", "32")),

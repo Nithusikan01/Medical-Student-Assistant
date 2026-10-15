@@ -88,3 +88,15 @@ def test_ensure_index_rejects_an_index_of_the_wrong_dimension():
 
     with pytest.raises(VectorStoreError, match="dimension 384"):
         _store_with_client(client, dimension=1024).ensure_index()
+
+
+def test_the_index_is_connected_on_first_use_not_at_construction():
+    client = MagicMock()
+
+    store = _store_with_client(client)
+
+    client.Index.assert_not_called()
+
+    store.count()
+
+    client.Index.assert_called_once_with("idx")

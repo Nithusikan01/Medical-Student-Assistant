@@ -1,6 +1,6 @@
 import logging
-from typing import Any
 
+from rag.embeddings.base import TextEmbedder
 from rag.observability import Stage, Tracer, summarize_scores
 from rag.retrieval.base import BaseRetriever
 from rag.retrieval.schemas import (
@@ -20,7 +20,7 @@ class DenseRetriever(BaseRetriever):
     def __init__(
         self,
         vector_store: VectorStoreInterface,
-        embedding_model: Any,
+        embedding_model: TextEmbedder,
         *,
         default_top_k: int = 30,
         tracer: Tracer | None = None,

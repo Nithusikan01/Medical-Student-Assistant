@@ -57,7 +57,20 @@ class PineconeVectorStore(VectorStoreInterface):
         self.dimension = dimension
         self.batch_size = batch_size
 
-        self.index = self.pc.Index(self.index_name)
+        # Connected on first use: resolving an index's host needs the index
+        # to exist, and creating it is ensure_index()'s job.
+        self._index = None
+
+    @property
+    def index(self):
+        if self._index is None:
+            self._index = self.pc.Index(self.index_name)
+
+        return self._index
+
+    @index.setter
+    def index(self, value) -> None:
+        self._index = value
 
     def ensure_index(self) -> None:
         """

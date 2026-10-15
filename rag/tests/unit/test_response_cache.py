@@ -39,7 +39,7 @@ class StubEmbedder:
 
         return self.vectors[text]
 
-    def embed_batch(self, chunks):  # pragma: no cover - never used here
+    def embed_documents(self, texts):  # pragma: no cover - never used here
         raise NotImplementedError
 
 
@@ -51,7 +51,7 @@ class ExplodingEmbedder:
     def embed_query(self, text: str) -> list[float]:
         raise RuntimeError("the embedding service is down")
 
-    def embed_batch(self, chunks):  # pragma: no cover - never used here
+    def embed_documents(self, texts):  # pragma: no cover - never used here
         raise NotImplementedError
 
 

@@ -218,7 +218,7 @@ def build_embedder():
         return PineconeEmbedder(settings.hosted_embedding_config())
 
     # Imported lazily so the module loads without torch installed.
-    from rag.ingestion.embedder import Embedder
+    from rag.embeddings.local_embedder import Embedder
 
     return Embedder(settings.embedding_config())
 

@@ -27,35 +27,7 @@ class TextChunker:
         document: LoadedDocument,
     ) -> list[DocumentChunk]:
 
-        chunks: list[DocumentChunk] = []
-
-        global_chunk_index = 0
-
-        for page in document.pages:
-
-            raw_chunks = self.splitter.split_text(page.text)
-
-            for page_chunk_index, chunk_text in enumerate(raw_chunks):
-
-                metadata = ChunkMetadata(
-                    document_id=document.document_id,
-                    filename=document.filename,
-                    source_path=document.source_path,
-                    page_number=page.page_number,
-                    chunk_size=len(chunk_text),
-                    overlap_size=self.config.chunk_overlap,
-                )
-
-                chunks.append(
-                    DocumentChunk(
-                        id=f"{document.document_id}_chunk_{global_chunk_index}",
-                        chunk_index=global_chunk_index,
-                        text=chunk_text,
-                        metadata=metadata,
-                    )
-                )
-
-                global_chunk_index += 1
+        chunks = list(self.iter_chunks(document))
 
         logger.info(
             "Created %d chunks from %d pages.",
@@ -65,33 +37,73 @@ class TextChunker:
 
         return chunks
 
+    def iter_chunks(
+        self,
+        document: LoadedDocument,
+    ) -> Iterator[DocumentChunk]:
+        """
+        Split the document page by page, yielding chunks as they are made.
+
+        Chunks do not cross page boundaries, so every chunk has exactly one
+        page number to cite.
+        """
+
+        global_chunk_index = 0
+
+        for page in document.pages:
+
+            for chunk_text in self.splitter.split_text(page.text):
+
+                yield DocumentChunk(
+                    id=f"{document.document_id}_chunk_{global_chunk_index}",
+                    chunk_index=global_chunk_index,
+                    text=chunk_text,
+                    metadata=ChunkMetadata(
+                        document_id=document.document_id,
+                        filename=document.filename,
+                        source_path=document.source_path,
+                        page_number=page.page_number,
+                        chunk_size=len(chunk_text),
+                        overlap_size=self.config.chunk_overlap,
+                    ),
+                )
+
+                global_chunk_index += 1
+
     def chunk_batches(
         self,
         document: LoadedDocument,
         batch_size: int = 100,
     ) -> Iterator[list[DocumentChunk]]:
+        """
+        Yield batches of at most `batch_size` chunks.
 
-        chunks = self.chunk(document)
+        Lazy: a page is split only when the batch that needs it is pulled,
+        so the first batch is embedded while later pages are still unsplit,
+        rather than after the whole document has been chunked up front.
+        """
+
+        batch: list[DocumentChunk] = []
+        total = 0
+
+        for chunk in self.iter_chunks(document):
+
+            batch.append(chunk)
+
+            if len(batch) == batch_size:
+                total += len(batch)
+                yield batch
+                batch = []
+
+        if batch:
+            total += len(batch)
+            yield batch
 
         logger.info(
-            "Yielding %d chunks in batches of %d.",
-            len(chunks),
-            batch_size,
+            "Created %d chunks from %d pages.",
+            total,
+            len(document.pages),
         )
-
-        for start in range(0, len(chunks), batch_size):
-
-            end = min(start + batch_size, len(chunks))
-
-            batch = chunks[start:end]
-
-            logger.debug(
-                "Yielding chunk batch %d-%d.",
-                start,
-                end - 1,
-            )
-
-            yield batch
 
 
 def _build_splitter(

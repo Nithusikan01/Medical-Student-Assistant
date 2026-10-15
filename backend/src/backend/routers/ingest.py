@@ -1,6 +1,8 @@
 import hashlib
 import logging
+import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
@@ -49,7 +51,9 @@ def get_ingestion_pipeline() -> IngestionPipeline:
 
 @lru_cache
 def get_upload_service() -> UploadService:
-    return UploadService()
+    # Uploads are the application's storage, not the engine's, so the
+    # variable is read here rather than through rag's Settings.
+    return UploadService(Path(os.getenv("STORAGE_PATH", "storage")) / "uploads")
 
 
 @lru_cache

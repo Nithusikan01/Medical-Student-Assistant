@@ -39,7 +39,7 @@ def build_pipeline(**kwargs):
 
     chunks = [make_chunk(index=0, document_id="doc-1")]
     chunker.chunk_batches.return_value = iter([chunks])
-    embedder.embed_batch.return_value = ["embedded"]
+    embedder.embed_documents.return_value = [[0.1]]
     processor.prepare.return_value = ["record"]
 
     pipeline = IngestionPipeline(
@@ -72,15 +72,15 @@ def test_pipeline_passes_chunks_to_sink():
     assert sink.batches == [chunks]
 
 
-def test_pipeline_prefers_sink_over_corpus_path(tmp_path):
-    sink = RecordingSink()
-    corpus = tmp_path / "corpus.json"
-    pipeline, _ = build_pipeline(chunk_sink=sink, bm25_corpus_path=corpus)
+def test_a_per_call_sink_wins_over_the_constructor_sink():
+    default_sink = RecordingSink()
+    call_sink = RecordingSink()
+    pipeline, chunks = build_pipeline(chunk_sink=default_sink)
 
-    pipeline.ingest("cv.pdf")
+    pipeline.ingest("cv.pdf", chunk_sink=call_sink)
 
-    assert sink.batches
-    assert not corpus.exists()
+    assert call_sink.batches == [chunks]
+    assert default_sink.batches == []
 
 
 def test_pipeline_forwards_supplied_document_id():
