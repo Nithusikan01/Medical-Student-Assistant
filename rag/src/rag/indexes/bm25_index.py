@@ -1,11 +1,18 @@
 import logging
+import re
 from typing import NamedTuple
 
+import numpy as np
 from rank_bm25 import BM25Okapi
 
 from rag.ingestion.schemas import DocumentChunk
 
 logger = logging.getLogger(__name__)
+
+# Runs of letters and digits. Punctuation separates tokens instead of
+# sticking to them, so "sepsis?" and "sepsis." both match "sepsis", and
+# "IL-6" splits into "il" + "6" identically in the documents and the query.
+_TOKEN = re.compile(r"\w+")
 
 
 class _IndexState(NamedTuple):
@@ -96,15 +103,20 @@ class BM25Index:
 
         tokenized_query = self._tokenize(query)
 
-        scores = state.bm25.get_scores(tokenized_query)
+        if not tokenized_query or top_k <= 0:
+            return []
 
-        ranked_indices = sorted(
-            range(len(scores)), key=lambda i: scores[i], reverse=True
-        )
+        scores = np.asarray(state.bm25.get_scores(tokenized_query))
+
+        # Only the top_k are ordered. Sorting every score in the corpus on
+        # every query costs O(n log n) for results nobody asked for.
+        k = min(top_k, len(scores))
+        candidates = np.argpartition(-scores, k - 1)[:k]
+        ranked_indices = candidates[np.argsort(-scores[candidates], kind="stable")]
 
         results = []
 
-        for index in ranked_indices[:top_k]:
+        for index in ranked_indices:
 
             score = float(scores[index])
 
@@ -112,7 +124,7 @@ class BM25Index:
             if score <= 0:
                 continue
 
-            results.append((state.documents[index], score))
+            results.append((state.documents[int(index)], score))
 
         logger.debug("BM25 retrieved %d chunks for query '%s'", len(results), query)
 
@@ -121,12 +133,14 @@ class BM25Index:
     @staticmethod
     def _tokenize(text: str) -> list[str]:
         """
-        Basic tokenizer.
+        Case-folded runs of letters and digits.
 
-        Lowercases and splits on whitespace.
+        Splitting on whitespace alone kept punctuation attached, so the last
+        word of nearly every question ("...of sepsis?") never matched the
+        same word in the documents.
         """
 
-        return text.lower().split()
+        return _TOKEN.findall(text.casefold())
 
     def __len__(self) -> int:
         return len(self._state.documents)
