@@ -50,11 +50,6 @@ class DenseRetriever(BaseRetriever):
 
         top_k = self.default_top_k if top_k is None else top_k
 
-        logger.debug(
-            "Running dense retrieval for query: %s",
-            query,
-        )
-
         with self.tracer.span(Stage.DENSE_RETRIEVAL, top_k=top_k) as span:
 
             # Nested rather than alongside, because embedding the query is
@@ -83,10 +78,7 @@ class DenseRetriever(BaseRetriever):
             )
 
             if not matches:
-                logger.warning(
-                    "No dense retrieval matches found for query: %s",
-                    query,
-                )
+                logger.warning("Dense retrieval found no matches.")
 
                 span.set(result_count=0)
 

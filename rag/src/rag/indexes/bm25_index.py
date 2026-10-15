@@ -96,9 +96,7 @@ class BM25Index:
         state = self._state
 
         if state.bm25 is None:
-            logger.debug(
-                "BM25 index is empty; returning no results for query '%s'", query
-            )
+            logger.debug("BM25 index is empty; returning no results.")
             return []
 
         tokenized_query = self._tokenize(query)
@@ -126,7 +124,7 @@ class BM25Index:
 
             results.append((state.documents[int(index)], score))
 
-        logger.debug("BM25 retrieved %d chunks for query '%s'", len(results), query)
+        logger.debug("BM25 retrieved %d chunks.", len(results))
 
         return results
 

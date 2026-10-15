@@ -41,11 +41,6 @@ class HybridRetriever(BaseRetriever):
         Retrieve chunks using hybrid retrieval with Reciprocal Rank Fusion.
         """
 
-        logger.debug(
-            "Running hybrid retrieval for query: %s",
-            query,
-        )
-
         dense_results = self.dense_retriever.retrieve(
             query=query,
             top_k=top_k,

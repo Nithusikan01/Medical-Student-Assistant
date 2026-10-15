@@ -222,9 +222,12 @@ class HistoryAwareRAGService:
                 recent_messages=memory.get_recent_messages(),
             )
 
-            logger.info(
-                "Rewritten query: %s",
-                standalone_query,
+            # Lengths, not text: questions are user content, and the log
+            # file outlives the conversation they belong to.
+            logger.debug(
+                "Rewrote the question (%d -> %d chars).",
+                len(question),
+                len(standalone_query),
             )
 
         else:

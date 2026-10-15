@@ -71,9 +71,10 @@ class QueryService:
             Ranked list of RetrievedChunk objects.
         """
 
-        logger.info(
-            "Retrieving candidates for query: %s",
-            query,
+        logger.debug(
+            "Retrieving %d candidates (%d chars of query).",
+            candidate_k,
+            len(query),
         )
 
         with self.tracer.span(

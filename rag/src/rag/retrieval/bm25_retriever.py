@@ -39,11 +39,6 @@ class BM25Retriever(BaseRetriever):
 
         top_k = self.default_top_k if top_k is None else top_k
 
-        logger.debug(
-            "Running BM25 retrieval for query: %s",
-            query,
-        )
-
         with self.tracer.span(
             Stage.BM25_RETRIEVAL,
             top_k=top_k,
@@ -59,10 +54,7 @@ class BM25Retriever(BaseRetriever):
             )
 
             if not results:
-                logger.warning(
-                    "No BM25 matches found for query: %s",
-                    query,
-                )
+                logger.warning("BM25 retrieval found no matches.")
 
                 span.set(result_count=0)
 
