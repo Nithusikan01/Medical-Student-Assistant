@@ -43,3 +43,48 @@ def test_pinecone_query():
     )
     assert result[0].id == "1"
     assert result[0].metadata.text == "example"
+
+
+def _store_with_client(client, dimension=1024):
+    from rag.config.component_configs import PineconeConfig
+    from rag.vectorstore.pinecone_store import PineconeVectorStore
+
+    return PineconeVectorStore(
+        PineconeConfig(api_key="k", index_name="idx", cloud="gcp", region="eu"),
+        dimension=dimension,
+        client=client,
+    )
+
+
+def test_constructing_the_store_does_not_create_an_index():
+    client = MagicMock()
+
+    _store_with_client(client)
+
+    client.create_index.assert_not_called()
+    client.has_index.assert_not_called()
+
+
+def test_ensure_index_creates_a_missing_index_where_configured():
+    client = MagicMock()
+    client.has_index.return_value = False
+
+    _store_with_client(client, dimension=384).ensure_index()
+
+    kwargs = client.create_index.call_args.kwargs
+    assert kwargs["dimension"] == 384
+    assert kwargs["spec"].cloud == "gcp"
+    assert kwargs["spec"].region == "eu"
+
+
+def test_ensure_index_rejects_an_index_of_the_wrong_dimension():
+    import pytest
+
+    from rag.utils.exceptions import VectorStoreError
+
+    client = MagicMock()
+    client.has_index.return_value = True
+    client.describe_index.return_value.dimension = 384
+
+    with pytest.raises(VectorStoreError, match="dimension 384"):
+        _store_with_client(client, dimension=1024).ensure_index()

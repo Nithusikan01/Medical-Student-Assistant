@@ -37,14 +37,15 @@ def test_retriever_returns_chunks():
     vector_data = VectorDataProcessor().prepare(embedded_chunks)
 
     vector_store = PineconeVectorStore(
-        settings=settings,
+        config=settings.pinecone_config(),
         dimension=embedder.dimension,
     )
+    vector_store.ensure_index()
     vector_store.upsert(vector_data)
 
     retriever = DenseRetriever(
         vector_store=vector_store,
-        embedding_model=embedder.model,
+        embedding_model=embedder,
     )
 
     retrieved_chunks = retriever.retrieve(

@@ -84,13 +84,14 @@ def build_query_service(corpus_path: Path, use_reranker: bool) -> QueryService:
     dimension = len(embedder.model.encode("dimension_check"))
 
     vector_store = PineconeVectorStore(
-        settings=settings,
+        config=settings.pinecone_config(),
         dimension=dimension,
     )
+    vector_store.ensure_index()
 
     dense_retriever = DenseRetriever(
         vector_store=vector_store,
-        embedding_model=embedder.model,
+        embedding_model=embedder,
     )
 
     bm25_index = BM25Index(load_bm25_documents(corpus_path))

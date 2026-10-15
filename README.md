@@ -1008,7 +1008,9 @@ npm run build
 - `TelemetryMiddleware` is added before CORS so CORS ends up the outer of the two: a preflight
   is answered without ever reaching telemetry, and the browser can read the trace id because
   CORS exposes it explicitly.
-- Pinecone indexes are created automatically with cosine similarity in AWS `us-east-1`.
+- A missing Pinecone index is created at startup with cosine similarity, in
+  `PINECONE_CLOUD`/`PINECONE_REGION` (default AWS `us-east-1`); an existing index's
+  dimension is checked against the embedder.
 - Embedding and reranking use Pinecone's hosted inference by default
   (`USE_HOSTED_INFERENCE=true`); local Sentence Transformer / cross-encoder models are a
   fallback behind the `local-models` extra. Heavy imports (`sentence-transformers`,
@@ -1018,8 +1020,8 @@ npm run build
   happened to contain. It is built from `ready` documents only, which is why the dashboard
   reports chunks stored and chunks retrievable as two separate numbers.
 - Conversation memory is persisted in PostgreSQL per conversation and survives restarts.
-- `top_k` is accepted by the query API (bounded 1..20); `candidate_k` defaults to `30` inside
-  `HistoryAwareRAGService.answer_with_sources`.
+- `top_k` is accepted by the query API (bounded 1..20); `candidate_k` comes from
+  `CANDIDATE_K` (default `30`).
 - `POST /api/ingest` is a plain `def`, not `async def`, so FastAPI runs the fully synchronous,
   CPU-bound ingestion in a worker thread instead of blocking the event loop.
 - `fastapi` is pinned rather than left open-ended: the route-classification test depends on

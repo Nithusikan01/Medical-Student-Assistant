@@ -25,6 +25,7 @@ def build_service(
     generated_text="Generated answer",
     response_cache=None,
     has_context=True,
+    **service_kwargs,
 ):
     mock_query_service = Mock()
     mock_generator = Mock()
@@ -61,6 +62,7 @@ def build_service(
         query_rewriter=mock_query_rewriter,
         summarizer=mock_summarizer,
         response_cache=response_cache,
+        **service_kwargs,
     )
 
     return (
@@ -424,3 +426,28 @@ def test_a_question_that_opens_with_a_greeting_is_still_retrieved():
 
     mock_query_service.search.assert_called_once()
     mock_generator.generate.assert_called_once()
+
+
+def test_configured_candidate_k_reaches_retrieval():
+    service, mock_query_service, *_ = build_service(candidate_k=12)
+
+    service.answer(conversation_id="c", question="q", top_k=3)
+
+    assert mock_query_service.search.call_args.kwargs["candidate_k"] == 12
+
+
+def test_per_call_candidate_k_overrides_the_configured_one():
+    service, mock_query_service, *_ = build_service(candidate_k=12)
+
+    service.answer(conversation_id="c", question="q", top_k=3, candidate_k=7)
+
+    assert mock_query_service.search.call_args.kwargs["candidate_k"] == 7
+
+
+def test_configured_summary_trigger_is_used():
+    service, *_, mock_summarizer, mock_memory = build_service(summary_trigger=2)
+    mock_memory.messages = [Mock(), Mock()]
+
+    service.answer(conversation_id="c", question="q")
+
+    mock_summarizer.summarize.assert_called_once_with(mock_memory)

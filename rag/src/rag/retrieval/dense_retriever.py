@@ -1,7 +1,6 @@
 import logging
 from typing import Any
 
-from rag.config.component_configs import RetrievalConfig
 from rag.observability import Stage, Tracer, summarize_scores
 from rag.retrieval.base import BaseRetriever
 from rag.retrieval.schemas import (
@@ -23,10 +22,16 @@ class DenseRetriever(BaseRetriever):
         vector_store: VectorStoreInterface,
         embedding_model: Any,
         *,
+        default_top_k: int = 30,
         tracer: Tracer | None = None,
     ) -> None:
         self.vector_store = vector_store
         self.embedding_model = embedding_model
+
+        # Used only when a caller passes no top_k. Taken here rather than
+        # from a RetrievalConfig() built on the spot, which would silently
+        # ignore whatever the deployment configured.
+        self.default_top_k = default_top_k
 
         # Keyword-only and defaulted, so every existing call site - tests,
         # scripts, the factory - keeps working untouched. The default
@@ -43,7 +48,7 @@ class DenseRetriever(BaseRetriever):
         Retrieve the most relevant chunks using dense vector search.
         """
 
-        top_k = RetrievalConfig().candidate_k if top_k is None else top_k
+        top_k = self.default_top_k if top_k is None else top_k
 
         logger.debug(
             "Running dense retrieval for query: %s",

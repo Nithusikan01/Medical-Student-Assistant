@@ -5,6 +5,9 @@ from dataclasses import dataclass
 class PineconeConfig:
     api_key: str
     index_name: str
+    # Where a missing index is created. Only read by ensure_index().
+    cloud: str = "aws"
+    region: str = "us-east-1"
 
 
 @dataclass(frozen=True)
@@ -41,11 +44,25 @@ class ChunkingConfig:
 
 @dataclass(frozen=True)
 class RetrievalConfig:
-    candidate_k: int = 20
-    dense_top_k: int = 20
-    reranking_k: int = 8
-    final_context_k: int = 5
-    similarity_threshold: float = 0.7
+    """
+    How wide retrieval casts its net before reranking narrows it.
+
+    The final number of sources is not here: it is `top_k` on each request,
+    because the caller chooses it.
+    """
+
+    # Chunks each retriever returns, and the pool the reranker scores.
+    candidate_k: int = 30
+    # Reciprocal Rank Fusion constant used by HybridRetriever.
+    rrf_k: int = 60
+
+
+@dataclass(frozen=True)
+class ConversationConfig:
+    # Pending turns (since the last summary) that trigger a new summary.
+    summary_trigger: int = 12
+    # Most recent turns included verbatim in prompts.
+    max_recent_messages: int = 6
 
 
 @dataclass(frozen=True)

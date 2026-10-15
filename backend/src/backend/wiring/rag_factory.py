@@ -391,10 +391,22 @@ def build_reranker():
 
 @lru_cache
 def build_vector_store() -> PineconeVectorStore:
-    return PineconeVectorStore(
-        settings=load_settings(),
+    """
+    The one vector store, with its index created if missing.
+
+    Provisioning is a decision made here, at composition, not a side effect
+    of constructing the store - and a dimension mismatch with the embedder
+    fails now rather than on the first upload.
+    """
+
+    store = PineconeVectorStore(
+        config=load_settings().pinecone_config(),
         dimension=build_embedder().dimension,
     )
+
+    store.ensure_index()
+
+    return store
 
 
 @lru_cache
@@ -493,12 +505,15 @@ def build_hybrid_retriever() -> HybridRetriever:
     #
     tracer = build_tracer()
 
+    retrieval = load_settings().retrieval_config()
+
     #
     # Dense Retriever
     #
     dense_retriever = DenseRetriever(
         vector_store=build_vector_store(),
         embedding_model=build_embedder(),
+        default_top_k=retrieval.candidate_k,
         tracer=tracer,
     )
 
@@ -507,12 +522,14 @@ def build_hybrid_retriever() -> HybridRetriever:
     #
     bm25_retriever = BM25Retriever(
         bm25_index=build_bm25_index(),
+        default_top_k=retrieval.candidate_k,
         tracer=tracer,
     )
 
     return HybridRetriever(
         dense_retriever=dense_retriever,
         bm25_retriever=bm25_retriever,
+        rrf_k=retrieval.rrf_k,
         tracer=tracer,
     )
 
@@ -547,7 +564,12 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
     #
     # Conversation Components
     #
-    session_manager = PersistentConversationStore(get_session_factory())
+    conversation = settings.conversation_config()
+
+    session_manager = PersistentConversationStore(
+        get_session_factory(),
+        max_recent_messages=conversation.max_recent_messages,
+    )
 
     query_rewriter = QueryRewriter(llm, tracer=tracer)
 
@@ -565,6 +587,8 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
         response_cache=build_response_cache(),
         small_talk=SmallTalkResponder(settings.small_talk_config()),
         prompt_builder=PromptBuilder(settings.prompt_config()),
+        candidate_k=settings.retrieval_config().candidate_k,
+        summary_trigger=conversation.summary_trigger,
         tracer=tracer,
     )
 

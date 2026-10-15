@@ -155,8 +155,14 @@ class PersistentConversationStore:
     a process-wide singleton that outlives any single request.
     """
 
-    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        max_recent_messages: int = 6,
+    ) -> None:
         self._session_factory = session_factory
+        self._max_recent_messages = max_recent_messages
 
     def get_memory(
         self,
@@ -165,4 +171,5 @@ class PersistentConversationStore:
         return PersistentConversationMemory(
             self._session_factory,
             uuid.UUID(str(conversation_id)),
+            max_recent_messages=self._max_recent_messages,
         )

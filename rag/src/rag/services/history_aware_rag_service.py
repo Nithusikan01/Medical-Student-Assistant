@@ -49,7 +49,9 @@ class HistoryAwareRAGService:
         Memory / Summary Update  ◄────────────────┘
     """
 
+    # Defaults only; the application passes its configured values.
     SUMMARY_TRIGGER = 12
+    CANDIDATE_K = 30
 
     def __init__(
         self,
@@ -62,6 +64,8 @@ class HistoryAwareRAGService:
         response_cache: ResponseCache | None = None,
         small_talk: SmallTalkResponder | None = None,
         prompt_builder: PromptBuilder | None = None,
+        candidate_k: int = CANDIDATE_K,
+        summary_trigger: int = SUMMARY_TRIGGER,
         tracer: Tracer | None = None,
     ) -> None:
         self.query_service = query_service
@@ -70,6 +74,9 @@ class HistoryAwareRAGService:
         self.session_manager = session_manager
         self.query_rewriter = query_rewriter
         self.summarizer = summarizer
+
+        self.candidate_k = candidate_k
+        self.summary_trigger = summary_trigger
 
         # Keyword-only and defaulted to a cache that remembers nothing, so
         # every existing caller keeps the behaviour it had.
@@ -101,7 +108,7 @@ class HistoryAwareRAGService:
         conversation_id: str,
         question: str,
         top_k: int = 5,
-        candidate_k: int = 30,
+        candidate_k: int | None = None,
         generator: TextGenerator | None = None,
         model_id: str | None = None,
     ) -> tuple[str, list[RetrievedChunk]]:
@@ -261,7 +268,7 @@ class HistoryAwareRAGService:
         chunks = self.query_service.search(
             query=standalone_query,
             top_k=top_k,
-            candidate_k=candidate_k,
+            candidate_k=candidate_k if candidate_k is not None else self.candidate_k,
             use_reranker=True,
             # Spent already, by the semantic tier above. Passing it saves
             # dense retrieval embedding the same text a second time.
@@ -355,6 +362,7 @@ class HistoryAwareRAGService:
         conversation_id: str,
         question: str,
         top_k: int = 5,
+        candidate_k: int | None = None,
         generator: TextGenerator | None = None,
         model_id: str | None = None,
     ) -> str:
@@ -366,6 +374,7 @@ class HistoryAwareRAGService:
             conversation_id=conversation_id,
             question=question,
             top_k=top_k,
+            candidate_k=candidate_k,
             generator=generator,
             model_id=model_id,
         )
@@ -400,7 +409,7 @@ class HistoryAwareRAGService:
         #
         # 7. Update conversation summary
         #
-        if len(memory.messages) >= self.SUMMARY_TRIGGER:
+        if len(memory.messages) >= self.summary_trigger:
 
             logger.debug("Updating conversation summary.")
 
