@@ -70,3 +70,12 @@ def test_no_context_answer_comes_from_config():
     builder = PromptBuilder(PromptConfig(no_context_answer="Nothing found."))
 
     assert builder.no_context_answer == "Nothing found."
+
+
+def test_page_labels_cover_single_spanning_and_legacy_chunks():
+    from rag.llm.prompt_builder import page_label
+
+    assert page_label(4, 4) == "Page: 4"
+    assert page_label(4, 5) == "Pages: 4-5"
+    assert page_label(4, None) == "Page: 4"
+    assert page_label(None, None) is None

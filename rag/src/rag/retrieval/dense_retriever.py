@@ -99,8 +99,7 @@ class DenseRetriever:
                     source_path=metadata.source_path,
                     chunk_index=metadata.chunk_index,
                     page_number=metadata.page_number,
-                    section_title=metadata.section_title,
-                    heading_level=metadata.heading_level,
+                    end_page_number=metadata.end_page_number,
                 )
 
                 chunk = RetrievedChunk(

@@ -120,13 +120,11 @@ def main() -> int:
                         chunk_index=chunk.chunk_index,
                         text=chunk.text,
                         page_number=chunk.metadata.page_number,
-                        section_title=chunk.metadata.section_title,
-                        heading_level=chunk.metadata.heading_level,
+                        end_page_number=chunk.metadata.end_page_number,
                         start_char=chunk.metadata.start_char,
                         end_char=chunk.metadata.end_char,
                         chunk_size=chunk.metadata.chunk_size,
                         overlap_size=chunk.metadata.overlap_size,
-                        language=chunk.metadata.language,
                     )
                     for chunk in document_chunks
                 ]

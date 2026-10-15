@@ -68,8 +68,7 @@ class BM25Retriever:
                     source_path=chunk.metadata.source_path,
                     chunk_index=chunk.chunk_index,
                     page_number=chunk.metadata.page_number,
-                    section_title=chunk.metadata.section_title,
-                    heading_level=chunk.metadata.heading_level,
+                    end_page_number=chunk.metadata.end_page_number,
                 )
 
                 retrieved_chunk = RetrievedChunk(

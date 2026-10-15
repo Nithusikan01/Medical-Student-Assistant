@@ -100,3 +100,34 @@ def test_the_index_is_connected_on_first_use_not_at_construction():
     store.count()
 
     client.Index.assert_called_once_with("idx")
+
+
+def test_vectors_written_before_fields_were_removed_still_load():
+    """
+    Every vector upserted before section_title/heading_level/language were
+    dropped still carries some of them; the store must ignore them, not
+    fail every query that matches one.
+    """
+
+    store = VectorStore.__new__(VectorStore)
+    store.index = MagicMock()
+
+    match = MagicMock()
+    match.id = "old"
+    match.score = 0.5
+    match.metadata = {
+        "document_id": "doc",
+        "filename": "doc.pdf",
+        "source_path": "/tmp/doc.pdf",
+        "text": "example",
+        "chunk_index": 0,
+        "page_number": 3,
+        "language": "en",
+        "section_title": "Intro",
+    }
+    store.index.query.return_value = MagicMock(matches=[match])
+
+    (result,) = store.query([0.1], top_k=1)
+
+    assert result.metadata.page_number == 3
+    assert result.metadata.end_page_number is None

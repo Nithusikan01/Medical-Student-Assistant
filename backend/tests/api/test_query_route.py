@@ -29,7 +29,7 @@ def ask(client, user, auth_headers, *, conversation_id=None, question=QUESTION, 
     return client.post("/api/query", headers=auth_headers(user), json=payload)
 
 
-def make_source(chunk_id="doc_chunk_0") -> RetrievedChunk:
+def make_source(chunk_id="doc_chunk_0", end_page_number=None) -> RetrievedChunk:
     return RetrievedChunk(
         id=chunk_id,
         text="Paracetamol 500 mg to 1 g every four to six hours.",
@@ -40,6 +40,7 @@ def make_source(chunk_id="doc_chunk_0") -> RetrievedChunk:
             source_path="C:/srv/app/storage/uploads/9b0f-2c4a.pdf",
             chunk_index=0,
             page_number=12,
+            end_page_number=end_page_number,
         ),
     )
 
@@ -163,6 +164,18 @@ def test_sources_are_returned_to_the_client(
     assert source["metadata"]["filename"] == "bnf.pdf"
     assert source["metadata"]["page_number"] == 12
     assert source["preview"]
+
+
+def test_a_source_spanning_a_page_break_reports_both_pages(
+    client: TestClient, user, auth_headers, rag_service
+):
+    rag_service.sources = [make_source(end_page_number=13)]
+
+    metadata = ask(client, user, auth_headers).json()["sources"][0]["metadata"]
+
+    assert (metadata["page_number"], metadata["end_page_number"]) == (12, 13)
+    # Fields nothing ever populated are gone from the contract.
+    assert not {"section_title", "heading_level", "language", "tags"} & set(metadata)
 
 
 def test_the_server_filesystem_path_is_never_disclosed(

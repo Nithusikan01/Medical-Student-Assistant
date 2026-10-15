@@ -26,8 +26,7 @@ class RetrievedChunkMetadata:
     chunk_index: int
 
     page_number: int | None = None
-    section_title: str | None = None
-    heading_level: int | None = None
+    end_page_number: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

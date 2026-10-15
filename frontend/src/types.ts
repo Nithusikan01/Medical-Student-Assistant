@@ -19,13 +19,10 @@ export interface SourceMetadata {
   document_id: string;
   filename: string;
   page_number: number | null;
-  section_title: string | null;
-  heading_level: number | null;
+  // Where a passage that runs across a page break ends. Absent or null on
+  // sources saved before chunks could span pages.
+  end_page_number?: number | null;
   chunk_index: number;
-  start_char: number | null;
-  end_char: number | null;
-  language: string | null;
-  tags: string[];
 }
 
 export interface SourceChunk {

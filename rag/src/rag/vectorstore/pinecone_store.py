@@ -168,7 +168,7 @@ class PineconeVectorStore:
                         SearchResult(
                             id=match.id,
                             score=match.score,
-                            metadata=VectorRecordMetadata(**metadata),
+                            metadata=VectorRecordMetadata.from_dict(metadata),
                         )
                     )
 

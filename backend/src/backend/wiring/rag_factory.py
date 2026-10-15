@@ -114,16 +114,11 @@ def load_bm25_corpus(
                 metadata_row.get("source", ""),
             ),
             page_number=metadata_row.get("page_number"),
-            section_title=metadata_row.get("section_title"),
-            heading_level=metadata_row.get("heading_level"),
+            end_page_number=metadata_row.get("end_page_number"),
             start_char=metadata_row.get("start_char"),
             end_char=metadata_row.get("end_char"),
             chunk_size=metadata_row.get("chunk_size", 0),
             overlap_size=metadata_row.get("overlap_size", 0),
-            element_id=metadata_row.get("element_id"),
-            element_type=metadata_row.get("element_type"),
-            language=metadata_row.get("language", "en"),
-            tags=metadata_row.get("tags", []),
         )
 
         chunks.append(

@@ -98,7 +98,7 @@ traffic cannot produce it.
 
 ### Platform
 
-- PostgreSQL persistence via SQLAlchemy 2.0 and Alembic (12 revisions): users, refresh
+- PostgreSQL persistence via SQLAlchemy 2.0 and Alembic (13 revisions): users, refresh
   tokens, invite codes, conversations and messages, the document/chunk registry, per-call
   token usage and cost, traces and spans, and answer feedback
 - Ten FastAPI routers, every route deliberately classified as public, authenticated, or
@@ -367,7 +367,7 @@ Anamnesis/
 |-- backend/                      # FastAPI HTTP layer (runtime root)
 |   |-- pyproject.toml            # package: rag-backend
 |   |-- .env                      # credentials live here
-|   |-- alembic.ini, migrations/  # 12 revisions, 0001_auth_tables .. 0012_answer_feedback
+|   |-- alembic.ini, migrations/  # 13 revisions, 0001_auth_tables .. 0013_chunk_page_range
 |   |-- data/raw/                 # source PDFs
 |   |-- data/evaluation/          # labelled evaluation sets (example.json is a template)
 |   |-- storage/                  # uploads/ (deleted after ingestion)
@@ -594,10 +594,10 @@ than a redeploy.
 
 ## Database And Migrations
 
-Schema is managed with Alembic, twelve revisions from `0001_auth_tables` through
-`0012_answer_feedback` — auth, conversations, documents, generation usage, telemetry and its
+Schema is managed with Alembic, thirteen revisions from `0001_auth_tables` through
+`0013_chunk_page_range` — auth, conversations, documents, generation usage, telemetry and its
 dimensions, span sequencing, token cost, the ingestion heartbeat, a span index, the error
-taxonomy, and answer feedback. Apply them before starting the API for the first time:
+taxonomy, answer feedback, and chunk page ranges. Apply them before starting the API for the first time:
 
 ```powershell
 cd backend
@@ -1171,9 +1171,10 @@ What's already in the repository and stays true regardless of host:
 
 ## Future Direction: Structure-Aware Chunking (Proposed)
 
-The current chunker splits recursively by character count with a fixed overlap; each chunk's
-metadata already carries a `section_title` and `heading_level`, but there is no chapter/section
-hierarchy resolver or parent-child chunk relationship behind them yet. The diagram below is a
+The current chunker splits the whole document's text recursively by character count with a
+fixed overlap, so chunks can cross page breaks and record the pages and character range they
+cover. It reads no structure: there are no section titles, heading levels, or parent-child
+chunk relationships yet. The diagram below is a
 proposed pipeline for structure-aware ingestion — parsing headings, lists, tables, and figures
 as first-class elements, building a document hierarchy, and generating parent/child chunks
 that inherit their heading path — kept here as a design reference, not a description of what

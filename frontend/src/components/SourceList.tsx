@@ -1,5 +1,17 @@
-import type { SourceChunk } from "../types";
+import type { SourceChunk, SourceMetadata } from "../types";
 import { ChevronDown, Document } from "./Icons";
+
+function pageLabel({ page_number, end_page_number }: SourceMetadata) {
+  if (page_number === null) {
+    return null;
+  }
+
+  if (end_page_number == null || end_page_number === page_number) {
+    return `p. ${page_number}`;
+  }
+
+  return `pp. ${page_number}–${end_page_number}`;
+}
 
 interface SourceListProps {
   sources: SourceChunk[];
@@ -24,8 +36,8 @@ export function SourceList({ sources }: SourceListProps) {
               <Document size={13} />
               <span className="source-file">{source.metadata.filename}</span>
 
-              {source.metadata.page_number !== null && (
-                <span className="chip">p. {source.metadata.page_number}</span>
+              {pageLabel(source.metadata) !== null && (
+                <span className="chip">{pageLabel(source.metadata)}</span>
               )}
 
               <span className="chip">chunk {source.metadata.chunk_index}</span>
