@@ -8,6 +8,7 @@ from rag.cache.protocol import ResponseCache
 from rag.cache.semantic_cache import InMemorySemanticCache
 from rag.config.component_configs import GenerationConfig
 from rag.conversation.query_rewriter import QueryRewriter
+from rag.conversation.scope_guard import ScopeGuard
 from rag.conversation.small_talk import SmallTalkResponder
 from rag.conversation.summarizer import ConversationSummarizer
 from rag.embeddings.memoizing import MemoizingEmbedder
@@ -596,6 +597,13 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
         response_cache=build_response_cache(),
         small_talk=SmallTalkResponder(settings.small_talk_config()),
         prompt_builder=PromptBuilder(settings.prompt_config()),
+        # On the default model, like rewriting: the check is one word out,
+        # and must not depend on which model the student picked to answer.
+        scope_guard=(
+            ScopeGuard(llm, settings.scope_config(), tracer=tracer)
+            if settings.scope_config().enabled
+            else None
+        ),
         candidate_k=settings.retrieval_config().candidate_k,
         summary_trigger=conversation.summary_trigger,
         tracer=tracer,

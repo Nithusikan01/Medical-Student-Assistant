@@ -12,6 +12,7 @@ from rag.config.component_configs import (
     PineconeRerankConfig,
     PromptConfig,
     RetrievalConfig,
+    ScopeConfig,
     SmallTalkConfig,
 )
 
@@ -106,6 +107,26 @@ class Settings:
     corpus_description: str = "the course material in the class library"
 
     # ------------------------------------------------------------------
+    # Scope
+    #
+    # Questions clearly unrelated to the subject are declined before any
+    # retrieval, with a reply saying what the assistant is for.
+    # ------------------------------------------------------------------
+    scope_guard_enabled: bool = True
+    scope_subject: str = "medicine and the health sciences"
+    scope_examples: str = (
+        "anatomy, physiology, biochemistry, pathology, microbiology, "
+        "pharmacology, clinical medicine and surgery, public health, "
+        "medical ethics and research methods"
+    )
+    scope_refusal: str = (
+        "I'm a study assistant for medicine and the health sciences, so I "
+        "can't help with that question. Try asking about something from your "
+        "course - a condition, a drug, a mechanism, or a topic from your "
+        "lecture notes - and I'll answer from the class library."
+    )
+
+    # ------------------------------------------------------------------
     # Component Configurations
     # ------------------------------------------------------------------
     def pinecone_config(self) -> PineconeConfig:
@@ -166,6 +187,14 @@ class Settings:
 
     def prompt_config(self) -> PromptConfig:
         return PromptConfig(corpus_description=self.corpus_description)
+
+    def scope_config(self) -> ScopeConfig:
+        return ScopeConfig(
+            enabled=self.scope_guard_enabled,
+            subject=self.scope_subject,
+            in_scope_examples=self.scope_examples,
+            refusal_text=self.scope_refusal,
+        )
 
     def retrieval_config(self) -> RetrievalConfig:
         return RetrievalConfig(
@@ -274,4 +303,8 @@ def settings_from_mapping(values: Mapping[str, str]) -> Settings:
             "CORPUS_DESCRIPTION",
             "the course material in the class library",
         ),
+        scope_guard_enabled=_bool(values, "SCOPE_GUARD_ENABLED", True),
+        scope_subject=values.get("SCOPE_SUBJECT", Settings.scope_subject),
+        scope_examples=values.get("SCOPE_EXAMPLES", Settings.scope_examples),
+        scope_refusal=values.get("SCOPE_REFUSAL", Settings.scope_refusal),
     )

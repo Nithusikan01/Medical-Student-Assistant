@@ -5,6 +5,7 @@ from rag.cache.protocol import ResponseCache
 from rag.cache.schemas import CacheLookup
 from rag.conversation.memory import ConversationMemory
 from rag.conversation.query_rewriter import QueryRewriter
+from rag.conversation.scope_guard import ScopeGuard
 from rag.conversation.small_talk import SmallTalkResponder
 from rag.conversation.store import ConversationStore
 from rag.conversation.summarizer import ConversationSummarizer
@@ -64,6 +65,7 @@ class HistoryAwareRAGService:
         response_cache: ResponseCache | None = None,
         small_talk: SmallTalkResponder | None = None,
         prompt_builder: PromptBuilder | None = None,
+        scope_guard: ScopeGuard | None = None,
         candidate_k: int = CANDIDATE_K,
         summary_trigger: int = SUMMARY_TRIGGER,
         tracer: Tracer | None = None,
@@ -95,6 +97,10 @@ class HistoryAwareRAGService:
         self.prompt_builder = (
             prompt_builder if prompt_builder is not None else PromptBuilder()
         )
+
+        # None, like the cache: no guard means every question is answered,
+        # and no scope_check span appears on the trace.
+        self.scope_guard = scope_guard
 
         # The stages this service owns directly. Retrieval, reranking,
         # rewriting and summarisation are instrumented by the components
@@ -261,6 +267,32 @@ class HistoryAwareRAGService:
                 memory=memory,
                 answer=lookup.entry.answer,
                 chunks=lookup.entry.chunks,
+            )
+
+        #
+        # 2c. A question the assistant is not for
+        #
+        # After the cache, so an answer already given costs nothing more;
+        # before retrieval, so a declined question costs one short
+        # classification call instead of the whole pipeline. Judged on the
+        # standalone query, so a follow-up is judged as the question it
+        # stands for.
+        #
+        # The refusal is never cached: a wrong one would then be repeated
+        # to everyone who asked the same thing until the cache expired.
+        if self.scope_guard is not None and not self.scope_guard.is_in_scope(
+            standalone_query
+        ):
+
+            logger.info(
+                "Declining an out-of-scope question in conversation '%s'.",
+                conversation_id,
+            )
+
+            return self._finish(
+                memory=memory,
+                answer=self.scope_guard.refusal,
+                chunks=[],
             )
 
         #
