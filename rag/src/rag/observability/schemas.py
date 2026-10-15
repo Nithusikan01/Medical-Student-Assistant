@@ -28,6 +28,7 @@ class Stage(str, Enum):
     SMALL_TALK = "small_talk"
     QUERY_REWRITE = "query_rewrite"
     CACHE_LOOKUP = "cache_lookup"
+    SCOPE_CHECK = "scope_check"
     RETRIEVAL = "retrieval"
     QUERY_EMBEDDING = "query_embedding"
     DENSE_RETRIEVAL = "dense_retrieval"

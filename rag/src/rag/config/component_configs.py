@@ -123,3 +123,29 @@ class PromptConfig:
     # What the service answers, without calling the model, when retrieval
     # returned nothing at all.
     no_context_answer: str = "I couldn't find relevant information in the documents."
+
+
+@dataclass(frozen=True)
+class ScopeConfig:
+    """
+    What the assistant is for, and what it says to a question that is not.
+
+    The defaults describe no particular subject; the application names its
+    own (see Settings, SCOPE_SUBJECT and friends). `enabled=False` answers
+    every question, off-topic ones included, as before.
+    """
+
+    enabled: bool = True
+
+    # Completes "a study assistant for ..." and "questions about ...".
+    subject: str = "the subjects of the course material"
+
+    # Optional "including ..." list, so a narrow subject name does not make
+    # the classifier decline a neighbouring field the course covers.
+    in_scope_examples: str = ""
+
+    refusal_text: str = (
+        "That question is outside what I can help with. I'm here for the "
+        "subjects in your course material, so try asking about a topic "
+        "from your studies."
+    )
