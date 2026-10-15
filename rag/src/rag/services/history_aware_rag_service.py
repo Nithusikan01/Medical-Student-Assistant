@@ -61,6 +61,7 @@ class HistoryAwareRAGService:
         *,
         response_cache: ResponseCache | None = None,
         small_talk: SmallTalkResponder | None = None,
+        prompt_builder: PromptBuilder | None = None,
         tracer: Tracer | None = None,
     ) -> None:
         self.query_service = query_service
@@ -83,6 +84,12 @@ class HistoryAwareRAGService:
         # a responder built with `SmallTalkConfig(enabled=False)` to get
         # the strictly-retrieval behaviour back.
         self.small_talk = small_talk if small_talk is not None else SmallTalkResponder()
+
+        # Injected so the application owns the prompt's wording - what the
+        # corpus is, and what to say when it has no answer.
+        self.prompt_builder = (
+            prompt_builder if prompt_builder is not None else PromptBuilder()
+        )
 
         # The stages this service owns directly. Retrieval, reranking,
         # rewriting and summarisation are instrumented by the components
@@ -263,7 +270,7 @@ class HistoryAwareRAGService:
 
         if not chunks:
 
-            answer = "I couldn't find relevant information " "in the documents."
+            answer = self.prompt_builder.no_context_answer
 
             # Cached like any other answer. It can only go stale when the
             # corpus gains the document that would have answered it, and
@@ -293,7 +300,7 @@ class HistoryAwareRAGService:
         #
         with self.tracer.span(Stage.CONTEXT_BUILD) as span:
 
-            prompt = PromptBuilder.build_prompt(
+            prompt = self.prompt_builder.build_prompt(
                 question=question,
                 chunks=chunks,
                 summary=memory.get_summary(),

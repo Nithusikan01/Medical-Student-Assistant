@@ -1,5 +1,37 @@
+from textwrap import dedent
+
 from rag.llm.protocol import TextGenerator
 from rag.observability import Stage, Tracer, generation_metadata
+
+# Formatted rather than an f-string inside dedent: substituting multi-line
+# conversation text first leaves lines at column zero, dedent then finds no
+# common indent, and the model receives the whole prompt indented.
+_PROMPT = dedent("""
+    You rewrite a follow-up question into a standalone search query for a
+    document search engine.
+
+    Use the conversation to resolve:
+    - pronouns (it, they, this, that, these)
+    - references to something discussed earlier ("the second one",
+      "that condition", "the drug you mentioned")
+    - terms the question leaves out but clearly means
+
+    Conversation summary:
+    {summary}
+
+    Recent messages:
+    {recent}
+
+    Follow-up question:
+    {query}
+
+    Rules:
+    - Output ONLY the rewritten query, on one line.
+    - Keep every technical term, name, abbreviation and number exactly as
+      written.
+    - If the question is already standalone, output it unchanged.
+    - Do NOT answer the question and do NOT explain.
+    """).strip()
 
 
 class QueryRewriter:
@@ -12,31 +44,11 @@ class QueryRewriter:
 
         recent_text = "\n".join(f"{m.role}: {m.content}" for m in recent_messages)
 
-        prompt = f"""
-        You are a query rewriting system for a RAG application.
-
-        Task:
-        Rewrite the user query into a standalone search query.
-
-        Use the conversation context to resolve:
-        - pronouns (he, she, they etc.)
-        - references (this project, that person)
-        - missing entities
-
-        Conversation summary:
-        {summary}
-
-        Recent messages:
-        {recent_text}
-
-        User query:
-        {query}
-
-        Rules:
-        - Output ONLY the rewritten query
-        - Do NOT answer the question
-        - Do NOT explain
-        """
+        prompt = _PROMPT.format(
+            summary=summary or "No summary available.",
+            recent=recent_text or "No recent conversation.",
+            query=query,
+        )
 
         with self.tracer.span(
             Stage.QUERY_REWRITE,

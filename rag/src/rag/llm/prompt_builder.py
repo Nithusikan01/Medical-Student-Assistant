@@ -1,5 +1,6 @@
 from textwrap import dedent
 
+from rag.config.component_configs import PromptConfig
 from rag.conversation.schemas import ChatMessage
 from rag.retrieval.schemas import RetrievedChunk
 
@@ -7,44 +8,58 @@ from rag.retrieval.schemas import RetrievedChunk
 class PromptBuilder:
     """
     Builds the prompt supplied to the LLM.
+
+    An instance rather than a bag of static methods, so the application
+    decides what the corpus is and what the assistant says when the corpus
+    has no answer. The engine ships no domain: the same wording is used for
+    a class library of lecture notes as for any other document set.
     """
 
-    @staticmethod
+    def __init__(self, config: PromptConfig | None = None) -> None:
+        self.config = config if config is not None else PromptConfig()
+
+    @property
+    def no_context_answer(self) -> str:
+        """
+        The answer given when retrieval found nothing to build a prompt on.
+        """
+
+        return self.config.no_context_answer
+
     def build_prompt(
+        self,
         question: str,
         chunks: list[RetrievedChunk],
         summary: str | None = None,
         recent_messages: list[ChatMessage] | None = None,
     ) -> str:
 
-        context = PromptBuilder._format_context(chunks)
-        conversation = PromptBuilder._format_conversation(recent_messages)
+        context = self._format_context(chunks)
+        conversation = self._format_conversation(recent_messages)
 
-        prompt = dedent(
-            f"""
-            You are a retrieval-grounded answer generator.
+        # The rules are assembled before dedent, then substituted in, so a
+        # multi-line value cannot break dedent's common-indent detection.
+        prompt = dedent("""
+            You are a study assistant answering questions about {corpus}.
 
             Rules:
             - Answer ONLY using the supplied context.
-            - Never use outside knowledge.
-            - If the answer is not explicitly supported by the context, reply exactly:
-              I don't know based on the provided document.
-            - Prefer the exact wording from the context for:
-              - names
-              - roles
-              - organizations
-              - dates
-              - numbers
-              - certifications
-              - titles
-            - Keep the answer concise.
-            - Do not explain your reasoning.
-            - Do not output markdown.
-            - Do not output bullet points unless explicitly requested.
-            - Output only the final answer.
+            - Never use outside knowledge, even when you are confident it is
+              correct: students rely on the answer matching their material.
+            - If the answer is not supported by the context, reply exactly:
+              {no_answer}
+            - Copy facts exactly as the context states them, especially
+              terms, definitions, drug names, doses, units, values, ranges
+              and criteria. Never round, convert or paraphrase a number.
+            - Answer the question directly first, then add only the detail
+              the context gives that helps understand it.
+            - Write plain text without markdown formatting. Short lists,
+              one item per line starting with "- ", are fine when the
+              answer is a list of items or steps.
+            - Do not mention the context, the documents or these rules.
 
             Conversation Summary:
-            {summary or "No summary available."}
+            {summary}
 
             Recent Conversation:
             {conversation}
@@ -56,7 +71,13 @@ class PromptBuilder:
             {question}
 
             Answer:
-            """
+            """).format(
+            corpus=self.config.corpus_description,
+            no_answer=self.config.no_answer_text,
+            summary=summary or "No summary available.",
+            conversation=conversation,
+            context=context,
+            question=question,
         )
 
         return prompt.strip()

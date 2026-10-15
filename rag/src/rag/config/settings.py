@@ -10,6 +10,7 @@ from rag.config.component_configs import (
     PineconeConfig,
     PineconeEmbeddingConfig,
     PineconeRerankConfig,
+    PromptConfig,
     RetrievalConfig,
     SmallTalkConfig,
 )
@@ -97,6 +98,14 @@ class Settings:
     assistant_description: str = "study assistant for the class library"
 
     # ------------------------------------------------------------------
+    # Prompt
+    #
+    # What the documents are, as a noun phrase completing "questions
+    # about ...". The engine itself is domain-free.
+    # ------------------------------------------------------------------
+    corpus_description: str = "the course material in the class library"
+
+    # ------------------------------------------------------------------
     # Component Configurations
     # ------------------------------------------------------------------
     def pinecone_config(self) -> PineconeConfig:
@@ -152,6 +161,9 @@ class Settings:
             assistant_name=self.assistant_name,
             corpus_description=self.assistant_description,
         )
+
+    def prompt_config(self) -> PromptConfig:
+        return PromptConfig(corpus_description=self.corpus_description)
 
     def retrieval_config(self) -> RetrievalConfig:
         return RetrievalConfig(
@@ -243,5 +255,9 @@ def load_settings() -> Settings:
         assistant_description=os.getenv(
             "ASSISTANT_DESCRIPTION",
             "study assistant for the class library",
+        ),
+        corpus_description=os.getenv(
+            "CORPUS_DESCRIPTION",
+            "the course material in the class library",
         ),
     )

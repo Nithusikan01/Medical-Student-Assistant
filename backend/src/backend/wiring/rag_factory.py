@@ -20,6 +20,7 @@ from rag.ingestion.schemas import (
 from rag.llm.generator import GeminiGenerator
 from rag.llm.groq_generator import GroqGenerator
 from rag.llm.metering import MeteredGenerator
+from rag.llm.prompt_builder import PromptBuilder
 from rag.llm.protocol import TextGenerator
 from rag.observability import Tracer
 from rag.rerankers.fallback_reranker import FallbackReranker
@@ -563,6 +564,7 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
         summarizer=summarizer,
         response_cache=build_response_cache(),
         small_talk=SmallTalkResponder(settings.small_talk_config()),
+        prompt_builder=PromptBuilder(settings.prompt_config()),
         tracer=tracer,
     )
 

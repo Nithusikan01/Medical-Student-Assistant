@@ -85,3 +85,24 @@ class SmallTalkConfig:
     # What the corpus is, as a noun phrase completing "I'm <name>, your
     # ...". Deployment-specific: another class uploads other material.
     corpus_description: str = "study assistant for the class library"
+
+
+@dataclass(frozen=True)
+class PromptConfig:
+    """
+    The deployment-specific wording of the answer prompt.
+
+    The engine knows nothing about what its documents are; the application
+    says so here, and every prompt that needs it reads it from one place.
+    """
+
+    # Completes "questions about ...", so a noun phrase.
+    corpus_description: str = "the course material in the class library"
+
+    # What the model is told to reply, verbatim, when the context does not
+    # support an answer.
+    no_answer_text: str = "I don't know based on the provided documents."
+
+    # What the service answers, without calling the model, when retrieval
+    # returned nothing at all.
+    no_context_answer: str = "I couldn't find relevant information in the documents."
