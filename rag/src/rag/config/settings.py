@@ -96,7 +96,12 @@ class Settings:
     # ------------------------------------------------------------------
     small_talk_enabled: bool = True
     assistant_name: str = "Anamnesis"
-    assistant_description: str = "study assistant for the class library"
+    # "I'm <name>, your <description>. <purpose>" - every self-introduction
+    # (greetings, "who are you", the scope guard's reply) is built from these.
+    assistant_description: str = "medical study assistant"
+    assistant_purpose: str = (
+        "I help medical students learn their course material and prepare " "for exams."
+    )
 
     # ------------------------------------------------------------------
     # Prompt
@@ -119,12 +124,10 @@ class Settings:
         "pharmacology, clinical medicine and surgery, public health, "
         "medical ethics and research methods"
     )
-    scope_refusal: str = (
-        "I'm a study assistant for medicine and the health sciences, so I "
-        "can't help with that question. Try asking about something from your "
-        "course - a condition, a drug, a mechanism, or a topic from your "
-        "lecture notes - and I'll answer from the class library."
-    )
+    # Empty means composed from the assistant's name, description and
+    # purpose (see scope_config), so it introduces the assistant the same
+    # way the greeting does.
+    scope_refusal: str = ""
 
     # ------------------------------------------------------------------
     # Component Configurations
@@ -183,6 +186,7 @@ class Settings:
             enabled=self.small_talk_enabled,
             assistant_name=self.assistant_name,
             corpus_description=self.assistant_description,
+            purpose=self.assistant_purpose,
         )
 
     def prompt_config(self) -> PromptConfig:
@@ -193,7 +197,20 @@ class Settings:
             enabled=self.scope_guard_enabled,
             subject=self.scope_subject,
             in_scope_examples=self.scope_examples,
-            refusal_text=self.scope_refusal,
+            refusal_text=self.scope_refusal or self._default_scope_refusal(),
+        )
+
+    def _default_scope_refusal(self) -> str:
+        return (
+            f"I'm {self.assistant_name}, your {self.assistant_description}. "
+            # Names the subject outright rather than "your course": the app
+            # is open to anyone who registers, and a student of another
+            # field would read "your course" as their own.
+            f"{self.assistant_purpose} I can only answer questions about "
+            f"{self.scope_subject}, so I can't help with that one. Please "
+            "ask a medical question instead - for example about a condition, "
+            "a drug, a mechanism or a medical exam topic - and I'll answer "
+            "from the class library."
         )
 
     def retrieval_config(self) -> RetrievalConfig:
@@ -296,9 +313,9 @@ def settings_from_mapping(values: Mapping[str, str]) -> Settings:
         small_talk_enabled=_bool(values, "SMALL_TALK_ENABLED", True),
         assistant_name=values.get("ASSISTANT_NAME", "Anamnesis"),
         assistant_description=values.get(
-            "ASSISTANT_DESCRIPTION",
-            "study assistant for the class library",
+            "ASSISTANT_DESCRIPTION", Settings.assistant_description
         ),
+        assistant_purpose=values.get("ASSISTANT_PURPOSE", Settings.assistant_purpose),
         corpus_description=values.get(
             "CORPUS_DESCRIPTION",
             "the course material in the class library",

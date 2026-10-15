@@ -249,22 +249,26 @@ class SmallTalkResponder:
 
         return f"Good {match.group(1)}!"
 
-    def _introduction(self) -> str:
+    def _identity(self) -> str:
         return (
             f"I'm {self.config.assistant_name}, your "
-            f"{self.config.corpus_description}. Ask me anything from the "
-            "course material it already holds - a definition, a concept "
-            "you'd like explained, what a guideline says - and I'll answer "
-            "from those documents and show you the passages I used.\n\n"
+            f"{self.config.corpus_description}. {self.config.purpose}"
+        )
+
+    def _introduction(self) -> str:
+        return (
+            f"{self._identity()} Ask me anything from the course material in "
+            "the class library - a definition, a concept you'd like "
+            "explained, what a guideline says - and I'll answer from those "
+            "documents and show you the passages I used.\n\n"
             "What would you like to look up?"
         )
 
     def _who_i_am(self) -> str:
         return (
-            f"I'm {self.config.assistant_name}, your "
-            f"{self.config.corpus_description}. The library is shared by your "
-            "whole class and looked after for you, so there is nothing for "
-            "you to set up - just ask.\n\n"
+            f"{self._identity()} The class library is shared by your whole "
+            "class and looked after for you, so there is nothing for you to "
+            "set up - just ask.\n\n"
             "Everything I tell you comes from the documents already in it and "
             "from nothing else, and every answer lists the passages it came "
             "from so you can check them. You can ask me to explain a concept, "

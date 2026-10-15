@@ -99,9 +99,12 @@ class SmallTalkConfig:
 
     enabled: bool = True
     assistant_name: str = "Anamnesis"
-    # What the corpus is, as a noun phrase completing "I'm <name>, your
+    # What the assistant is, as a noun phrase completing "I'm <name>, your
     # ...". Deployment-specific: another class uploads other material.
     corpus_description: str = "study assistant for the class library"
+    # Who it helps and with what, as one sentence. Said right after the
+    # name in every self-introduction, and in the scope guard's reply.
+    purpose: str = "I help you study the course material in the class library."
 
 
 @dataclass(frozen=True)
