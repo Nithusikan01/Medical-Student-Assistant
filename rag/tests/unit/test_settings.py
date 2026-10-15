@@ -72,7 +72,7 @@ def test_the_refusal_names_the_subject_rather_than_your_course():
     assert "I can only answer questions about medicine and the health sciences" in (
         refusal
     )
-    assert "please ask a medical question" in refusal
+    assert "Please feel free to ask a medical question" in refusal
     assert "your course" not in refusal
     assert "your lecture notes" not in refusal
 
@@ -132,4 +132,6 @@ def test_the_refusal_opens_with_an_apology():
 
     refusal = settings_from_mapping(REQUIRED).scope_config().refusal_text
 
-    assert refusal.startswith("Sorry, I can't help with that question.")
+    assert refusal.startswith(
+        "Apologies for the inconvenience - I'm not able to help with that question."
+    )
