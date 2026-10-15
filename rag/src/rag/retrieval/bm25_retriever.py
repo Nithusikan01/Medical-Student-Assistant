@@ -2,7 +2,6 @@ import logging
 
 from rag.indexes.bm25_index import BM25Index
 from rag.observability import Stage, Tracer, summarize_scores
-from rag.retrieval.base import BaseRetriever
 from rag.retrieval.schemas import (
     RetrievedChunk,
     RetrievedChunkMetadata,
@@ -11,7 +10,7 @@ from rag.retrieval.schemas import (
 logger = logging.getLogger(__name__)
 
 
-class BM25Retriever(BaseRetriever):
+class BM25Retriever:
     """
     Keyword-based retriever using a BM25 lexical index.
     """
@@ -69,8 +68,7 @@ class BM25Retriever(BaseRetriever):
                     source_path=chunk.metadata.source_path,
                     chunk_index=chunk.chunk_index,
                     page_number=chunk.metadata.page_number,
-                    section_title=chunk.metadata.section_title,
-                    heading_level=chunk.metadata.heading_level,
+                    end_page_number=chunk.metadata.end_page_number,
                 )
 
                 retrieved_chunk = RetrievedChunk(

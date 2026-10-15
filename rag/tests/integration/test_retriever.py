@@ -14,7 +14,7 @@ if os.getenv("RUN_REAL_RAG_TESTS") != "1":
 
 pytest.importorskip("sentence_transformers")
 
-from rag.config.settings import load_settings
+from rag.config.settings import settings_from_mapping
 from rag.embeddings.local_embedder import Embedder
 from rag.ingestion.chunker import TextChunker
 from rag.ingestion.document_loader import DocumentLoader
@@ -30,7 +30,7 @@ def test_retriever_returns_chunks():
     if not file_path.exists():
         pytest.skip("CV PDF fixture is not available.")
 
-    settings = load_settings()
+    settings = settings_from_mapping(os.environ)
     document = DocumentLoader().load(file_path)
     chunks = TextChunker(config=settings.chunking_config()).chunk(document)
     embedder = Embedder(config=settings.embedding_config())

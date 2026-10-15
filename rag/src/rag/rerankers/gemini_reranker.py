@@ -3,7 +3,6 @@ import logging
 import re
 
 from rag.llm.protocol import TextGenerator
-from rag.rerankers.base import BaseReranker
 from rag.retrieval.schemas import RetrievedChunk
 
 logger = logging.getLogger(__name__)
@@ -12,7 +11,7 @@ _MAX_CANDIDATE_CHARS = 500
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE)
 
 
-class GeminiReranker(BaseReranker):
+class GeminiReranker:
     """
     Listwise reranking through the same Gemini model used for generation.
 

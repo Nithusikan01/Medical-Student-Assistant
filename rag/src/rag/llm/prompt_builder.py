@@ -104,11 +104,10 @@ class PromptBuilder:
                 f"Chunk: {metadata.chunk_index}",
             ]
 
-            if metadata.page_number is not None:
-                lines.append(f"Page: {metadata.page_number}")
+            pages = page_label(metadata.page_number, metadata.end_page_number)
 
-            if metadata.section_title:
-                lines.append(f"Section: {metadata.section_title}")
+            if pages is not None:
+                lines.append(pages)
 
             lines.extend(
                 [
@@ -130,3 +129,19 @@ class PromptBuilder:
             return "No recent conversation."
 
         return "\n".join(f"{message.role}: {message.content}" for message in messages)
+
+
+def page_label(first: int | None, last: int | None) -> str | None:
+    """
+    "Page: 4", or "Pages: 4-5" for a chunk that runs across a page break.
+
+    `last` is None for chunks stored before chunks could span pages.
+    """
+
+    if first is None:
+        return None
+
+    if last is None or last == first:
+        return f"Page: {first}"
+
+    return f"Pages: {first}-{last}"

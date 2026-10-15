@@ -20,19 +20,13 @@ class SourceMetadata(BaseModel):
     # source_path is deliberately absent: it held the absolute path of the
     # file on the server, which should not be disclosed to clients.
 
+    # The page the passage starts on, and the one it ends on - they differ
+    # when a chunk runs across a page break. end_page_number is null for
+    # chunks ingested before chunks could span pages.
     page_number: int | None = None
-
-    section_title: str | None = None
-    heading_level: int | None = None
+    end_page_number: int | None = None
 
     chunk_index: int
-
-    start_char: int | None = None
-    end_char: int | None = None
-
-    language: str | None = None
-
-    tags: list[str] = Field(default_factory=list)
 
 
 class SourceChunk(BaseModel):

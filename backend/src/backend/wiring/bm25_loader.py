@@ -40,13 +40,11 @@ def load_bm25_documents(
                 filename=filename,
                 source_path="",
                 page_number=record.page_number,
-                section_title=record.section_title,
-                heading_level=record.heading_level,
+                end_page_number=record.end_page_number,
                 start_char=record.start_char,
                 end_char=record.end_char,
                 chunk_size=record.chunk_size,
                 overlap_size=record.overlap_size,
-                language=record.language,
             ),
         )
         for record, filename in rows

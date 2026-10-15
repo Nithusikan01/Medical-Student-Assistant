@@ -4,7 +4,6 @@ from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from rag.config.settings import load_settings
 from rag.observability import NULL_TRACE, TraceHandle, Tracer
 from sqlalchemy.orm import Session
 
@@ -16,6 +15,7 @@ from backend.db.models import User
 from backend.db.repositories import users
 from backend.db.session import get_db
 from backend.observability.middleware import SCOPE_KEY
+from backend.settings import load_settings
 from backend.wiring.rag_factory import (
     DEFAULT_GENERATION_MODEL_ID,
     GenerationModelOption,

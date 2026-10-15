@@ -6,7 +6,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 from pinecone import Pinecone
 
-from rag.config.settings import load_settings
+from backend.settings import load_settings
 from rag.vectorstore.pinecone_store import PineconeVectorStore
 
 

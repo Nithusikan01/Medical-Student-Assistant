@@ -77,37 +77,71 @@ def test_chunker_splits_a_real_document():
     assert all(chunk.metadata.chunk_size <= 500 for chunk in chunks)
 
 
-def test_chunk_batches_split_pages_only_as_batches_are_pulled():
-    from unittest.mock import MagicMock
-
-    from rag.config.component_configs import ChunkingConfig
-    from rag.ingestion.chunker import TextChunker
-    from rag.ingestion.schemas import LoadedDocument, LoadedPage
-
-    chunker = TextChunker(ChunkingConfig(chunk_size=500, chunk_overlap=0))
-    chunker.splitter = MagicMock()
-    chunker.splitter.split_text.side_effect = lambda text: [text]
-
-    document = LoadedDocument(
+def _document(*pages: tuple[int, str]) -> LoadedDocument:
+    return LoadedDocument(
         document_id="doc",
         filename="doc.pdf",
         source_path="/tmp/doc.pdf",
-        pages=[LoadedPage(page_number=n, text=f"page {n}") for n in range(1, 6)],
+        pages=[LoadedPage(page_number=n, text=text) for n, text in pages],
     )
 
-    batches = chunker.chunk_batches(document, batch_size=2)
-    first = next(batches)
 
-    assert [chunk.text for chunk in first] == ["page 1", "page 2"]
-    assert chunker.splitter.split_text.call_count == 2
+SPLIT_SENTENCE = _document(
+    (1, "Sepsis is a life-threatening organ dysfunction caused by a dysregulated host"),
+    (2, "response to infection. It is diagnosed with the SOFA score."),
+)
 
-    rest = list(batches)
 
-    assert [len(batch) for batch in rest] == [2, 1]
-    assert [chunk.chunk_index for batch in [first, *rest] for chunk in batch] == [
-        0,
-        1,
-        2,
-        3,
-        4,
+def test_a_sentence_across_a_page_break_stays_in_one_chunk():
+    """
+    Splitting page by page cut this sentence into two fragments, neither
+    of which a question about sepsis's definition could match.
+    """
+
+    chunks = TextChunker(ChunkingConfig(chunk_size=500, chunk_overlap=50)).chunk(
+        SPLIT_SENTENCE
+    )
+
+    assert len(chunks) == 1
+    assert "dysregulated host\nresponse to infection" in chunks[0].text
+    assert chunks[0].metadata.page_number == 1
+    assert chunks[0].metadata.end_page_number == 2
+
+
+def test_offsets_slice_back_to_the_chunk_text_and_pages_follow_them():
+    document = _document(
+        (1, "Alpha paragraph one.\n\nAlpha paragraph two is here."),
+        (3, "Gamma page text.\n\nGamma closing words."),
+        (4, "Delta only."),
+    )
+    text = "\n".join(page.text for page in document.pages)
+
+    chunks = TextChunker(ChunkingConfig(chunk_size=40, chunk_overlap=10)).chunk(
+        document
+    )
+
+    assert len(chunks) > 2
+    assert [chunk.chunk_index for chunk in chunks] == list(range(len(chunks)))
+
+    for chunk in chunks:
+        metadata = chunk.metadata
+        assert text[metadata.start_char : metadata.end_char] == chunk.text
+        assert metadata.page_number <= metadata.end_page_number
+
+    # Page numbers are the PDF's, not positions in the list: page 2 had no
+    # text and was dropped by the loader.
+    assert chunks[0].metadata.page_number == 1
+    assert chunks[-1].metadata.end_page_number == 4
+    assert {chunk.metadata.page_number for chunk in chunks} <= {1, 3, 4}
+
+
+def test_chunk_batches_cover_every_chunk_in_order():
+    document = _document(*[(n, f"Page {n} has its own sentence.") for n in range(1, 8)])
+    chunker = TextChunker(ChunkingConfig(chunk_size=30, chunk_overlap=0))
+
+    batches = list(chunker.chunk_batches(document, batch_size=3))
+
+    assert all(len(batch) <= 3 for batch in batches)
+    assert [c.id for batch in batches for c in batch] == [
+        c.id for c in chunker.chunk(document)
     ]

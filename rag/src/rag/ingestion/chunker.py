@@ -1,4 +1,5 @@
 import logging
+from bisect import bisect_right
 from collections.abc import Iterator
 
 from rag.config.component_configs import ChunkingConfig
@@ -42,33 +43,67 @@ class TextChunker:
         document: LoadedDocument,
     ) -> Iterator[DocumentChunk]:
         """
-        Split the document page by page, yielding chunks as they are made.
+        Split the whole document's text, yielding chunks in order.
 
-        Chunks do not cross page boundaries, so every chunk has exactly one
-        page number to cite.
+        Pages are joined with a single newline rather than split one by
+        one. Splitting per page cut every paragraph that continued onto the
+        next page into two fragments, neither of which a question could
+        match on its own. A page break is joined with "\n" rather than a
+        paragraph break because the splitter prefers to cut at paragraph
+        breaks, and a page break is usually not one.
+
+        Each chunk records the character range it covers and the pages it
+        starts and ends on.
         """
 
-        global_chunk_index = 0
+        if not document.pages:
+            return
 
-        for page in document.pages:
+        text, page_starts = _join_pages(document)
 
-            for chunk_text in self.splitter.split_text(page.text):
+        cursor = 0
+        previous_length = 0
 
-                yield DocumentChunk(
-                    id=f"{document.document_id}_chunk_{global_chunk_index}",
-                    chunk_index=global_chunk_index,
-                    text=chunk_text,
-                    metadata=ChunkMetadata(
-                        document_id=document.document_id,
-                        filename=document.filename,
-                        source_path=document.source_path,
-                        page_number=page.page_number,
-                        chunk_size=len(chunk_text),
-                        overlap_size=self.config.chunk_overlap,
-                    ),
-                )
+        for index, chunk_text in enumerate(self.splitter.split_text(text)):
 
-                global_chunk_index += 1
+            start = _locate(
+                text,
+                chunk_text,
+                # The splitter's own start-index logic: the next chunk begins
+                # at most chunk_overlap characters before the previous end.
+                hint=max(0, cursor + previous_length - self.config.chunk_overlap),
+                floor=cursor,
+            )
+
+            if start is None:
+                # Not expected - the splitter only strips and slices - but a
+                # chunk with no offsets is better than no chunk.
+                logger.warning("Could not locate chunk %d in the document text.", index)
+                first_page = last_page = start_char = end_char = None
+            else:
+                start_char = start
+                end_char = start + len(chunk_text)
+                first_page = _page_at(page_starts, document, start_char)
+                last_page = _page_at(page_starts, document, end_char - 1)
+                cursor = start
+                previous_length = len(chunk_text)
+
+            yield DocumentChunk(
+                id=f"{document.document_id}_chunk_{index}",
+                chunk_index=index,
+                text=chunk_text,
+                metadata=ChunkMetadata(
+                    document_id=document.document_id,
+                    filename=document.filename,
+                    source_path=document.source_path,
+                    page_number=first_page,
+                    end_page_number=last_page,
+                    start_char=start_char,
+                    end_char=end_char,
+                    chunk_size=len(chunk_text),
+                    overlap_size=self.config.chunk_overlap,
+                ),
+            )
 
     def chunk_batches(
         self,
@@ -78,9 +113,9 @@ class TextChunker:
         """
         Yield batches of at most `batch_size` chunks.
 
-        Lazy: a page is split only when the batch that needs it is pulled,
-        so the first batch is embedded while later pages are still unsplit,
-        rather than after the whole document has been chunked up front.
+        The text is split in one pass (chunks may span pages, so the splitter
+        needs the whole document), but chunk objects are built only as each
+        batch is pulled.
         """
 
         batch: list[DocumentChunk] = []
@@ -104,6 +139,49 @@ class TextChunker:
             total,
             len(document.pages),
         )
+
+
+# What pages are joined with. Its length is part of every offset.
+PAGE_SEPARATOR = "\n"
+
+
+def _join_pages(document: LoadedDocument) -> tuple[str, list[int]]:
+    """
+    The document's text, and the offset at which each page starts in it.
+    """
+
+    starts: list[int] = []
+    offset = 0
+
+    for page in document.pages:
+        starts.append(offset)
+        offset += len(page.text) + len(PAGE_SEPARATOR)
+
+    return PAGE_SEPARATOR.join(page.text for page in document.pages), starts
+
+
+def _page_at(page_starts: list[int], document: LoadedDocument, offset: int) -> int:
+    """
+    The page number containing `offset`. A separator belongs to the page
+    before it.
+    """
+
+    return document.pages[bisect_right(page_starts, offset) - 1].page_number
+
+
+def _locate(text: str, chunk: str, *, hint: int, floor: int) -> int | None:
+    """
+    Where `chunk` starts in `text`, searching from `hint` and then from
+    `floor` (the previous chunk's start, which no later chunk precedes).
+    """
+
+    for start_from in (hint, floor):
+        found = text.find(chunk, start_from)
+
+        if found != -1:
+            return found
+
+    return None
 
 
 def _build_splitter(

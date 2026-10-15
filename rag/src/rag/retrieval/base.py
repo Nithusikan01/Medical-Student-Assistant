@@ -1,15 +1,19 @@
-from abc import ABC, abstractmethod
+from typing import Protocol, runtime_checkable
 
 from rag.retrieval.schemas import RetrievedChunk
 
 
-class BaseRetriever(ABC):
+@runtime_checkable
+class BaseRetriever(Protocol):
     """
-    Base class for every retrieval strategy.
-    All retrievers must return ranked chunks.
+    Anything that ranks chunks for a query.
+
+    A Protocol, like every other seam in the engine (TextEmbedder,
+    TextGenerator, ChunkSink, ConversationStore): an implementation
+    satisfies it by shape, so a stub or a competing retriever needs no
+    import of this module and no base class.
     """
 
-    @abstractmethod
     def retrieve(
         self,
         query: str,
@@ -26,4 +30,4 @@ class BaseRetriever(ABC):
         Returns:
             A list of RetrievedChunk objects ordered by decreasing relevance.
         """
-        raise NotImplementedError
+        ...

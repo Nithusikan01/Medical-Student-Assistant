@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
-from rag.config.settings import load_settings
 from rag.ingestion.chunker import TextChunker
 from rag.ingestion.document_loader import DocumentLoader
 from rag.ingestion.pipeline import IngestionPipeline
@@ -20,6 +19,7 @@ from backend.services.document_service import (
     DuplicateDocumentError,
 )
 from backend.services.upload_service import UploadService
+from backend.settings import load_settings
 from backend.wiring.rag_factory import (
     build_embedder,
     build_tracer,

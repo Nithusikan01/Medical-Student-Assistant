@@ -7,7 +7,7 @@ from rag.retrieval.schemas import RetrievedChunk
 logger = logging.getLogger(__name__)
 
 
-class FallbackReranker(BaseReranker):
+class FallbackReranker:
     """
     Tries a primary reranker, falls back to a secondary one, and finally
     falls back to the untouched retrieval order.

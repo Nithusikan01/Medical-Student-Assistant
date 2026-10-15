@@ -2,7 +2,6 @@ import logging
 
 from rag.embeddings.base import TextEmbedder
 from rag.observability import Stage, Tracer, summarize_scores
-from rag.retrieval.base import BaseRetriever
 from rag.retrieval.schemas import (
     RetrievedChunk,
     RetrievedChunkMetadata,
@@ -12,7 +11,7 @@ from rag.vectorstore.base import VectorStoreInterface
 logger = logging.getLogger(__name__)
 
 
-class DenseRetriever(BaseRetriever):
+class DenseRetriever:
     """
     Dense vector retriever using embedding similarity search.
     """
@@ -100,8 +99,7 @@ class DenseRetriever(BaseRetriever):
                     source_path=metadata.source_path,
                     chunk_index=metadata.chunk_index,
                     page_number=metadata.page_number,
-                    section_title=metadata.section_title,
-                    heading_level=metadata.heading_level,
+                    end_page_number=metadata.end_page_number,
                 )
 
                 chunk = RetrievedChunk(

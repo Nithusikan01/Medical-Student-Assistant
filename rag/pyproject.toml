@@ -71,3 +71,10 @@ extend-select = ["TID251"]
 "backend".msg = "The rag engine must not import the web application. Depend on a protocol in rag and implement it in backend."
 "fastapi".msg = "The rag engine must stay framework-free. Keep HTTP concerns in backend."
 "sqlalchemy".msg = "The rag engine must not depend on the database layer. Define a protocol and implement it in backend."
+"os.environ".msg = "The rag engine must not read the process environment. Take configuration as a parameter (see config.settings.settings_from_mapping)."
+"os.getenv".msg = "The rag engine must not read the process environment. Take configuration as a parameter (see config.settings.settings_from_mapping)."
+
+[tool.ruff.lint.per-file-ignores]
+# The live integration tests are the one place that legitimately reads the
+# environment: for credentials, and for RUN_REAL_RAG_TESTS.
+"tests/integration/**" = ["TID251"]

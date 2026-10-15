@@ -130,8 +130,8 @@ class DocumentChunkRecord(Base):
     text: Mapped[str] = mapped_column(sa.Text, nullable=False)
 
     page_number: Mapped[int | None] = mapped_column(sa.Integer)
-    section_title: Mapped[str | None] = mapped_column(sa.String(512))
-    heading_level: Mapped[int | None] = mapped_column(sa.Integer)
+    # Null for chunks ingested before chunks could span pages.
+    end_page_number: Mapped[int | None] = mapped_column(sa.Integer)
     start_char: Mapped[int | None] = mapped_column(sa.Integer)
     end_char: Mapped[int | None] = mapped_column(sa.Integer)
     chunk_size: Mapped[int] = mapped_column(
@@ -146,13 +146,6 @@ class DocumentChunkRecord(Base):
         default=0,
         server_default="0",
     )
-    language: Mapped[str] = mapped_column(
-        sa.String(16),
-        nullable=False,
-        default="en",
-        server_default="en",
-    )
-
     document: Mapped["Document"] = relationship(back_populates="chunks")
 
     __table_args__ = (

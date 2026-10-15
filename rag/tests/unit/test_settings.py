@@ -1,29 +1,48 @@
 import pytest
 
-from rag.config.settings import load_settings
+from rag.config.settings import settings_from_mapping
+
+REQUIRED = {
+    "PINECONE_API_KEY": "test_api_key",
+    "PINECONE_INDEX_NAME": "test_index_name",
+    "GEMINI_API_KEY": "test_gemini_api_key",
+}
 
 
-def test_missing_api_key(monkeypatch):
-    # Remove environment variables if they exist
-    monkeypatch.delenv("PINECONE_API_KEY", raising=False)
-    monkeypatch.delenv("PINECONE_INDEX_NAME", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+@pytest.mark.parametrize("missing", sorted(REQUIRED))
+def test_each_required_value_is_enforced(missing):
+    values = {key: value for key, value in REQUIRED.items() if key != missing}
 
-    # Attempt to load settings, expecting a ValueError due to missing API key
-    with pytest.raises(ValueError):
-        load_settings()
+    with pytest.raises(ValueError, match=missing):
+        settings_from_mapping(values)
 
 
-def test_load_settings(monkeypatch):
-    # Set environment variables for testing
-    monkeypatch.setenv("PINECONE_API_KEY", "test_api_key")
-    monkeypatch.setenv("PINECONE_INDEX_NAME", "test_index_name")
-    monkeypatch.setenv("GEMINI_API_KEY", "test_gemini_api_key")
+def test_required_values_are_read():
+    settings = settings_from_mapping(REQUIRED)
 
-    # Load settings
-    settings = load_settings()
-
-    # Assert that the settings are loaded correctly
     assert settings.pinecone_api_key == "test_api_key"
     assert settings.pinecone_index_name == "test_index_name"
     assert settings.gemini_api_key == "test_gemini_api_key"
+
+
+def test_optional_values_are_parsed_from_strings():
+    settings = settings_from_mapping(
+        {
+            **REQUIRED,
+            "CANDIDATE_K": "12",
+            "RESPONSE_CACHE_SIMILARITY_THRESHOLD": "0.9",
+            "USE_HOSTED_INFERENCE": "false",
+            "SMALL_TALK_ENABLED": "yes",
+        }
+    )
+
+    assert settings.candidate_k == 12
+    assert settings.response_cache_similarity_threshold == 0.9
+    assert settings.use_hosted_inference is False
+    assert settings.small_talk_enabled is True
+
+
+def test_the_engine_does_not_read_the_process_environment(monkeypatch):
+    monkeypatch.setenv("CANDIDATE_K", "99")
+
+    assert settings_from_mapping(REQUIRED).candidate_k == 30

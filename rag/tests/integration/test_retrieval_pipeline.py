@@ -14,7 +14,7 @@ if os.getenv("RUN_REAL_RAG_TESTS") != "1":
 
 pytest.importorskip("sentence_transformers")
 
-from rag.config.settings import load_settings
+from rag.config.settings import settings_from_mapping
 from rag.embeddings.local_embedder import Embedder
 from rag.ingestion.bm25 import BM25CorpusBuilder
 from rag.ingestion.chunker import TextChunker
@@ -32,7 +32,7 @@ def test_retrieval_pipeline(tmp_path):
     if not pdf_path.exists():
         pytest.skip("CV PDF is not available.")
 
-    settings = load_settings()
+    settings = settings_from_mapping(os.environ)
     embedder = Embedder(config=settings.embedding_config())
     vector_store = PineconeVectorStore(
         config=settings.pinecone_config(),
