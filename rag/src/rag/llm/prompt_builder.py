@@ -1,3 +1,4 @@
+import re
 from textwrap import dedent
 
 from rag.config.component_configs import PromptConfig
@@ -25,6 +26,20 @@ class PromptBuilder:
         """
 
         return self.config.no_context_answer
+
+    def is_no_answer(self, answer: str) -> bool:
+        """
+        Whether the model replied with the no-answer sentence.
+
+        The prompt tells it to reply with exactly that sentence when the
+        context does not support an answer; matched loosely (case, spacing,
+        punctuation, anything it adds after) because models do not always
+        reply exactly.
+        """
+
+        wanted = _normalise(self.config.no_answer_text)
+
+        return bool(wanted) and _normalise(answer).startswith(wanted)
 
     def build_prompt(
         self,
@@ -98,16 +113,24 @@ class PromptBuilder:
 
             metadata = chunk.metadata
 
-            lines = [
-                f"[Context {index}]",
-                f"Document: {metadata.filename}",
-                f"Chunk: {metadata.chunk_index}",
-            ]
+            if metadata.url:
+                # A web search result: cite the page, not a library file.
+                lines = [
+                    f"[Context {index}]",
+                    f"Web page: {metadata.filename}",
+                    f"URL: {metadata.url}",
+                ]
+            else:
+                lines = [
+                    f"[Context {index}]",
+                    f"Document: {metadata.filename}",
+                    f"Chunk: {metadata.chunk_index}",
+                ]
 
-            pages = page_label(metadata.page_number, metadata.end_page_number)
+                pages = page_label(metadata.page_number, metadata.end_page_number)
 
-            if pages is not None:
-                lines.append(pages)
+                if pages is not None:
+                    lines.append(pages)
 
             lines.extend(
                 [
@@ -145,3 +168,11 @@ def page_label(first: int | None, last: int | None) -> str | None:
         return f"Page: {first}"
 
     return f"Pages: {first}-{last}"
+
+
+def _normalise(text: str) -> str:
+    # Apostrophes dropped rather than spaced, so "don't", "don’t" and
+    # "dont" all compare equal.
+    folded = re.sub(r"['’`ʼ]", "", (text or "").casefold())
+
+    return " ".join(re.sub(r"[^\w\s]", " ", folded).split())

@@ -17,6 +17,9 @@ dependencies = [
     "python-dotenv",
     "google-genai",
     "groq",
+    # Web search fallback for medical questions the library cannot answer.
+    # Only used when TAVILY_API_KEY is set.
+    "tavily-python",
     "pinecone",
     "rank-bm25",
     "langchain-text-splitters",

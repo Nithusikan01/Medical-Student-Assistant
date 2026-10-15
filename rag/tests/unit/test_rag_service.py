@@ -1,5 +1,7 @@
 from unittest.mock import Mock
 
+import pytest
+
 from rag.cache.semantic_cache import InMemorySemanticCache
 from rag.config.component_configs import CacheConfig
 from rag.llm.schemas import LLMResponse
@@ -479,13 +481,16 @@ def test_configured_summary_trigger_is_used():
 class StubScopeGuard:
     refusal = "I'm a study assistant for medicine."
 
-    def __init__(self, in_scope: bool):
-        self.in_scope = in_scope
+    def __init__(self, in_scope: bool = True, verdict: str | None = None):
+        self.verdict = verdict or ("in" if in_scope else "out")
         self.queries: list[str] = []
 
-    def is_in_scope(self, query):
+    def classify(self, query):
         self.queries.append(query)
-        return self.in_scope
+        return self.verdict
+
+    def is_in_scope(self, query):
+        return self.classify(query) != "out"
 
 
 def test_an_out_of_scope_question_is_declined_before_any_retrieval():
@@ -556,3 +561,185 @@ def test_small_talk_is_answered_without_a_scope_check():
 
     assert answer != guard.refusal
     assert guard.queries == []
+
+
+# ----------------------------------------------------------------------
+# Web search fallback
+# ----------------------------------------------------------------------
+
+NO_ANSWER = "I don't know based on the provided documents."
+
+
+class StubSearcher:
+    def __init__(self, results=None, error: Exception | None = None):
+        from rag.websearch import WebResult
+
+        self.results = (
+            results
+            if results is not None
+            else [
+                WebResult(
+                    title="Sepsis - MedlinePlus",
+                    url="https://medlineplus.gov/sepsis.html",
+                    content="Sepsis is the body's extreme response to an infection.",
+                    score=0.9,
+                )
+            ]
+        )
+        self.error = error
+        self.queries: list[str] = []
+
+    def search(self, query):
+        self.queries.append(query)
+
+        if self.error is not None:
+            raise self.error
+
+        return self.results
+
+
+def build_web_service(
+    *,
+    chunks,
+    first_answer="Library answer",
+    web_answer="Sepsis is a dysregulated response to infection.",
+    verdict="in",
+    searcher=None,
+    **kwargs,
+):
+    searcher = searcher if searcher is not None else StubSearcher()
+    service, query_service, generator, *_ = build_service(
+        chunks=chunks,
+        scope_guard=StubScopeGuard(verdict=verdict),
+        web_searcher=searcher,
+        web_notice="Note: from the web.",
+        **kwargs,
+    )
+    generator.generate.side_effect = [
+        LLMResponse(text=first_answer),
+        LLMResponse(text=web_answer),
+    ]
+
+    return service, query_service, generator, searcher
+
+
+def test_no_library_chunks_answers_from_the_web_with_a_notice():
+    service, _, generator, searcher = build_web_service(chunks=[])
+    generator.generate.side_effect = [LLMResponse(text="From the web.")]
+
+    answer, sources = service.answer_with_sources(
+        conversation_id="c", question="What is sepsis?"
+    )
+
+    assert answer == "Note: from the web.\n\nFrom the web."
+    assert searcher.queries == ["rewritten question"]
+    assert [s.metadata.url for s in sources] == ["https://medlineplus.gov/sepsis.html"]
+    assert sources[0].retrieval_method.value == "web"
+
+
+def test_a_library_no_answer_is_replaced_by_a_web_answer():
+    service, _, generator, _ = build_web_service(
+        chunks=[make_retrieved_chunk(chunk_id="1", text="Unrelated passage.")],
+        first_answer=NO_ANSWER,
+    )
+
+    answer, sources = service.answer_with_sources(
+        conversation_id="c", question="What is sepsis?"
+    )
+
+    assert answer.startswith("Note: from the web.")
+    assert "dysregulated response" in answer
+    assert generator.generate.call_count == 2
+    assert sources[0].metadata.url == "https://medlineplus.gov/sepsis.html"
+
+    # The web passages are the second prompt's only context.
+    web_prompt = generator.generate.call_args_list[1].args[0]
+    assert "URL: https://medlineplus.gov/sepsis.html" in web_prompt
+    assert "Unrelated passage." not in web_prompt
+
+
+def test_a_library_answer_is_kept_and_no_search_is_made():
+    service, _, generator, searcher = build_web_service(
+        chunks=[make_retrieved_chunk(chunk_id="1", text="Sepsis is...")],
+        first_answer="Sepsis is a dysregulated host response.",
+    )
+
+    answer = service.answer(conversation_id="c", question="What is sepsis?")
+
+    assert answer == "Sepsis is a dysregulated host response."
+    assert searcher.queries == []
+    assert generator.generate.call_count == 1
+
+
+@pytest.mark.parametrize("verdict", ["unclear", "error", "disabled"])
+def test_only_a_confident_in_scope_verdict_reaches_the_web(verdict):
+    service, _, _, searcher = build_web_service(
+        chunks=[make_retrieved_chunk(chunk_id="1")],
+        first_answer=NO_ANSWER,
+        verdict=verdict,
+    )
+
+    answer = service.answer(conversation_id="c", question="What is sepsis?")
+
+    assert answer == NO_ANSWER
+    assert searcher.queries == []
+
+
+def test_no_scope_guard_means_no_web_search():
+    searcher = StubSearcher()
+    service, _, generator, *_ = build_service(chunks=[], web_searcher=searcher)
+
+    service.answer(conversation_id="c", question="What is sepsis?")
+
+    assert searcher.queries == []
+    generator.generate.assert_not_called()
+
+
+def test_a_failed_web_search_keeps_the_library_answer():
+    service, _, generator, _ = build_web_service(
+        chunks=[make_retrieved_chunk(chunk_id="1")],
+        first_answer=NO_ANSWER,
+        searcher=StubSearcher(error=RuntimeError("tavily is down")),
+    )
+
+    assert service.answer(conversation_id="c", question="q") == NO_ANSWER
+    assert generator.generate.call_count == 1
+
+
+def test_an_empty_web_search_keeps_the_no_context_answer():
+    service, _, generator, _ = build_web_service(
+        chunks=[], searcher=StubSearcher(results=[])
+    )
+
+    answer = service.answer(conversation_id="c", question="q")
+
+    assert answer == "I couldn't find relevant information in the documents."
+    generator.generate.assert_not_called()
+
+
+def test_web_passages_that_do_not_answer_keep_the_library_answer():
+    service, *_ = build_web_service(
+        chunks=[make_retrieved_chunk(chunk_id="1")],
+        first_answer=NO_ANSWER,
+        web_answer=NO_ANSWER,
+    )
+
+    answer, sources = service.answer_with_sources(conversation_id="c", question="q")
+
+    assert answer == NO_ANSWER
+    assert not answer.startswith("Note:")
+    assert all(s.metadata.url is None for s in sources)
+
+
+def test_a_web_answer_is_cached_like_any_other():
+    cache = build_cache()
+    service, _, generator, searcher = build_web_service(
+        chunks=[], response_cache=cache, has_context=False
+    )
+    generator.generate.side_effect = [LLMResponse(text="From the web.")]
+
+    first = service.answer(conversation_id="c", question="What is sepsis?")
+    second = service.answer(conversation_id="c", question="What is sepsis?")
+
+    assert first == second
+    assert len(searcher.queries) == 1

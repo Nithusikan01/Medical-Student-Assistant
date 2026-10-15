@@ -34,13 +34,26 @@ export function SourceList({ sources }: SourceListProps) {
           <li key={source.id} className="source">
             <div className="source-head">
               <Document size={13} />
-              <span className="source-file">{source.metadata.filename}</span>
+              {source.metadata.url ? (
+                <a
+                  className="source-file"
+                  href={source.metadata.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {source.metadata.filename}
+                </a>
+              ) : (
+                <span className="source-file">{source.metadata.filename}</span>
+              )}
 
               {pageLabel(source.metadata) !== null && (
                 <span className="chip">{pageLabel(source.metadata)}</span>
               )}
 
-              <span className="chip">chunk {source.metadata.chunk_index}</span>
+              {!source.metadata.url && (
+                <span className="chip">chunk {source.metadata.chunk_index}</span>
+              )}
 
               {source.retrieval_method && (
                 <span className="chip chip-accent">

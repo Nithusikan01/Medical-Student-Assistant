@@ -79,3 +79,36 @@ def test_page_labels_cover_single_spanning_and_legacy_chunks():
     assert page_label(4, 5) == "Pages: 4-5"
     assert page_label(4, None) == "Page: 4"
     assert page_label(None, None) is None
+
+
+def test_the_no_answer_sentence_is_recognised_loosely():
+    builder = PromptBuilder()
+
+    assert builder.is_no_answer("I don't know based on the provided documents.")
+    assert builder.is_no_answer("i don’t know based on the provided documents")
+    assert builder.is_no_answer("I dont know based on the provided documents. Sorry.")
+    assert not builder.is_no_answer("Sepsis is a dysregulated host response.")
+    assert not builder.is_no_answer("")
+
+
+def test_a_web_source_is_cited_by_its_page_not_a_chunk():
+    from rag.retrieval.schemas import RetrievedChunk, RetrievedChunkMetadata
+
+    chunk = RetrievedChunk(
+        id="web_1",
+        text="Sepsis is an extreme response to infection.",
+        score=0.9,
+        metadata=RetrievedChunkMetadata(
+            document_id="web",
+            filename="Sepsis - MedlinePlus",
+            source_path="https://medlineplus.gov/sepsis.html",
+            chunk_index=0,
+            url="https://medlineplus.gov/sepsis.html",
+        ),
+    )
+
+    prompt = PromptBuilder().build_prompt(question="q", chunks=[chunk])
+
+    assert "Web page: Sepsis - MedlinePlus" in prompt
+    assert "URL: https://medlineplus.gov/sepsis.html" in prompt
+    assert "Chunk: 0" not in prompt

@@ -29,6 +29,7 @@ class Stage(str, Enum):
     QUERY_REWRITE = "query_rewrite"
     CACHE_LOOKUP = "cache_lookup"
     SCOPE_CHECK = "scope_check"
+    WEB_SEARCH = "web_search"
     RETRIEVAL = "retrieval"
     QUERY_EMBEDDING = "query_embedding"
     DENSE_RETRIEVAL = "dense_retrieval"

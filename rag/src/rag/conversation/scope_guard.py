@@ -103,8 +103,19 @@ class ScopeGuard:
         return self.config.refusal_text
 
     def is_in_scope(self, query: str) -> bool:
+        return self.classify(query) != "out"
+
+    def classify(self, query: str) -> str:
+        """
+        "in", "out", "unclear", "error", or "disabled".
+
+        Only "out" declines. The finer verdict is for callers that need a
+        positive answer rather than the benefit of the doubt - the web
+        search fallback runs only on "in".
+        """
+
         if not self.config.enabled:
-            return True
+            return "disabled"
 
         examples = (
             f", including {self.config.in_scope_examples}"
@@ -130,7 +141,7 @@ class ScopeGuard:
                     type(exc).__name__,
                 )
                 span.set(in_scope=True, verdict="error")
-                return True
+                return "error"
 
             verdict = _parse(response.text)
             in_scope = verdict != "out"
@@ -143,7 +154,7 @@ class ScopeGuard:
                 **generation_metadata(response),
             )
 
-            return in_scope
+            return verdict
 
 
 def _parse(text: str | None) -> str:

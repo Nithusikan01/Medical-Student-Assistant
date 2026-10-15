@@ -135,6 +135,7 @@ def query_documents(
                 filename=chunk.metadata.filename,
                 page_number=chunk.metadata.page_number,
                 end_page_number=chunk.metadata.end_page_number,
+                url=getattr(chunk.metadata, "url", None),
                 chunk_index=chunk.metadata.chunk_index,
             ),
         )

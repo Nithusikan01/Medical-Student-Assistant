@@ -26,6 +26,10 @@ class SourceMetadata(BaseModel):
     page_number: int | None = None
     end_page_number: int | None = None
 
+    # Set only for a web search result (retrieval_method "web"), used when
+    # the class library had nothing on the question: the page to open.
+    url: str | None = None
+
     chunk_index: int
 
 

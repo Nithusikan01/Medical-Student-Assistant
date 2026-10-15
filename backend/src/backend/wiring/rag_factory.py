@@ -35,6 +35,7 @@ from rag.services.history_aware_rag_service import (
     HistoryAwareRAGService,
 )
 from rag.vectorstore.pinecone_store import PineconeVectorStore
+from rag.websearch import WebSearcher
 
 from backend.db.session import get_session_factory
 from backend.observability import (
@@ -231,6 +232,28 @@ def build_query_embedder() -> MemoizingEmbedder:
     """
 
     return MemoizingEmbedder(build_embedder(), tracer=build_tracer())
+
+
+@lru_cache
+def build_web_searcher() -> WebSearcher | None:
+    """
+    The web search fallback, or None when it is off.
+
+    Off without TAVILY_API_KEY, with WEB_SEARCH_ENABLED=false, or without
+    the scope guard - the fallback runs only on questions the guard has
+    positively judged in scope, so with no guard it would never run.
+    """
+
+    settings = load_settings()
+    config = settings.web_search_config()
+
+    if not config.enabled or not settings.scope_config().enabled:
+        logger.info("Web search fallback is off.")
+        return None
+
+    from rag.websearch.tavily_searcher import TavilySearcher
+
+    return TavilySearcher(config)
 
 
 @lru_cache
@@ -604,6 +627,8 @@ def build_history_aware_rag_service() -> HistoryAwareRAGService:
             if settings.scope_config().enabled
             else None
         ),
+        web_searcher=build_web_searcher(),
+        web_notice=settings.web_search_config().notice,
         candidate_k=settings.retrieval_config().candidate_k,
         summary_trigger=conversation.summary_trigger,
         tracer=tracer,

@@ -11,6 +11,9 @@ class RetrievalMethod(str, Enum):
     BM25 = "bm25"
     HYBRID = "hybrid"
     RERANKED = "reranked"
+    # Not from the library at all: a web search result, used when the
+    # library had nothing on the question.
+    WEB = "web"
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +30,10 @@ class RetrievedChunkMetadata:
 
     page_number: int | None = None
     end_page_number: int | None = None
+
+    # Set only for web search results: the page a student can open to check
+    # the passage. Library chunks cite a file and page instead.
+    url: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
