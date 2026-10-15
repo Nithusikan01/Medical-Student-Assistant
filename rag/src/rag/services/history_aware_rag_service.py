@@ -4,6 +4,7 @@ from typing import Any
 from rag.cache.protocol import ResponseCache
 from rag.cache.schemas import CacheLookup
 from rag.cache.semantic_cache import NullResponseCache
+from rag.conversation.memory import ConversationMemory
 from rag.conversation.query_rewriter import QueryRewriter
 from rag.conversation.small_talk import SmallTalkResponder
 from rag.conversation.store import ConversationStore
@@ -388,7 +389,7 @@ class HistoryAwareRAGService:
     def _finish(
         self,
         *,
-        memory: Any,
+        memory: ConversationMemory,
         answer: str,
         chunks: list[RetrievedChunk],
     ) -> tuple[str, list[RetrievedChunk]]:

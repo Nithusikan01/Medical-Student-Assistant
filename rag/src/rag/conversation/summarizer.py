@@ -33,7 +33,11 @@ class ConversationSummarizer:
 
     def summarize(self, memory: ConversationMemory) -> str:
 
-        messages = memory.get_recent_messages()
+        # Every turn since the last summary, not the recent-message window:
+        # the trigger fires after `summary_trigger` pending turns, and the
+        # window holds fewer, so summarising the window silently dropped
+        # the oldest turns of every cycle from the conversation's memory.
+        messages = list(memory.messages)
 
         conversation_text = "\n".join(f"{m.role}: {m.content}" for m in messages)
 
