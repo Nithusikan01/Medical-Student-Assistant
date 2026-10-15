@@ -1,15 +1,17 @@
-from abc import ABC, abstractmethod
+from typing import Protocol, runtime_checkable
 
 from rag.retrieval.schemas import RetrievedChunk
 
 
-class BaseReranker(ABC):
+@runtime_checkable
+class BaseReranker(Protocol):
     """
-    Base class for every reranking strategy.
-    All rerankers must return ranked chunks.
+    Anything that reorders retrieved candidates for a query.
+
+    Implementations are expected to raise on failure rather than degrade
+    themselves; FallbackReranker decides what happens next.
     """
 
-    @abstractmethod
     def rerank(
         self,
         query: str,
@@ -27,4 +29,4 @@ class BaseReranker(ABC):
         Returns:
             A list of RetrievedChunk objects ordered by decreasing relevance.
         """
-        raise NotImplementedError
+        ...

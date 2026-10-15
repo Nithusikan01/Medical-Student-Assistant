@@ -8,7 +8,7 @@ from rag.retrieval.schemas import RetrievedChunk
 logger = logging.getLogger(__name__)
 
 
-class HybridRetriever(BaseRetriever):
+class HybridRetriever:
     """
     Hybrid retriever combining:
 

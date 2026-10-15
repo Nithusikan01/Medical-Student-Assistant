@@ -42,11 +42,12 @@ DEFAULT_K_VALUES = (1, 3, 5, 10)
 
 class Retriever(Protocol):
     """
-    What the runner needs, which is far less than BaseRetriever.
+    What the runner needs: BaseRetriever's shape, with any sequence of
+    objects carrying `id` and `metadata.document_id` accepted back.
 
-    A Protocol rather than the base class so an evaluation can be run
-    against anything that ranks chunks - a stub, a recorded ranking, a
-    competing implementation - without either side importing the other.
+    Narrower than BaseRetriever so an evaluation can be run against
+    anything that ranks chunks - a stub, a recorded ranking, a competing
+    implementation - without it producing RetrievedChunk objects.
     """
 
     def retrieve(self, query: str, top_k: int | None = None) -> Sequence[Any]: ...

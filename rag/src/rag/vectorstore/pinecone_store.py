@@ -7,7 +7,6 @@ from pinecone import Pinecone, ServerlessSpec
 from rag.config.component_configs import PineconeConfig
 from rag.observability import is_transient
 from rag.utils.exceptions import VectorStoreError
-from rag.vectorstore.base import VectorStoreInterface
 from rag.vectorstore.schemas import (
     SearchResult,
     VectorRecord,
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 DELETE_BATCH_SIZE = 1000
 
 
-class PineconeVectorStore(VectorStoreInterface):
+class PineconeVectorStore:
     """
     Vectors stored in one Pinecone index.
 

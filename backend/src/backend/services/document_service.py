@@ -4,7 +4,7 @@ from pathlib import Path
 
 import sqlalchemy as sa
 from rag.ingestion.pipeline import IngestionPipeline
-from rag.vectorstore.base import VectorStoreInterface
+from rag.vectorstore.base import IdListingVectorStore, VectorStoreInterface
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.db.models import (
@@ -185,13 +185,14 @@ class DocumentService:
 
         stray: list[str] = []
 
-        try:
+        if isinstance(self._vector_store, IdListingVectorStore):
+            known_ids = set(known)
             stray = [
                 vector_id
                 for vector_id in self._vector_store.list_ids(f"{document_id}_chunk_")
-                if vector_id not in set(known)
+                if vector_id not in known_ids
             ]
-        except NotImplementedError:
+        else:
             logger.info("Vector store cannot list ids; skipping the sweep.")
 
         self._vector_store.delete(known + stray)
