@@ -114,12 +114,12 @@ someone else returns 404, never 403, so the response can't be used to enumerate 
 
 ### Two independent pipelines, one wiring point
 
-Everything is assembled through dependency injection, not framework magic. The two pipelines share components (`Embedder`, `PineconeVectorStore`) but are built separately:
+Everything is assembled through dependency injection, not framework magic. The two pipelines share components (the `TextEmbedder`, `PineconeVectorStore`) but are built separately:
 
 - **Ingestion** (`rag/ingestion/pipeline.py::IngestionPipeline.ingest`) is constructed per-request in `backend/routers/ingest.py::get_ingestion_pipeline()`, and driven by `backend/services/document_service.py::DocumentService.ingest`, which creates the `documents` row (`status=processing`) *before* the pipeline runs.
 - **Query** (`rag/services/history_aware_rag_service.py::HistoryAwareRAGService`) is built once by `backend/wiring/rag_factory.py::build_history_aware_rag_service()` — an `@lru_cache()`d factory called at API startup (`backend/app.py` lifespan).
 
-`rag_factory.py` also exposes `build_embedder()`, `build_reranker()`, `build_vector_store()`, `build_bm25_index()`, and `build_response_cache()` as their own `@lru_cache()`d singletons. Ingesting or deleting a document calls `refresh_corpus_state()`, which does the two things that have to happen when the corpus changes: `refresh_bm25_index()` reloads chunks from Postgres and calls `.rebuild()` on the *same* `BM25Index` object — the running `HistoryAwareRAGService` holds a reference to it and sees the change immediately — and the response cache is emptied. This replaced an earlier design that called `build_history_aware_rag_service.cache_clear()` on every ingest, which re-instantiated the embedder and reranker (and, before hosted inference, reloaded model weights) on every single upload.
+`rag_factory.py` also exposes `build_embedder()`, `build_query_embedder()` (the memoizing wrapper the query path uses), `build_reranker()`, `build_vector_store()`, `build_bm25_index()`, and `build_response_cache()` as their own `@lru_cache()`d singletons. Ingesting or deleting a document calls `refresh_corpus_state()`, which does the two things that have to happen when the corpus changes: `refresh_bm25_index()` reloads chunks from Postgres and calls `.rebuild()` on the *same* `BM25Index` object — the running `HistoryAwareRAGService` holds a reference to it and sees the change immediately — and the response cache is emptied. This replaced an earlier design that called `build_history_aware_rag_service.cache_clear()` on every ingest, which re-instantiated the embedder and reranker (and, before hosted inference, reloaded model weights) on every single upload.
 
 When changing how a component is constructed (e.g. adding a retriever, changing model names), `rag_factory.py` is the single place that wires it into the live query path. It lives in `backend/` because it is application composition, not library code — the `rag` package deliberately ships no composition root.
 
@@ -283,7 +283,9 @@ with passage-level scores.
 
 ### Config
 
-`config/settings.py::Settings` is a frozen dataclass populated from env vars by `load_settings()`; component-specific config is carved out via `Settings.<x>_config()` methods returning the small dataclasses in `config/component_configs.py` (`EmbeddingConfig`, `ChunkingConfig`, `GenerationConfig`, `PineconeConfig`, `RetrievalConfig`). Components take their narrow config dataclass in `__init__`, not the whole `Settings` object — follow that pattern for new components.
+`config/settings.py::Settings` is a frozen dataclass populated from env vars by `load_settings()`; component-specific config is carved out via `Settings.<x>_config()` methods returning the small dataclasses in `config/component_configs.py` (`EmbeddingConfig`, `ChunkingConfig`, `GenerationConfig`, `PineconeConfig`, `RetrievalConfig`, `ConversationConfig`, `PromptConfig`, ...). Components take their narrow config dataclass in `__init__`, not the whole `Settings` object — follow that pattern for new components. Every field in `Settings` must reach a component through the factory; a setting that is loaded but never wired is a bug, not a default. Settings that belong to the application rather than the engine (`STORAGE_PATH`, `LOG_DIR`) are read in `backend/`.
+
+The prompts' wording is the application's: `PromptBuilder` is an instance built from `PromptConfig` (`CORPUS_DESCRIPTION`, the no-answer and no-context texts) and handed to `HistoryAwareRAGService`. The engine's prompts stay domain-neutral. Embedders live in `rag/embeddings/` (`local_embedder.py`, `pinecone_embedder.py`, `memoizing.py`) and satisfy `TextEmbedder`: strings in, vectors out, so the query side never imports ingestion schemas. Provider retries go through `rag/llm/retry.py` and `observability.is_transient`, which classifies by type and status through the `__cause__` chain, never by message text. Logging is configured by `backend/logging_setup.py`; engine log lines never include question text.
 
 ### Generation model selection
 
@@ -293,7 +295,7 @@ The catalog of offered models — id, display label, provider, and (for Groq) th
 
 ### Heavy imports are lazy
 
-`sentence-transformers` (`Embedder`, `Reranker`, `DenseRetriever`) and `langchain-text-splitters` (`TextChunker`) are imported inside constructors/builders, not at module top level, so importing these modules doesn't force a slow ML-library load for code paths that don't need it (e.g. API startup before the factory runs, or CLI scripts that only touch schemas).
+`sentence-transformers` (`embeddings/local_embedder.py::Embedder`, `Reranker`) and `langchain-text-splitters` (`TextChunker`) are imported inside constructors/builders, not at module top level, so importing these modules doesn't force a slow ML-library load for code paths that don't need it (e.g. API startup before the factory runs, or CLI scripts that only touch schemas).
 
 ### API surface
 

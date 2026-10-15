@@ -81,7 +81,7 @@ def build_query_service(corpus_path: Path, use_reranker: bool) -> QueryService:
     settings = load_settings()
 
     embedder = Embedder(settings.embedding_config())
-    dimension = len(embedder.model.encode("dimension_check"))
+    dimension = embedder.dimension
 
     vector_store = PineconeVectorStore(
         config=settings.pinecone_config(),
