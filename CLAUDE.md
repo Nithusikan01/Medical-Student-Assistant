@@ -190,8 +190,8 @@ turn five costs no LLM call either. The reply is never cached (there is nothing 
 entry keyed on "hi" would occupy a cache sized for real questions) and emits a `Stage.SMALL_TALK`
 span carrying the intent — the only thing that separates "answered without retrieving" from
 "retrieved and found nothing" on a trace, since both produce no generation span and no sources.
-`SmallTalkConfig` (`enabled`, `assistant_name`, `corpus_description`, from `SMALL_TALK_ENABLED`
-/ `ASSISTANT_NAME` / `ASSISTANT_DESCRIPTION`) keeps the application's name out of `rag/`;
+`SmallTalkConfig` (`enabled`, `assistant_name`, `corpus_description`, `purpose`, from
+`SMALL_TALK_ENABLED` / `ASSISTANT_NAME` / `ASSISTANT_DESCRIPTION` / `ASSISTANT_PURPOSE`) keeps the application's name out of `rag/`;
 `enabled=false` restores the strictly-retrieval behaviour.
 
 ### Scope guard
@@ -202,7 +202,10 @@ Without it an off-topic question paid for the whole pipeline — embedding, vect
 reranking and an answer call — to come back as "I don't know based on the provided documents".
 
 It is one call to the default generator (rewriting's, never the user-selected model) that returns
-one word, `IN` or `OUT`, and it sits **after** the cache lookup (a cached answer costs nothing more)
+one sentence saying what the message asks for and then a `VERDICT: IN` / `VERDICT: OUT` line. The
+model judges the task, not the vocabulary: asked for a bare word, it let "What is 2 eyes plus 2
+eyes?" through as anatomy, so the prompt names arithmetic, riddles, jokes and trivia dressed in
+medical words as out and real clinical calculations (doses, BMI, anion gap) as in. It sits **after** the cache lookup (a cached answer costs nothing more)
 and **after** the rewrite (a follow-up is judged as the standalone question it stands for). It
 fails open: only a reply that starts with `OUT` declines; an unclear reply or a failed call
 answers normally, because a wrong refusal costs a student a real answer while a missed one only
@@ -211,7 +214,10 @@ asks the same thing. Small talk is answered before it and never reaches it.
 
 `ScopeConfig` (`SCOPE_GUARD_ENABLED`, `SCOPE_SUBJECT`, `SCOPE_EXAMPLES`, `SCOPE_REFUSAL`) carries the
 subject and the reply; the engine's defaults name no subject and `Settings` supplies the medical
-ones. Each check emits a `Stage.SCOPE_CHECK` span with `in_scope` and `verdict`
+ones. Unless `SCOPE_REFUSAL` is set, the reply is composed from the same identity the greeting
+uses — `ASSISTANT_NAME`, `ASSISTANT_DESCRIPTION` ("medical study assistant") and
+`ASSISTANT_PURPOSE` ("I help medical students learn their course material and prepare for
+exams.") — so every self-introduction says the same thing. Each check emits a `Stage.SCOPE_CHECK` span with `in_scope` and `verdict`
 (`in`/`out`/`unclear`/`error`) and no question text. `rag/tests/integration/test_scope_guard_live.py`
 holds the tables of in- and out-of-scope questions the prompt is tuned against; run it with
 `RUN_REAL_RAG_TESTS=1` after changing the prompt, the subject or the model.

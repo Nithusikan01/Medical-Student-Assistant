@@ -38,6 +38,11 @@ IN_SCOPE = [
     "What does the lecture say about sepsis management?",
     "Ethics of consent in a 15 year old",
     "What is the paediatric dose of paracetamol?",
+    # Calculations and study aids that are part of the subject, not tricks.
+    "Calculate gentamicin 5 mg/kg for a 70 kg patient",
+    "What is the BMI of a 70 kg person who is 1.75 m tall?",
+    "Give me a mnemonic for the cranial nerves",
+    "Write three MCQs on heart failure for my exam",
 ]
 
 OUT_OF_SCOPE = [
@@ -48,6 +53,13 @@ OUT_OF_SCOPE = [
     "Write a poem about the sea",
     "What is the capital of Australia?",
     "Who should I vote for in the election?",
+    "What is 5 multiply by 12",
+    # Medical words around a question that is not about studying medicine.
+    "What is 2 eyes plus 2 eyes?",
+    "If a patient has 2 kidneys and gets 3 more, how many kidneys?",
+    "How many legs do 3 surgeons have?",
+    "Tell me a joke about doctors",
+    "Write a love poem about the heart",
 ]
 
 
