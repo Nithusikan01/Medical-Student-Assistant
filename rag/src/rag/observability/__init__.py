@@ -10,6 +10,7 @@ from rag.observability.errors import (
     ErrorCategory,
     classify,
     describe,
+    is_transient,
     retry_after_of,
     status_code_of,
 )
@@ -57,6 +58,7 @@ __all__ = [
     "current_trace_id",
     "describe",
     "generation_metadata",
+    "is_transient",
     "new_id",
     "promotion_profile",
     "rank_change",

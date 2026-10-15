@@ -93,6 +93,10 @@ _NAMES: dict[str, ErrorCategory] = {
     "RemoteProtocolError": ErrorCategory.UPSTREAM,
     "PineconeApiException": ErrorCategory.UPSTREAM,
     "ServiceException": ErrorCategory.UPSTREAM,
+    # urllib3, underneath the Pinecone REST client
+    "MaxRetryError": ErrorCategory.UPSTREAM,
+    "NewConnectionError": ErrorCategory.UPSTREAM,
+    "ProtocolError": ErrorCategory.UPSTREAM,
     # Auth
     "Unauthenticated": ErrorCategory.AUTH,
     "PermissionDenied": ErrorCategory.AUTH,
@@ -143,9 +147,42 @@ def _from_status(status: int) -> ErrorCategory | None:
     return None
 
 
-def status_code_of(error: BaseException) -> int | None:
-    """The HTTP status an exception carries, if it carries one."""
+# How far down a `raise ... from` chain to look. The engine wraps provider
+# errors once (VectorStoreError, EmbeddingError, "generation failed"); a
+# little headroom covers a second wrapper without walking forever.
+_MAX_CHAIN = 4
 
+
+def _chain(error: BaseException):
+    """
+    The error, then what it was raised from, and so on.
+
+    The engine wraps provider failures in its own exception types so their
+    messages never reach a response. Classifying only the outer one filed
+    every Pinecone timeout and Gemini 429 as "internal".
+    """
+
+    seen: set[int] = set()
+
+    while error is not None and id(error) not in seen and len(seen) < _MAX_CHAIN:
+        seen.add(id(error))
+        yield error
+        error = error.__cause__
+
+
+def status_code_of(error: BaseException) -> int | None:
+    """The HTTP status an exception, or what it wraps, carries."""
+
+    for link in _chain(error):
+        status = _own_status_code(link)
+
+        if status is not None:
+            return status
+
+    return None
+
+
+def _own_status_code(error: BaseException) -> int | None:
     for name in _STATUS_ATTRIBUTES:
         value = getattr(error, name, None)
 
@@ -170,6 +207,16 @@ def retry_after_of(error: BaseException) -> float | None:
     the second is the only one that can be acted on automatically.
     """
 
+    for link in _chain(error):
+        retry_after = _own_retry_after(link)
+
+        if retry_after is not None:
+            return retry_after
+
+    return None
+
+
+def _own_retry_after(error: BaseException) -> float | None:
     for name in _RETRY_ATTRIBUTES:
         value = getattr(error, name, None)
 
@@ -190,37 +237,65 @@ def classify(error: BaseException) -> ErrorCategory:
     """
     What kind of failure this is. Never raises, never reads the message.
 
-    Status code first, because it is the provider's own statement about
-    what went wrong; the class name is a fallback for SDKs that wrap the
-    response without exposing it.
+    Walks the `raise ... from` chain and returns the first category more
+    specific than internal, so an engine wrapper around a provider error
+    is filed under what the provider actually did.
     """
 
     try:
-        status = status_code_of(error)
+        for link in _chain(error):
+            category = _classify_one(link)
 
-        if status is not None:
-            from_status = _from_status(status)
-
-            if from_status is not None:
-                return from_status
-
-        name = type(error).__name__
-
-        if name in _NAMES:
-            return _NAMES[name]
-
-        for base, category in _BUILTINS:
-            if isinstance(error, base):
+            if category is not ErrorCategory.INTERNAL:
                 return category
 
         return ErrorCategory.INTERNAL
     except Exception:
         # A classifier that throws would turn a handled failure into an
-        # unhandled one, which is precisely the rule this layer exists
-        # under. Attribute access is not as safe as it looks: an SDK
-        # exception can expose `status_code` as a property that raises.
+        # unhandled one. Attribute access is not as safe as it looks: an
+        # SDK exception can expose `status_code` as a property that raises.
         logger.exception("Failed to classify an error.")
         return ErrorCategory.INTERNAL
+
+
+# What a retry can plausibly fix. Auth, validation and our own bugs fail
+# the same way every time, so retrying them only adds latency and spend.
+TRANSIENT_CATEGORIES = frozenset(
+    {ErrorCategory.RATE_LIMIT, ErrorCategory.TIMEOUT, ErrorCategory.UPSTREAM}
+)
+
+
+def is_transient(error: BaseException) -> bool:
+    """Whether retrying the same request could succeed."""
+
+    return classify(error) in TRANSIENT_CATEGORIES
+
+
+def _classify_one(error: BaseException) -> ErrorCategory:
+    """
+    One exception, ignoring its cause. Status code first, because it is the
+    provider's own statement about what went wrong; the class name is a
+    fallback for SDKs that wrap the response without exposing it.
+    """
+
+    status = _own_status_code(error)
+
+    if status is not None:
+        from_status = _from_status(status)
+
+        if from_status is not None:
+            return from_status
+
+    name = type(error).__name__
+
+    if name in _NAMES:
+        return _NAMES[name]
+
+    for base, category in _BUILTINS:
+        if isinstance(error, base):
+            return category
+
+    return ErrorCategory.INTERNAL
 
 
 def describe(error: BaseException) -> dict[str, Any]:

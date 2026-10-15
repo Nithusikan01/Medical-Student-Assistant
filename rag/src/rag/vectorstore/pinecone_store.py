@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from pinecone import Pinecone, ServerlessSpec
 
 from rag.config.component_configs import PineconeConfig
+from rag.observability import is_transient
 from rag.utils.exceptions import VectorStoreError
 from rag.vectorstore.base import VectorStoreInterface
 from rag.vectorstore.schemas import (
@@ -16,20 +17,6 @@ from rag.vectorstore.schemas import (
 logger = logging.getLogger(__name__)
 
 DELETE_BATCH_SIZE = 1000
-
-
-def _is_transient_query_error(error: Exception) -> bool:
-    text = str(error).lower()
-
-    transient_markers = (
-        "getaddrinfo failed",
-        "connection",
-        "timed out",
-        "timeout",
-        "temporarily unavailable",
-    )
-
-    return any(marker in text for marker in transient_markers)
 
 
 class PineconeVectorStore(VectorStoreInterface):
@@ -195,7 +182,9 @@ class PineconeVectorStore(VectorStoreInterface):
 
             except Exception as exc:
 
-                if attempt < max_attempts and _is_transient_query_error(exc):
+                # By exception type and status, not by matching words in the
+                # message, which the provider can change at any time.
+                if attempt < max_attempts and is_transient(exc):
 
                     wait = base_backoff * attempt
 
