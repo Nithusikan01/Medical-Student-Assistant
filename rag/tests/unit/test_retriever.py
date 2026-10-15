@@ -183,3 +183,23 @@ def test_hybrid_keeps_dense_hits_when_the_lexical_side_cannot_say():
     dense.retrieve.return_value = [_dense_hit("x_chunk_0", "anything")]
 
     assert [c.id for c in HybridRetriever(dense, bm25).retrieve("q")] == ["x_chunk_0"]
+
+
+def test_retrievers_use_their_configured_default_top_k():
+    from unittest.mock import MagicMock
+
+    from rag.retrieval.bm25_retriever import BM25Retriever
+    from rag.retrieval.dense_retriever import DenseRetriever
+
+    store = MagicMock()
+    store.query.return_value = []
+    embedder = MagicMock()
+    embedder.embed_query.return_value = [0.1]
+
+    DenseRetriever(store, embedder, default_top_k=7).retrieve("q")
+    assert store.query.call_args.kwargs["top_k"] == 7
+
+    index = MagicMock()
+    index.search.return_value = []
+    BM25Retriever(index, default_top_k=4).retrieve("q")
+    assert index.search.call_args.kwargs["top_k"] == 4

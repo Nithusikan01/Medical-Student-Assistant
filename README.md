@@ -98,7 +98,7 @@ traffic cannot produce it.
 
 ### Platform
 
-- PostgreSQL persistence via SQLAlchemy 2.0 and Alembic (12 revisions): users, refresh
+- PostgreSQL persistence via SQLAlchemy 2.0 and Alembic (13 revisions): users, refresh
   tokens, invite codes, conversations and messages, the document/chunk registry, per-call
   token usage and cost, traces and spans, and answer feedback
 - Ten FastAPI routers, every route deliberately classified as public, authenticated, or
@@ -367,7 +367,7 @@ Anamnesis/
 |-- backend/                      # FastAPI HTTP layer (runtime root)
 |   |-- pyproject.toml            # package: rag-backend
 |   |-- .env                      # credentials live here
-|   |-- alembic.ini, migrations/  # 12 revisions, 0001_auth_tables .. 0012_answer_feedback
+|   |-- alembic.ini, migrations/  # 13 revisions, 0001_auth_tables .. 0013_chunk_page_range
 |   |-- data/raw/                 # source PDFs
 |   |-- data/evaluation/          # labelled evaluation sets (example.json is a template)
 |   |-- storage/                  # uploads/ (deleted after ingestion)
@@ -541,9 +541,11 @@ Optional — retrieval, chunking and generation:
   model names. The embedding dimension is fixed by the model and a Pinecone index cannot be
   resized, so changing it means creating a new index and re-ingesting.
 - `CHUNK_SIZE` / `CHUNK_OVERLAP`: PDF chunking controls.
-- `CANDIDATE_K` / `DENSE_TOP_K` / `RERANKING_K` / `FINAL_CONTEXT_K` / `SIMILARITY_THRESHOLD`:
-  retrieval tuning; note that `top_k` on the live query path comes from the request body, and
-  `CANDIDATE_K` only applies to `DenseRetriever` calls that pass no explicit `top_k`.
+- `CANDIDATE_K` (default `30`): chunks each retriever returns and the pool the reranker
+  narrows to the request's `top_k`. `RRF_K` (default `60`): the fusion constant.
+- `SUMMARY_TRIGGER` (default `12`) / `MAX_RECENT_MESSAGES` (default `6`): when a conversation
+  is summarised, and how many recent turns go into prompts verbatim.
+- `CORPUS_DESCRIPTION`: what the documents are, as the answer prompt describes them.
 - `GENERATION_MODEL_NAME` (default `gemini-3.1-flash-lite`): the model behind the
   `gemini-flash` catalog entry, and the one used for rewriting and summarization.
 - `STORAGE_PATH` (default `storage`): holds `uploads/` before ingestion deletes them. Relative
@@ -592,10 +594,10 @@ than a redeploy.
 
 ## Database And Migrations
 
-Schema is managed with Alembic, twelve revisions from `0001_auth_tables` through
-`0012_answer_feedback` — auth, conversations, documents, generation usage, telemetry and its
+Schema is managed with Alembic, thirteen revisions from `0001_auth_tables` through
+`0013_chunk_page_range` — auth, conversations, documents, generation usage, telemetry and its
 dimensions, span sequencing, token cost, the ingestion heartbeat, a span index, the error
-taxonomy, and answer feedback. Apply them before starting the API for the first time:
+taxonomy, answer feedback, and chunk page ranges. Apply them before starting the API for the first time:
 
 ```powershell
 cd backend
@@ -1008,7 +1010,9 @@ npm run build
 - `TelemetryMiddleware` is added before CORS so CORS ends up the outer of the two: a preflight
   is answered without ever reaching telemetry, and the browser can read the trace id because
   CORS exposes it explicitly.
-- Pinecone indexes are created automatically with cosine similarity in AWS `us-east-1`.
+- A missing Pinecone index is created at startup with cosine similarity, in
+  `PINECONE_CLOUD`/`PINECONE_REGION` (default AWS `us-east-1`); an existing index's
+  dimension is checked against the embedder.
 - Embedding and reranking use Pinecone's hosted inference by default
   (`USE_HOSTED_INFERENCE=true`); local Sentence Transformer / cross-encoder models are a
   fallback behind the `local-models` extra. Heavy imports (`sentence-transformers`,
@@ -1018,8 +1022,8 @@ npm run build
   happened to contain. It is built from `ready` documents only, which is why the dashboard
   reports chunks stored and chunks retrievable as two separate numbers.
 - Conversation memory is persisted in PostgreSQL per conversation and survives restarts.
-- `top_k` is accepted by the query API (bounded 1..20); `candidate_k` defaults to `30` inside
-  `HistoryAwareRAGService.answer_with_sources`.
+- `top_k` is accepted by the query API (bounded 1..20); `candidate_k` comes from
+  `CANDIDATE_K` (default `30`).
 - `POST /api/ingest` is a plain `def`, not `async def`, so FastAPI runs the fully synchronous,
   CPU-bound ingestion in a worker thread instead of blocking the event loop.
 - `fastapi` is pinned rather than left open-ended: the route-classification test depends on
@@ -1167,9 +1171,10 @@ What's already in the repository and stays true regardless of host:
 
 ## Future Direction: Structure-Aware Chunking (Proposed)
 
-The current chunker splits recursively by character count with a fixed overlap; each chunk's
-metadata already carries a `section_title` and `heading_level`, but there is no chapter/section
-hierarchy resolver or parent-child chunk relationship behind them yet. The diagram below is a
+The current chunker splits the whole document's text recursively by character count with a
+fixed overlap, so chunks can cross page breaks and record the pages and character range they
+cover. It reads no structure: there are no section titles, heading levels, or parent-child
+chunk relationships yet. The diagram below is a
 proposed pipeline for structure-aware ingestion — parsing headings, lists, tables, and figures
 as first-class elements, building a document hierarchy, and generating parent/child chunks
 that inherit their heading path — kept here as a design reference, not a description of what

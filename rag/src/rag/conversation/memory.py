@@ -3,22 +3,23 @@ from rag.conversation.schemas import ChatMessage
 
 class ConversationMemory:
     """
-    Two views of one conversation, kept apart on purpose.
+    One conversation's history, as the RAG service sees it.
 
-    `messages` holds the turns since the last summary. It is what
-    HistoryAwareRAGService counts against SUMMARY_TRIGGER, and what the
-    summarizer folds into the summary; `update_summary` empties it, because
-    those turns are now represented by the summary.
+    Two views, deliberately separate:
 
-    The recent window holds the last `max_recent_messages` turns of the
-    whole conversation, and is what goes into prompts. It survives a
-    summary, so the turn just before the checkpoint is still context for
-    the next question.
+    - `messages` holds only the turns since the last summary. It is what
+      the service counts against its summary trigger, and what the
+      summariser folds into the next summary - so every turn reaches the
+      summary exactly once.
+    - `get_recent_messages()` is a fixed-size window over the *whole*
+      history, unaffected by summarising. It is what goes into prompts, so
+      a summary never leaves the model without the last few turns.
 
-    The two used to be one list. Summarising then saw only the window - the
-    last 6 of the 12 turns that triggered it - and the other 6 never reached
-    the summary; and because nothing emptied the list, every turn after the
-    twelfth summarised again.
+    `update_summary` empties `messages`. If it did not, the trigger would
+    stay true from the trigger length onwards and summarise on every turn.
+
+    Subclasses that persist history (the backend's database-backed memory)
+    keep these semantics and add storage around them.
     """
 
     def __init__(self, max_recent_messages: int = 6):
@@ -27,7 +28,7 @@ class ConversationMemory:
         self.max_recent_messages = max_recent_messages
         self._recent: list[ChatMessage] = []
 
-    def add_message(self, role: str, content: str):
+    def add_message(self, role: str, content: str) -> None:
         message = ChatMessage(role=role, content=content)
 
         self.messages.append(message)
@@ -36,11 +37,13 @@ class ConversationMemory:
     def get_recent_messages(self) -> list[ChatMessage]:
         return list(self._recent)
 
-    def get_summary(self):
+    def get_summary(self) -> str:
         return self.summary
 
-    def update_summary(self, summary: str):
+    def update_summary(self, summary: str) -> None:
         self.summary = summary
+
+        # Everything pending is now represented by the summary.
         self.messages = []
 
     def _window(self, messages: list[ChatMessage]) -> list[ChatMessage]:

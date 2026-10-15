@@ -1,10 +1,11 @@
 import hashlib
 import logging
+import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
-from rag.config.settings import load_settings
 from rag.ingestion.chunker import TextChunker
 from rag.ingestion.document_loader import DocumentLoader
 from rag.ingestion.pipeline import IngestionPipeline
@@ -18,6 +19,7 @@ from backend.services.document_service import (
     DuplicateDocumentError,
 )
 from backend.services.upload_service import UploadService
+from backend.settings import load_settings
 from backend.wiring.rag_factory import (
     build_embedder,
     build_tracer,
@@ -49,7 +51,9 @@ def get_ingestion_pipeline() -> IngestionPipeline:
 
 @lru_cache
 def get_upload_service() -> UploadService:
-    return UploadService()
+    # Uploads are the application's storage, not the engine's, so the
+    # variable is read here rather than through rag's Settings.
+    return UploadService(Path(os.getenv("STORAGE_PATH", "storage")) / "uploads")
 
 
 @lru_cache

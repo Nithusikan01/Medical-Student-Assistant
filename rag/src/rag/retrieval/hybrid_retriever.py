@@ -1,5 +1,7 @@
+import contextvars
 import logging
 from collections import defaultdict
+from concurrent.futures import Executor, ThreadPoolExecutor
 
 from rag.observability import Stage, Tracer
 from rag.retrieval.base import BaseRetriever
@@ -8,7 +10,7 @@ from rag.retrieval.schemas import RetrievedChunk
 logger = logging.getLogger(__name__)
 
 
-class HybridRetriever(BaseRetriever):
+class HybridRetriever:
     """
     Hybrid retriever combining:
 
@@ -16,6 +18,13 @@ class HybridRetriever(BaseRetriever):
         - BM25 lexical retrieval
 
     Results are fused using Reciprocal Rank Fusion (RRF).
+
+    The two retrievers run concurrently by default: dense retrieval waits
+    on the network (embedding, then the vector query) while BM25 scores in
+    memory, so overlapping them takes the BM25 time off every request.
+    Dense runs on a worker thread with a copy of the caller's context, so
+    its spans still nest under the open retrieval span and token metering
+    still attributes to this request.
     """
 
     def __init__(
@@ -24,38 +33,36 @@ class HybridRetriever(BaseRetriever):
         bm25_retriever: BaseRetriever,
         rrf_k: int = 60,
         *,
+        parallel: bool = True,
+        executor: Executor | None = None,
         tracer: Tracer | None = None,
     ) -> None:
         self.dense_retriever = dense_retriever
         self.bm25_retriever = bm25_retriever
         self.rrf_k = rrf_k
+        self.parallel = parallel
         self.tracer = tracer if tracer is not None else Tracer()
+
+        # Shared across requests. Each request holds a worker only for its
+        # dense half, so a pool this size covers that many concurrent
+        # queries before one waits for a free thread.
+        self._executor = executor
+        if self._executor is None and parallel:
+            self._executor = ThreadPoolExecutor(
+                max_workers=8,
+                thread_name_prefix="hybrid-dense",
+            )
 
     def retrieve(
         self,
         query: str,
         top_k: int | None = None,
-        query_embedding: list[float] | None = None,
     ) -> list[RetrievedChunk]:
         """
         Retrieve chunks using hybrid retrieval with Reciprocal Rank Fusion.
         """
 
-        logger.debug(
-            "Running hybrid retrieval for query: %s",
-            query,
-        )
-
-        dense_results = self.dense_retriever.retrieve(
-            query=query,
-            top_k=top_k,
-            query_embedding=query_embedding,
-        )
-
-        bm25_results = self.bm25_retriever.retrieve(
-            query=query,
-            top_k=top_k,
-        )
+        dense_results, bm25_results = self._retrieve_both(query, top_k)
 
         dense_results, dense_dropped = self._only_listed_documents(dense_results)
 
@@ -168,6 +175,34 @@ class HybridRetriever(BaseRetriever):
             span.set(fused_count=len(final_results))
 
             return final_results
+
+    def _retrieve_both(
+        self,
+        query: str,
+        top_k: int | None,
+    ) -> tuple[list[RetrievedChunk], list[RetrievedChunk]]:
+
+        if not self.parallel or self._executor is None:
+            return (
+                self.dense_retriever.retrieve(query=query, top_k=top_k),
+                self.bm25_retriever.retrieve(query=query, top_k=top_k),
+            )
+
+        # copy_context: the worker sees this request's trace, open span and
+        # usage collector, exactly as if it had run inline.
+        context = contextvars.copy_context()
+
+        dense_future = self._executor.submit(
+            context.run,
+            self.dense_retriever.retrieve,
+            query=query,
+            top_k=top_k,
+        )
+
+        bm25_results = self.bm25_retriever.retrieve(query=query, top_k=top_k)
+
+        # Re-raises whatever dense retrieval raised, in this thread.
+        return dense_future.result(), bm25_results
 
     def _only_listed_documents(
         self,

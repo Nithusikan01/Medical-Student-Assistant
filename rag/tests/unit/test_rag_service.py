@@ -25,6 +25,7 @@ def build_service(
     generated_text="Generated answer",
     response_cache=None,
     has_context=True,
+    **service_kwargs,
 ):
     mock_query_service = Mock()
     mock_generator = Mock()
@@ -61,6 +62,7 @@ def build_service(
         query_rewriter=mock_query_rewriter,
         summarizer=mock_summarizer,
         response_cache=response_cache,
+        **service_kwargs,
     )
 
     return (
@@ -125,7 +127,6 @@ def test_answer_calls_query_service_with_rewritten_query():
         top_k=10,
         candidate_k=30,
         use_reranker=True,
-        query_embedding=None,
     )
     mock_memory.add_message.assert_any_call(
         role="user",
@@ -448,3 +449,110 @@ def test_an_answer_generated_across_a_corpus_change_is_not_cached():
 
     assert generator.generate.call_count == 2
     assert cache.stats().extra["stale"] == 1
+
+
+def test_configured_candidate_k_reaches_retrieval():
+    service, mock_query_service, *_ = build_service(candidate_k=12)
+
+    service.answer(conversation_id="c", question="q", top_k=3)
+
+    assert mock_query_service.search.call_args.kwargs["candidate_k"] == 12
+
+
+def test_per_call_candidate_k_overrides_the_configured_one():
+    service, mock_query_service, *_ = build_service(candidate_k=12)
+
+    service.answer(conversation_id="c", question="q", top_k=3, candidate_k=7)
+
+    assert mock_query_service.search.call_args.kwargs["candidate_k"] == 7
+
+
+def test_configured_summary_trigger_is_used():
+    service, *_, mock_summarizer, mock_memory = build_service(summary_trigger=2)
+    mock_memory.messages = [Mock(), Mock()]
+
+    service.answer(conversation_id="c", question="q")
+
+    mock_summarizer.summarize.assert_called_once_with(mock_memory)
+
+
+class StubScopeGuard:
+    refusal = "I'm a study assistant for medicine."
+
+    def __init__(self, in_scope: bool):
+        self.in_scope = in_scope
+        self.queries: list[str] = []
+
+    def is_in_scope(self, query):
+        self.queries.append(query)
+        return self.in_scope
+
+
+def test_an_out_of_scope_question_is_declined_before_any_retrieval():
+    guard = StubScopeGuard(in_scope=False)
+    service, mock_query_service, mock_generator, *_, mock_memory = build_service(
+        scope_guard=guard
+    )
+
+    answer, sources = service.answer_with_sources(
+        conversation_id="c", question="Who won the match?"
+    )
+
+    assert answer == guard.refusal
+    assert sources == []
+    mock_query_service.search.assert_not_called()
+    mock_generator.generate.assert_not_called()
+    # Recorded like any other turn, so the conversation shows what was said.
+    mock_memory.add_message.assert_any_call(role="assistant", content=guard.refusal)
+
+
+def test_the_guard_judges_the_rewritten_follow_up():
+    guard = StubScopeGuard(in_scope=True)
+    service, mock_query_service, *_ = build_service(scope_guard=guard)
+
+    service.answer(conversation_id="c", question="what about its side effects?")
+
+    assert guard.queries == ["rewritten question"]
+    mock_query_service.search.assert_called_once()
+
+
+def test_a_cached_answer_skips_the_scope_check():
+    guard = StubScopeGuard(in_scope=False)
+    cache = build_cache()
+    service, *_ = build_service(
+        response_cache=cache, has_context=False, scope_guard=guard
+    )
+    cache.store(
+        query="What is sepsis?",
+        top_k=5,
+        model_id="default",
+        answer="Cached answer",
+        chunks=[],
+    )
+
+    answer = service.answer(conversation_id="c", question="What is sepsis?")
+
+    assert answer == "Cached answer"
+    assert guard.queries == []
+
+
+def test_a_refusal_is_never_cached():
+    guard = StubScopeGuard(in_scope=False)
+    cache = build_cache()
+    service, *_ = build_service(
+        response_cache=cache, has_context=False, scope_guard=guard
+    )
+
+    service.answer(conversation_id="c", question="Best pizza in town?")
+
+    assert cache.stats().entries == 0
+
+
+def test_small_talk_is_answered_without_a_scope_check():
+    guard = StubScopeGuard(in_scope=False)
+    service, *_ = build_service(scope_guard=guard)
+
+    answer = service.answer(conversation_id="c", question="hi")
+
+    assert answer != guard.refusal
+    assert guard.queries == []

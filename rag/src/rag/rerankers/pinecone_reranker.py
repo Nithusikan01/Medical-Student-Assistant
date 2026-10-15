@@ -1,13 +1,12 @@
 import logging
 
 from rag.config.component_configs import PineconeRerankConfig
-from rag.rerankers.base import BaseReranker
 from rag.retrieval.schemas import RetrievedChunk
 
 logger = logging.getLogger(__name__)
 
 
-class PineconeReranker(BaseReranker):
+class PineconeReranker:
     """
     Cross-encoder reranking through Pinecone's hosted inference API.
 

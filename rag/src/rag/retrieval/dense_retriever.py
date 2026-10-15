@@ -1,9 +1,7 @@
 import logging
-from typing import Any
 
-from rag.config.component_configs import RetrievalConfig
+from rag.embeddings.base import TextEmbedder
 from rag.observability import Stage, Tracer, summarize_scores
-from rag.retrieval.base import BaseRetriever
 from rag.retrieval.schemas import (
     RetrievedChunk,
     RetrievedChunkMetadata,
@@ -13,7 +11,7 @@ from rag.vectorstore.base import VectorStoreInterface
 logger = logging.getLogger(__name__)
 
 
-class DenseRetriever(BaseRetriever):
+class DenseRetriever:
     """
     Dense vector retriever using embedding similarity search.
     """
@@ -21,12 +19,18 @@ class DenseRetriever(BaseRetriever):
     def __init__(
         self,
         vector_store: VectorStoreInterface,
-        embedding_model: Any,
+        embedding_model: TextEmbedder,
         *,
+        default_top_k: int = 30,
         tracer: Tracer | None = None,
     ) -> None:
         self.vector_store = vector_store
         self.embedding_model = embedding_model
+
+        # Used only when a caller passes no top_k. Taken here rather than
+        # from a RetrievalConfig() built on the spot, which would silently
+        # ignore whatever the deployment configured.
+        self.default_top_k = default_top_k
 
         # Keyword-only and defaulted, so every existing call site - tests,
         # scripts, the factory - keeps working untouched. The default
@@ -37,39 +41,28 @@ class DenseRetriever(BaseRetriever):
         self,
         query: str,
         top_k: int | None = None,
-        query_embedding: list[float] | None = None,
     ) -> list[RetrievedChunk]:
         """
         Retrieve the most relevant chunks using dense vector search.
         """
 
-        top_k = RetrievalConfig().candidate_k if top_k is None else top_k
-
-        logger.debug(
-            "Running dense retrieval for query: %s",
-            query,
-        )
+        top_k = self.default_top_k if top_k is None else top_k
 
         with self.tracer.span(Stage.DENSE_RETRIEVAL, top_k=top_k) as span:
 
             # Nested rather than alongside, because embedding the query is
             # part of dense retrieval - keeping it separate is what lets the
             # timeline show whether the embedding call or the vector search
-            # is the slow half.
-            #
-            # Skipped entirely when the caller supplies the vector, and no
-            # span is emitted then: an absent stage means the work did not
-            # happen, which is exactly what is being reported.
-            if query_embedding is None:
+            # is the slow half. A memoizing embedder marks the span when the
+            # vector was already computed (by the response cache).
+            with self.tracer.span(
+                Stage.QUERY_EMBEDDING,
+                model=getattr(self.embedding_model, "model_name", None),
+            ) as embedding_span:
 
-                with self.tracer.span(
-                    Stage.QUERY_EMBEDDING,
-                    model=getattr(self.embedding_model, "model_name", None),
-                ) as embedding_span:
+                query_embedding = self.embedding_model.embed_query(query)
 
-                    query_embedding = self.embedding_model.embed_query(query)
-
-                    embedding_span.set(dimension=len(query_embedding))
+                embedding_span.set(dimension=len(query_embedding))
 
             matches = self.vector_store.query(
                 embedding=query_embedding,
@@ -78,10 +71,7 @@ class DenseRetriever(BaseRetriever):
             )
 
             if not matches:
-                logger.warning(
-                    "No dense retrieval matches found for query: %s",
-                    query,
-                )
+                logger.warning("Dense retrieval found no matches.")
 
                 span.set(result_count=0)
 
@@ -109,8 +99,7 @@ class DenseRetriever(BaseRetriever):
                     source_path=metadata.source_path,
                     chunk_index=metadata.chunk_index,
                     page_number=metadata.page_number,
-                    section_title=metadata.section_title,
-                    heading_level=metadata.heading_level,
+                    end_page_number=metadata.end_page_number,
                 )
 
                 chunk = RetrievedChunk(

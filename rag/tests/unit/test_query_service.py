@@ -22,7 +22,6 @@ def test_search_calls_retriever():
     mock_retriever.retrieve.assert_called_once_with(
         query="Who is Nithusikan?",
         top_k=9,
-        query_embedding=None,
     )
     assert result == expected_chunks[:3]
 
@@ -50,26 +49,6 @@ def test_search_uses_reranker_when_available():
     assert result == reranked
 
 
-def test_search_passes_a_supplied_embedding_to_the_retriever():
-    """
-    A vector the caller already holds is handed down rather than computed
-    again - the saving a semantic cache miss is supposed to produce.
-    """
-
-    mock_retriever = Mock()
-    mock_retriever.retrieve.return_value = []
-
-    service = QueryService(mock_retriever)
-
-    service.search("question", top_k=3, candidate_k=9, query_embedding=[0.1, 0.2])
-
-    mock_retriever.retrieve.assert_called_once_with(
-        query="question",
-        top_k=9,
-        query_embedding=[0.1, 0.2],
-    )
-
-
 def test_search_returns_empty_when_no_candidates():
     mock_retriever = Mock()
     mock_retriever.retrieve.return_value = []
@@ -77,3 +56,55 @@ def test_search_returns_empty_when_no_candidates():
     service = QueryService(mock_retriever)
 
     assert service.search("missing") == []
+
+
+def test_engine_components_satisfy_their_protocols_by_shape():
+    from unittest.mock import MagicMock
+
+    from rag.config.component_configs import PineconeConfig
+    from rag.indexes.bm25_index import BM25Index
+    from rag.rerankers.base import BaseReranker
+    from rag.rerankers.fallback_reranker import FallbackReranker
+    from rag.rerankers.gemini_reranker import GeminiReranker
+    from rag.retrieval.base import BaseRetriever
+    from rag.retrieval.bm25_retriever import BM25Retriever
+    from rag.retrieval.dense_retriever import DenseRetriever
+    from rag.retrieval.hybrid_retriever import HybridRetriever
+    from rag.vectorstore.base import IdListingVectorStore, VectorStoreInterface
+    from rag.vectorstore.pinecone_store import PineconeVectorStore
+
+    store = PineconeVectorStore(
+        PineconeConfig(api_key="k", index_name="i"), dimension=2, client=MagicMock()
+    )
+    dense = DenseRetriever(store, MagicMock())
+    bm25 = BM25Retriever(BM25Index([]))
+
+    assert isinstance(store, VectorStoreInterface)
+    assert isinstance(store, IdListingVectorStore)
+    assert all(
+        isinstance(r, BaseRetriever)
+        for r in (dense, bm25, HybridRetriever(dense, bm25))
+    )
+
+    gemini = GeminiReranker(MagicMock())
+    assert isinstance(FallbackReranker(gemini, gemini), BaseReranker)
+
+
+def test_a_store_without_list_ids_is_not_an_id_listing_store():
+    from rag.vectorstore.base import IdListingVectorStore, VectorStoreInterface
+
+    class MinimalStore:
+        def upsert(self, records):
+            return 0
+
+        def query(self, embedding, top_k=5, filters=None):
+            return []
+
+        def delete(self, ids):
+            return 0
+
+        def count(self):
+            return 0
+
+    assert isinstance(MinimalStore(), VectorStoreInterface)
+    assert not isinstance(MinimalStore(), IdListingVectorStore)

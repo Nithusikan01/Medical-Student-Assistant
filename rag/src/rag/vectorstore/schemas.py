@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from typing import Any
 
 
@@ -17,10 +17,7 @@ class VectorRecordMetadata:
     chunk_index: int
 
     page_number: int | None = None
-    section_title: str | None = None
-    heading_level: int | None = None
-
-    language: str = "en"
+    end_page_number: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """
@@ -36,7 +33,21 @@ class VectorRecordMetadata:
         cls,
         metadata: dict[str, Any],
     ) -> "VectorRecordMetadata":
-        return cls(**metadata)
+        """
+        Build from stored metadata, ignoring keys this version does not know.
+
+        Vectors outlive the code that wrote them: every vector upserted
+        before section_title, heading_level and language were removed still
+        carries some of them, and passing those through as keyword
+        arguments would fail every query that matched one.
+        """
+
+        known = {name: metadata[name] for name in _FIELDS if name in metadata}
+
+        return cls(**known)
+
+
+_FIELDS = tuple(f.name for f in fields(VectorRecordMetadata))
 
 
 @dataclass(slots=True)

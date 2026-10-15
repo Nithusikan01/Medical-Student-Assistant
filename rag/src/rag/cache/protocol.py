@@ -34,7 +34,6 @@ class ResponseCache(Protocol):
         model_id: str,
         answer: str,
         chunks: list[RetrievedChunk],
-        query_embedding: list[float] | None = None,
         context_free: bool = True,
         generation: int | None = None,
     ) -> None:

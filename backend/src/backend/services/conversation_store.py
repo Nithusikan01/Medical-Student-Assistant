@@ -14,12 +14,11 @@ class PersistentConversationMemory(ConversationMemory):
     """
     Conversation memory backed by the database.
 
-    The two views are the base class's (see ConversationMemory); this class
-    only loads them from, and writes them to, the database. Hydrating
-    restores both: `messages` from the turns *after* the stored summary's
-    checkpoint - loading the full history would leave the summary trigger
-    permanently true and fire an extra LLM call every turn forever - and the
-    recent window from the newest turns overall.
+    Keeps ConversationMemory's two views across restarts: `messages` is
+    hydrated with only the turns *after* the stored summary's checkpoint, and
+    the recent window with the last N turns overall. Hydrating the full
+    history into `messages` would leave the summary trigger permanently true
+    and fire an extra LLM call every turn forever.
     """
 
     def __init__(
@@ -101,7 +100,7 @@ class PersistentConversationMemory(ConversationMemory):
                 self.last_assistant_message_id = row.id
 
     def update_summary(self, summary: str) -> None:
-        super().update_summary(summary)
+        super().update_summary(summary)  # also empties `messages`
 
         with self._session_factory() as session:
             newest_id = session.scalar(
@@ -143,8 +142,14 @@ class PersistentConversationStore:
     a process-wide singleton that outlives any single request.
     """
 
-    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        max_recent_messages: int = 6,
+    ) -> None:
         self._session_factory = session_factory
+        self._max_recent_messages = max_recent_messages
 
     def get_memory(
         self,
@@ -153,4 +158,5 @@ class PersistentConversationStore:
         return PersistentConversationMemory(
             self._session_factory,
             uuid.UUID(str(conversation_id)),
+            max_recent_messages=self._max_recent_messages,
         )

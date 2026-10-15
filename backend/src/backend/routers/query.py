@@ -134,8 +134,7 @@ def query_documents(
                 document_id=chunk.metadata.document_id,
                 filename=chunk.metadata.filename,
                 page_number=chunk.metadata.page_number,
-                section_title=chunk.metadata.section_title,
-                heading_level=chunk.metadata.heading_level,
+                end_page_number=chunk.metadata.end_page_number,
                 chunk_index=chunk.metadata.chunk_index,
             ),
         )

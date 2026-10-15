@@ -94,3 +94,39 @@ def test_a_rebuild_replaces_the_document_set_with_the_index():
 
     assert index.document_ids == frozenset({"b"})
     assert BM25Index([]).document_ids == frozenset()
+
+
+def test_punctuation_does_not_stop_a_query_term_matching():
+    chunks = [
+        make_chunk(0, "Sepsis is a dysregulated host response."),
+        make_chunk(1, "Asthma is a chronic airway disease."),
+        make_chunk(2, "Heart failure reduces cardiac output."),
+    ]
+    index = BM25Index(documents=chunks)
+
+    results = index.search("What is sepsis?", top_k=1)
+
+    assert [chunk for chunk, _ in results] == [chunks[0]]
+
+
+def test_search_returns_the_top_k_in_score_order():
+    chunks = [
+        make_chunk(0, "insulin"),
+        make_chunk(1, "insulin insulin glucagon"),
+        make_chunk(2, "glucagon"),
+        make_chunk(3, "cortisol"),
+        make_chunk(4, "thyroxine"),
+    ]
+    index = BM25Index(documents=chunks)
+
+    results = index.search("insulin", top_k=2)
+    scores = [score for _, score in results]
+
+    assert {chunk.chunk_index for chunk, _ in results} == {0, 1}
+    assert scores == sorted(scores, reverse=True)
+
+
+def test_a_query_with_no_word_characters_returns_nothing():
+    index = BM25Index(documents=[make_chunk(0, "insulin")])
+
+    assert index.search("???") == []

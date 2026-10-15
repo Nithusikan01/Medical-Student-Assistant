@@ -6,12 +6,12 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from rag.utils.logger import setup_logging
 
 from backend.auth.bootstrap import ensure_admin_user
 from backend.db.session import get_engine, get_session_factory, session_scope
 from backend.db.startup import verify_connectivity, warn_if_schema_outdated
 from backend.dependencies import get_auth_config
+from backend.logging_setup import setup_logging
 from backend.observability.middleware import TelemetryMiddleware
 from backend.routers.auth import router as auth_router
 from backend.routers.conversations import router as conversations_router

@@ -1,5 +1,5 @@
-from abc import ABC, abstractmethod
 from collections.abc import Iterator
+from typing import Protocol, runtime_checkable
 
 from rag.vectorstore.schemas import (
     SearchResult,
@@ -7,16 +7,19 @@ from rag.vectorstore.schemas import (
 )
 
 
-class VectorStoreInterface(ABC):
+@runtime_checkable
+class VectorStoreInterface(Protocol):
     """
-    Abstract interface for vector database implementations.
+    What the engine needs from a vector database.
 
-    Concrete implementations (e.g. Pinecone, Chroma, Qdrant)
-    are responsible for translating these domain models into
-    the format expected by the underlying vector database.
+    A Protocol rather than an abstract base class, so an implementation
+    (Pinecone here; Chroma or Qdrant elsewhere) satisfies it by shape and
+    test doubles need no inheritance. Optional capabilities are separate
+    protocols - see IdListingVectorStore - rather than methods that raise
+    NotImplementedError, so whether a store supports one is a type
+    question, not a runtime surprise.
     """
 
-    @abstractmethod
     def upsert(
         self,
         records: list[VectorRecord],
@@ -24,16 +27,11 @@ class VectorStoreInterface(ABC):
         """
         Insert new vectors or update existing ones.
 
-        Args:
-            records:
-                Vector records to store.
-
         Returns:
             Number of vectors successfully upserted.
         """
-        raise NotImplementedError
+        ...
 
-    @abstractmethod
     def query(
         self,
         embedding: list[float],
@@ -44,22 +42,16 @@ class VectorStoreInterface(ABC):
         Perform a similarity search.
 
         Args:
-            embedding:
-                Query embedding.
-
-            top_k:
-                Maximum number of similar vectors to return.
-
-            filters:
-                Optional metadata filters supported by the
-                underlying vector database.
+            embedding: Query embedding.
+            top_k: Maximum number of similar vectors to return.
+            filters: Optional metadata filters supported by the underlying
+                vector database.
 
         Returns:
             Search results ordered by similarity score.
         """
-        raise NotImplementedError
+        ...
 
-    @abstractmethod
     def delete(
         self,
         ids: list[str],
@@ -67,35 +59,29 @@ class VectorStoreInterface(ABC):
         """
         Delete vectors by their IDs.
 
-        Args:
-            ids:
-                IDs of vectors to remove.
-
         Returns:
             Number of vectors deleted.
         """
-        raise NotImplementedError
+        ...
 
-    @abstractmethod
-    def delete_all(self) -> None:
-        """
-        Delete every vector stored in the index.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
     def count(self) -> int:
         """
         Return the total number of stored vectors.
         """
-        raise NotImplementedError
+        ...
+
+
+@runtime_checkable
+class IdListingVectorStore(VectorStoreInterface, Protocol):
+    """
+    A vector store that can enumerate its ids by prefix.
+
+    Used only for admin-triggered reconciliation (purging vectors no chunk
+    row points at). Stores that cannot list ids simply do not satisfy it.
+    """
 
     def list_ids(self, prefix: str) -> Iterator[str]:
         """
         Yield stored vector ids beginning with `prefix`.
-
-        Deliberately not abstract: adding a required method would break
-        existing implementations. Backends that cannot enumerate ids simply
-        do not override it.
         """
-        raise NotImplementedError("This vector store cannot list vector ids.")
+        ...

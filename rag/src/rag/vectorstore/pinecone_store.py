@@ -4,9 +4,9 @@ from collections.abc import Iterator
 
 from pinecone import Pinecone, ServerlessSpec
 
-from rag.config.settings import Settings
+from rag.config.component_configs import PineconeConfig
+from rag.observability import is_transient
 from rag.utils.exceptions import VectorStoreError
-from rag.vectorstore.base import VectorStoreInterface
 from rag.vectorstore.schemas import (
     SearchResult,
     VectorRecord,
@@ -18,42 +18,63 @@ logger = logging.getLogger(__name__)
 DELETE_BATCH_SIZE = 1000
 
 
-def _is_transient_query_error(error: Exception) -> bool:
-    text = str(error).lower()
+class PineconeVectorStore:
+    """
+    Vectors stored in one Pinecone index.
 
-    transient_markers = (
-        "getaddrinfo failed",
-        "connection",
-        "timed out",
-        "timeout",
-        "temporarily unavailable",
-    )
-
-    return any(marker in text for marker in transient_markers)
-
-
-class PineconeVectorStore(VectorStoreInterface):
+    Constructing one connects to the index and nothing else. Creating a
+    missing index is ensure_index()'s job, called deliberately by whoever
+    composes the application, so that building an object never provisions
+    cloud infrastructure as a side effect.
+    """
 
     def __init__(
         self,
-        settings: Settings,
+        config: PineconeConfig,
         dimension: int,
         batch_size: int = 100,
+        *,
+        client: Pinecone | None = None,
     ) -> None:
 
-        self.pc = Pinecone(api_key=settings.pinecone_api_key)
-        self.index_name = settings.pinecone_index_name
+        self.pc = client if client is not None else Pinecone(api_key=config.api_key)
+        self.config = config
+        self.index_name = config.index_name
+        self.dimension = dimension
         self.batch_size = batch_size
+
+        # Connected on first use: resolving an index's host needs the index
+        # to exist, and creating it is ensure_index()'s job.
+        self._index = None
+
+    @property
+    def index(self):
+        if self._index is None:
+            self._index = self.pc.Index(self.index_name)
+
+        return self._index
+
+    @index.setter
+    def index(self, value) -> None:
+        self._index = value
+
+    def ensure_index(self) -> None:
+        """
+        Create the index if it does not exist, and check it fits the embedder.
+
+        A dimension mismatch is raised here, at startup, rather than as an
+        opaque rejection on the first upsert or query.
+        """
 
         if not self.pc.has_index(self.index_name):
 
             self.pc.create_index(
                 name=self.index_name,
-                dimension=dimension,
+                dimension=self.dimension,
                 metric="cosine",
                 spec=ServerlessSpec(
-                    cloud="aws",
-                    region="us-east-1",
+                    cloud=self.config.cloud,
+                    region=self.config.region,
                 ),
             )
 
@@ -62,7 +83,16 @@ class PineconeVectorStore(VectorStoreInterface):
                 self.index_name,
             )
 
-        self.index = self.pc.Index(self.index_name)
+            return
+
+        existing = getattr(self.pc.describe_index(self.index_name), "dimension", None)
+
+        if existing is not None and int(existing) != self.dimension:
+            raise VectorStoreError(
+                f"Pinecone index '{self.index_name}' has dimension {existing}, "
+                f"but the embedder produces {self.dimension}. Recreate the "
+                "index or change the embedding model."
+            )
 
     def upsert(
         self,
@@ -138,7 +168,7 @@ class PineconeVectorStore(VectorStoreInterface):
                         SearchResult(
                             id=match.id,
                             score=match.score,
-                            metadata=VectorRecordMetadata(**metadata),
+                            metadata=VectorRecordMetadata.from_dict(metadata),
                         )
                     )
 
@@ -151,7 +181,9 @@ class PineconeVectorStore(VectorStoreInterface):
 
             except Exception as exc:
 
-                if attempt < max_attempts and _is_transient_query_error(exc):
+                # By exception type and status, not by matching words in the
+                # message, which the provider can change at any time.
+                if attempt < max_attempts and is_transient(exc):
 
                     wait = base_backoff * attempt
 

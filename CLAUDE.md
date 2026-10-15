@@ -78,6 +78,10 @@ black rag\src rag\tests backend\src backend\tests
 ruff check rag\src rag\tests backend\src backend\tests
 ```
 
+CI pins `black==25.1.0`; format with that version (`python -m black` after installing the dev extras), since newer releases lay out some strings differently and fail `black --check`.
+
+Pull requests: enable auto-merge (merge-commit method, matching the existing history) on every PR as soon as it is opened, so it merges once CI is green and nothing else blocks it. Requires "Allow auto-merge" in the repository settings; if enabling it fails, say so rather than merging by hand. A PR stacked on another merges after its base does.
+
 Run the API and the frontend (two terminals):
 
 ```powershell
@@ -89,7 +93,7 @@ The Vite dev server (port 5173) proxies `/api` and `/health` to `http://127.0.0.
 
 Ingestion runs through `POST /api/ingest` (multipart upload) or the frontend's upload panel — there is no CLI ingestion entry point (`main.py` was deleted). Ad-hoc scripts in `backend/scripts/` are for manual smoke testing, not part of the test suite: `ask_cv_from_terminal.py` (interactive Q&A), `smoke_rag.py` / `smoke_retrieval.py` / `smoke_reranker.py` (component smoke checks — named `smoke_` rather than `test_` so pytest cannot collect them), `run_ingestion.py` (BM25 corpus verification, despite the name), `migrate_bm25_corpus.py` (imports a legacy `bm25_corpus.json` into the database), `reset_pinecone.py` (drops and recreates the Pinecone index — destructive), `seed_model_pricing.py` (fills `model_pricing`, without which cost reads "not priced" rather than zero), `evaluate_retrieval.py` (runs a labelled evaluation set against the live retriever — see Offline evaluation below).
 
-Required environment variables (`.env` in `backend/`, templated by `backend/.env.example`): `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `GEMINI_API_KEY`, `DATABASE_URL` (PostgreSQL), `SECRET_KEY` (JWT signing, ≥32 chars), `ADMIN_EMAIL`/`ADMIN_PASSWORD` (seeded on startup, idempotent — an existing password is never overwritten). Retrieval/chunking/embedding/cache variables (`CHUNK_SIZE`, `CANDIDATE_K`, `USE_HOSTED_INFERENCE`, `RESPONSE_CACHE_*`, etc.) are read in `rag/src/rag/config/settings.py::load_settings`; auth/database variables (`ALLOW_OPEN_REGISTRATION`, `COOKIE_SECURE`, `CORS_ORIGINS`, token TTLs) are read in `backend/src/backend/auth/config.py::load_auth_config` and `backend/src/backend/app.py::cors_origins`. `.env` files are gitignored at any depth; `.env.example` files are committed. Apply migrations before first run: `cd backend; alembic upgrade head` (`0001_auth_tables` through `0012_answer_feedback`; the later ones add generation usage, telemetry, token cost, an ingestion heartbeat, an error taxonomy and answer feedback).
+Required environment variables (`.env` in `backend/`, templated by `backend/.env.example`): `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `GEMINI_API_KEY`, `DATABASE_URL` (PostgreSQL), `SECRET_KEY` (JWT signing, ≥32 chars), `ADMIN_EMAIL`/`ADMIN_PASSWORD` (seeded on startup, idempotent — an existing password is never overwritten). Retrieval/chunking/embedding/cache variables (`CHUNK_SIZE`, `CANDIDATE_K`, `USE_HOSTED_INFERENCE`, `RESPONSE_CACHE_*`, etc.) are parsed by `rag/src/rag/config/settings.py::settings_from_mapping`, which `backend/src/backend/settings.py::load_settings` calls with `os.environ` (the engine never reads the environment itself — a ruff `TID251` ban on `os.environ`/`os.getenv` enforces it); auth/database variables (`ALLOW_OPEN_REGISTRATION`, `COOKIE_SECURE`, `CORS_ORIGINS`, token TTLs) are read in `backend/src/backend/auth/config.py::load_auth_config` and `backend/src/backend/app.py::cors_origins`. `.env` files are gitignored at any depth; `.env.example` files are committed. Apply migrations before first run: `cd backend; alembic upgrade head` (`0001_auth_tables` through `0013_chunk_page_range`; the later ones add generation usage, telemetry, token cost, an ingestion heartbeat, an error taxonomy, answer feedback and chunk page ranges).
 
 ## Architecture
 
@@ -114,12 +118,12 @@ someone else returns 404, never 403, so the response can't be used to enumerate 
 
 ### Two independent pipelines, one wiring point
 
-Everything is assembled through dependency injection, not framework magic. The two pipelines share components (`Embedder`, `PineconeVectorStore`) but are built separately:
+Everything is assembled through dependency injection, not framework magic. The two pipelines share components (the `TextEmbedder`, `PineconeVectorStore`) but are built separately:
 
 - **Ingestion** (`rag/ingestion/pipeline.py::IngestionPipeline.ingest`) is constructed per-request in `backend/routers/ingest.py::get_ingestion_pipeline()`, and driven by `backend/services/document_service.py::DocumentService.ingest`, which creates the `documents` row (`status=processing`) *before* the pipeline runs.
 - **Query** (`rag/services/history_aware_rag_service.py::HistoryAwareRAGService`) is built once by `backend/wiring/rag_factory.py::build_history_aware_rag_service()` — an `@lru_cache()`d factory called at API startup (`backend/app.py` lifespan).
 
-`rag_factory.py` also exposes `build_embedder()`, `build_reranker()`, `build_vector_store()`, `build_bm25_index()`, and `build_response_cache()` as their own `@lru_cache()`d singletons. Ingesting or deleting a document calls `refresh_corpus_state()`, which does the two things that have to happen when the corpus changes: `refresh_bm25_index()` reloads chunks from Postgres and calls `.rebuild()` on the *same* `BM25Index` object — the running `HistoryAwareRAGService` holds a reference to it and sees the change immediately — and the response cache is emptied. This replaced an earlier design that called `build_history_aware_rag_service.cache_clear()` on every ingest, which re-instantiated the embedder and reranker (and, before hosted inference, reloaded model weights) on every single upload.
+`rag_factory.py` also exposes `build_embedder()`, `build_query_embedder()` (the memoizing wrapper the query path uses), `build_reranker()`, `build_vector_store()`, `build_bm25_index()`, and `build_response_cache()` as their own `@lru_cache()`d singletons. Ingesting or deleting a document calls `refresh_corpus_state()`, which does the two things that have to happen when the corpus changes: `refresh_bm25_index()` reloads chunks from Postgres and calls `.rebuild()` on the *same* `BM25Index` object — the running `HistoryAwareRAGService` holds a reference to it and sees the change immediately — and the response cache is emptied. This replaced an earlier design that called `build_history_aware_rag_service.cache_clear()` on every ingest, which re-instantiated the embedder and reranker (and, before hosted inference, reloaded model weights) on every single upload.
 
 When changing how a component is constructed (e.g. adding a retriever, changing model names), `rag_factory.py` is the single place that wires it into the live query path. It lives in `backend/` because it is application composition, not library code — the `rag` package deliberately ships no composition root.
 
@@ -143,6 +147,8 @@ conversation_id + question
   -> QueryRewriter (LLM call: folds conversation history into a standalone query)
        skipped on the opening turn, where there is no history to fold in
   -> ResponseCache lookup on the standalone query  --hit--> cached answer + sources, done
+  -> ScopeGuard (one short LLM call on the default model)  --clearly off-topic--> polite
+       "here's what I'm for" reply, done (never cached; fails open)
   -> HybridRetriever
        -> DenseRetriever -> PineconeVectorStore
        -> BM25Retriever  -> BM25Index (loaded from document_chunks at factory build time, refreshed in place after ingest/delete)
@@ -188,6 +194,28 @@ span carrying the intent — the only thing that separates "answered without ret
 / `ASSISTANT_NAME` / `ASSISTANT_DESCRIPTION`) keeps the application's name out of `rag/`;
 `enabled=false` restores the strictly-retrieval behaviour.
 
+### Scope guard
+
+`rag/conversation/scope_guard.py::ScopeGuard` declines questions clearly unrelated to the subject
+(coding, sport, trivia, ...) before any retrieval, replying with what the assistant is for instead.
+Without it an off-topic question paid for the whole pipeline — embedding, vector search, BM25,
+reranking and an answer call — to come back as "I don't know based on the provided documents".
+
+It is one call to the default generator (rewriting's, never the user-selected model) that returns
+one word, `IN` or `OUT`, and it sits **after** the cache lookup (a cached answer costs nothing more)
+and **after** the rewrite (a follow-up is judged as the standalone question it stands for). It
+fails open: only a reply that starts with `OUT` declines; an unclear reply or a failed call
+answers normally, because a wrong refusal costs a student a real answer while a missed one only
+costs the retrieval. Refusals are never cached, so a wrong one is not repeated to everyone who
+asks the same thing. Small talk is answered before it and never reaches it.
+
+`ScopeConfig` (`SCOPE_GUARD_ENABLED`, `SCOPE_SUBJECT`, `SCOPE_EXAMPLES`, `SCOPE_REFUSAL`) carries the
+subject and the reply; the engine's defaults name no subject and `Settings` supplies the medical
+ones. Each check emits a `Stage.SCOPE_CHECK` span with `in_scope` and `verdict`
+(`in`/`out`/`unclear`/`error`) and no question text. `rag/tests/integration/test_scope_guard_live.py`
+holds the tables of in- and out-of-scope questions the prompt is tuned against; run it with
+`RUN_REAL_RAG_TESTS=1` after changing the prompt, the subject or the model.
+
 ### Response cache
 
 `rag/cache/` holds answers already given, so a repeated question skips retrieval, reranking and
@@ -216,10 +244,11 @@ catalog id, passed down from `routers/query.py` because the service is handed a 
 and has no other way to know which model it is. Matching is two-tier — a free normalised-text
 hash, then a cosine scan over stored question vectors above
 `RESPONSE_CACHE_SIMILARITY_THRESHOLD` (0.95 by default, deliberately high: serving the answer to
-a *nearly* identical question is worse than missing). A semantic miss hands its embedding back
-so `QueryService.search` can pass it to `DenseRetriever` instead of embedding the same text
-twice — that is what the optional `query_embedding` parameter threaded through `QueryService` →
-`HybridRetriever` → `DenseRetriever` is for.
+a *nearly* identical question is worse than missing). The cache and `DenseRetriever` share one
+`rag/embeddings/memoizing.py::MemoizingEmbedder` (`rag_factory.py::build_query_embedder()`), so a
+semantic miss does not embed the same text twice and the two cannot drift onto different
+models. No retriever takes a precomputed vector; the `query_embedding` span is marked
+`memoized=true` when the vector came from the memo.
 
 Bounded by `RESPONSE_CACHE_MAX_ENTRIES` (LRU) and `RESPONSE_CACHE_TTL_SECONDS`, and emptied
 whenever the corpus changes. It is per-process: two uvicorn workers keep two caches and a
@@ -249,7 +278,7 @@ All under `rag/src/rag/` unless noted:
 2. `vectorstore/schemas.py`: `VectorRecord`/`VectorRecordMetadata` (what's sent to Pinecone — `to_dict()` drops `None` fields because Pinecone rejects null metadata values) and `SearchResult` (what comes back from a query).
 3. `retrieval/schemas.py`: `RetrievedChunk`/`RetrievedChunkMetadata` (post-retrieval/rerank, carries `dense_score`/`bm25_score`/`hybrid_score`/`rerank_score`/`retrieval_method`).
 
-`ChunkMetadata` is the canonical field set (document_id, filename, source_path, page_number, section_title, heading_level, start_char/end_char, chunk_size, overlap_size, element_id/type, language, tags); the other metadata dataclasses mirror it for their stage. When adding a metadata field, it typically needs updating in all three places plus `BM25Metadata` (`ingestion/bm25/schemas.py`), the API's `SourceMetadata` (`backend/src/backend/schemas/query.py` — note `source_path` is deliberately dropped there, since it's the server's absolute upload path), and the mirrored TypeScript interface in `frontend/src/types.ts`.
+`ChunkMetadata` is the canonical field set (document_id, filename, source_path, page_number/end_page_number, start_char/end_char, chunk_size, overlap_size) — every field is one the chunker fills; fields nothing populated (section titles, heading levels, element ids, language, tags) were removed rather than carried as permanent nulls. `TextChunker` splits the whole document's text with pages joined by `\n`, so a chunk can span a page break: `page_number` is where it starts, `end_page_number` where it ends (null for chunks ingested before migration 0013), and `start_char`/`end_char` are offsets into that joined text. The other metadata dataclasses mirror it for their stage, and `VectorRecordMetadata.from_dict` ignores keys it does not know, because vectors outlive the code that wrote them. When adding a metadata field, it typically needs updating in all three places plus `BM25Metadata` (`ingestion/bm25/schemas.py`), the API's `SourceMetadata` (`backend/src/backend/schemas/query.py` — note `source_path` is deliberately dropped there, since it's the server's absolute upload path), and the mirrored TypeScript interface in `frontend/src/types.ts`.
 
 ### Offline evaluation
 
@@ -282,7 +311,9 @@ with passage-level scores.
 
 ### Config
 
-`config/settings.py::Settings` is a frozen dataclass populated from env vars by `load_settings()`; component-specific config is carved out via `Settings.<x>_config()` methods returning the small dataclasses in `config/component_configs.py` (`EmbeddingConfig`, `ChunkingConfig`, `GenerationConfig`, `PineconeConfig`, `RetrievalConfig`). Components take their narrow config dataclass in `__init__`, not the whole `Settings` object — follow that pattern for new components.
+`config/settings.py::Settings` is a frozen dataclass built from a string mapping by `settings_from_mapping()` (the backend's `load_settings()` passes `os.environ`); component-specific config is carved out via `Settings.<x>_config()` methods returning the small dataclasses in `config/component_configs.py` (`EmbeddingConfig`, `ChunkingConfig`, `GenerationConfig`, `PineconeConfig`, `RetrievalConfig`, `ConversationConfig`, `PromptConfig`, ...). Components take their narrow config dataclass in `__init__`, not the whole `Settings` object — follow that pattern for new components. Every field in `Settings` must reach a component through the factory; a setting that is loaded but never wired is a bug, not a default. Settings that belong to the application rather than the engine (`STORAGE_PATH`, `LOG_DIR`) are read in `backend/`.
+
+The prompts' wording is the application's: `PromptBuilder` is an instance built from `PromptConfig` (`CORPUS_DESCRIPTION`, the no-answer and no-context texts) and handed to `HistoryAwareRAGService`. The engine's prompts stay domain-neutral. Embedders live in `rag/embeddings/` (`local_embedder.py`, `pinecone_embedder.py`, `memoizing.py`) and satisfy `TextEmbedder`: strings in, vectors out, so the query side never imports ingestion schemas. Provider retries go through `rag/llm/retry.py` and `observability.is_transient`, which classifies by type and status through the `__cause__` chain, never by message text. Logging is configured by `backend/logging_setup.py`; engine log lines never include question text.
 
 ### Generation model selection
 
@@ -292,7 +323,7 @@ The catalog of offered models — id, display label, provider, and (for Groq) th
 
 ### Heavy imports are lazy
 
-`sentence-transformers` (`Embedder`, `Reranker`, `DenseRetriever`) and `langchain-text-splitters` (`TextChunker`) are imported inside constructors/builders, not at module top level, so importing these modules doesn't force a slow ML-library load for code paths that don't need it (e.g. API startup before the factory runs, or CLI scripts that only touch schemas).
+`sentence-transformers` (`embeddings/local_embedder.py::Embedder`, `Reranker`) and `langchain-text-splitters` (`TextChunker`) are imported inside constructors/builders, not at module top level, so importing these modules doesn't force a slow ML-library load for code paths that don't need it (e.g. API startup before the factory runs, or CLI scripts that only touch schemas).
 
 ### API surface
 

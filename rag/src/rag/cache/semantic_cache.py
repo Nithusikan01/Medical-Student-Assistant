@@ -22,38 +22,6 @@ from rag.retrieval.schemas import RetrievedChunk
 logger = logging.getLogger(__name__)
 
 
-class NullResponseCache:
-    """
-    A cache that remembers nothing.
-
-    What the factory wires up when caching is switched off, so the service
-    has one code path instead of a truthiness check around every call.
-    """
-
-    def lookup(self, *, query: str, top_k: int, model_id: str) -> CacheLookup:
-        return CacheLookup()
-
-    def store(
-        self,
-        *,
-        query: str,
-        top_k: int,
-        model_id: str,
-        answer: str,
-        chunks: list[RetrievedChunk],
-        query_embedding: list[float] | None = None,
-        context_free: bool = True,
-        generation: int | None = None,
-    ) -> None:
-        return None
-
-    def invalidate(self) -> int:
-        return 0
-
-    def stats(self) -> CacheStats:
-        return CacheStats()
-
-
 class InMemorySemanticCache:
     """
     Recently answered questions, matched exactly or by meaning.
@@ -64,9 +32,9 @@ class InMemorySemanticCache:
          Free, and the common case for a class of students working through
          the same material.
       2. Semantic - the question embedded and compared by cosine against
-         every entry in the same scope. Costs one embedding call, which is
-         handed back on a miss so dense retrieval does not pay for it
-         twice.
+         every entry in the same scope. Costs one embedding call; wired
+         with the same memoizing embedder as dense retrieval, a miss does
+         not pay for it twice.
 
     Bounded by entry count and by age, and evicted least-recently-used, so
     a long-running process cannot grow without limit. Everything is held in
@@ -147,7 +115,6 @@ class InMemorySemanticCache:
                     match=MATCH_EXACT,
                     entry=entry,
                     similarity=1.0,
-                    query_embedding=entry.embedding,
                     entry_count=len(self._entries),
                     generation=generation,
                 )
@@ -167,11 +134,7 @@ class InMemorySemanticCache:
             return self._miss(entry_count=entry_count, generation=generation)
 
         if not has_candidates:
-            return self._miss(
-                entry_count=entry_count,
-                embedding=embedding,
-                generation=generation,
-            )
+            return self._miss(entry_count=entry_count, generation=generation)
 
         with self._lock:
             match = self._nearest(embedding, bucket=(top_k, model_id))
@@ -180,7 +143,6 @@ class InMemorySemanticCache:
                 self._misses += 1
 
                 return CacheLookup(
-                    query_embedding=embedding,
                     entry_count=len(self._entries),
                     generation=generation,
                 )
@@ -201,7 +163,6 @@ class InMemorySemanticCache:
                 match=MATCH_SEMANTIC,
                 entry=entry,
                 similarity=similarity,
-                query_embedding=embedding,
                 entry_count=len(self._entries),
                 generation=generation,
             )
@@ -218,7 +179,6 @@ class InMemorySemanticCache:
         model_id: str,
         answer: str,
         chunks: list[RetrievedChunk],
-        query_embedding: list[float] | None = None,
         context_free: bool = True,
         generation: int | None = None,
     ) -> None:
@@ -243,10 +203,9 @@ class InMemorySemanticCache:
             logger.exception("Failed to build a response cache key.")
             return
 
-        embedding = query_embedding
-
-        if embedding is None and self._config.semantic_enabled:
-            embedding = self._embed(query)
+        # Shares the query embedder with dense retrieval, which memoises:
+        # the vector computed for the lookup is not computed again here.
+        embedding = self._embed(query) if self._config.semantic_enabled else None
 
         entry = CacheEntry(
             answer=answer,
@@ -320,17 +279,12 @@ class InMemorySemanticCache:
         self,
         *,
         entry_count: int,
-        embedding: list[float] | None = None,
         generation: int | None = None,
     ) -> CacheLookup:
         with self._lock:
             self._misses += 1
 
-        return CacheLookup(
-            query_embedding=embedding,
-            entry_count=entry_count,
-            generation=generation,
-        )
+        return CacheLookup(entry_count=entry_count, generation=generation)
 
     def _embed(self, query: str) -> list[float] | None:
         if self._embedder is None:

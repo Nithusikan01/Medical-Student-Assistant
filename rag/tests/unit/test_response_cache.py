@@ -12,7 +12,7 @@ import pytest
 
 from rag.cache.keys import normalize_question, question_hash
 from rag.cache.schemas import MATCH_EXACT, MATCH_MISS, MATCH_SEMANTIC
-from rag.cache.semantic_cache import InMemorySemanticCache, NullResponseCache
+from rag.cache.semantic_cache import InMemorySemanticCache
 from rag.config.component_configs import CacheConfig
 from tests.unit.helpers import make_retrieved_chunk
 
@@ -39,7 +39,7 @@ class StubEmbedder:
 
         return self.vectors[text]
 
-    def embed_batch(self, chunks):  # pragma: no cover - never used here
+    def embed_documents(self, texts):  # pragma: no cover - never used here
         raise NotImplementedError
 
 
@@ -51,7 +51,7 @@ class ExplodingEmbedder:
     def embed_query(self, text: str) -> list[float]:
         raise RuntimeError("the embedding service is down")
 
-    def embed_batch(self, chunks):  # pragma: no cover - never used here
+    def embed_documents(self, texts):  # pragma: no cover - never used here
         raise NotImplementedError
 
 
@@ -214,19 +214,25 @@ def test_a_merely_similar_question_is_not_matched():
     assert lookup.match == MATCH_MISS
 
 
-def test_a_semantic_miss_hands_back_the_embedding_it_paid_for():
+def test_cache_and_retrieval_sharing_a_memoizing_embedder_embed_once():
     """
     The saving that makes the semantic tier affordable: dense retrieval
-    reuses this vector instead of embedding the same text again.
+    reuses the vector the cache computed instead of embedding the same
+    text again - by sharing the embedder, not by passing the vector on.
     """
 
-    embedder = StubEmbedder({"what is the dose": [1.0, 0.0, 0.0]})
-    cache = build_cache(embedder)
+    from rag.embeddings.memoizing import MemoizingEmbedder
+
+    inner = StubEmbedder({"what is the dose": [1.0, 0.0, 0.0]})
+    shared = MemoizingEmbedder(inner)
+    cache = build_cache(shared)
 
     lookup = cache.lookup(query="what is the dose", top_k=5, model_id="m")
+    vector = shared.embed_query("what is the dose")  # what retrieval does
 
     assert not lookup.hit
-    assert lookup.query_embedding == pytest.approx([1.0, 0.0, 0.0])
+    assert vector == pytest.approx([1.0, 0.0, 0.0])
+    assert inner.calls == ["what is the dose"]
 
 
 def test_semantic_matching_respects_the_scope():
@@ -264,7 +270,6 @@ def test_an_embedder_that_fails_costs_the_cache_not_the_answer():
     lookup = cache.lookup(query="what dose should be given", top_k=5, model_id="m")
 
     assert not lookup.hit
-    assert lookup.query_embedding is None
 
 
 def test_the_semantic_tier_can_be_switched_off():
@@ -381,21 +386,6 @@ def test_a_disabled_cache_stores_and_returns_nothing():
 
     assert cache.stats().entries == 0
     assert not cache.lookup(query="What is the dose?", top_k=5, model_id="m").hit
-
-
-def test_the_null_cache_satisfies_the_same_contract():
-    cache = NullResponseCache()
-
-    cache.store(query="q", top_k=5, model_id="m", answer="a", chunks=CHUNKS)
-
-    assert not cache.lookup(query="q", top_k=5, model_id="m").hit
-    assert cache.invalidate() == 0
-    assert cache.stats().entries == 0
-
-
-# ----------------------------------------------------------------------
-# Counters
-# ----------------------------------------------------------------------
 
 
 def test_stats_count_hits_by_how_they_were_matched():

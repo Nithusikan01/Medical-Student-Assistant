@@ -27,15 +27,27 @@ from backend.services.document_service import (
 )
 
 
-class RecordingVectorStore:
-    """Records calls against a shared log so ordering can be asserted."""
+class NonListingVectorStore:
+    """
+    Records calls against a shared log so ordering can be asserted.
+
+    Has no list_ids, so it lacks the optional id-listing capability.
+    """
 
     def __init__(self, log: list[str], *, ids: list[str] | None = None) -> None:
         self._log = log
         self.deleted: list[str] = []
         self.listed: list[str] = ids or []
         self.delete_error: Exception | None = None
-        self.supports_listing = True
+
+    def upsert(self, records):
+        return len(records)
+
+    def query(self, embedding, top_k=5, filters=None):
+        return []
+
+    def count(self):
+        return 0
 
     def delete(self, ids):
         self._log.append("delete_vectors")
@@ -45,10 +57,11 @@ class RecordingVectorStore:
 
         self.deleted.extend(ids)
 
-    def list_ids(self, prefix):
-        if not self.supports_listing:
-            raise NotImplementedError
 
+class RecordingVectorStore(NonListingVectorStore):
+    """The same, with id listing for the purge sweep."""
+
+    def list_ids(self, prefix):
         return [i for i in self.listed if i.startswith(prefix)]
 
 
@@ -286,7 +299,7 @@ def test_purge_still_works_when_the_store_cannot_list(
     session_factory, stored_document, pipeline, vector_store, call_log, db
 ):
     document_id = stored_document(chunks=2)
-    vector_store.supports_listing = False
+    vector_store = NonListingVectorStore(call_log)
 
     service = DocumentService(
         session_factory=session_factory,

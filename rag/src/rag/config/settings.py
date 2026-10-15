@@ -1,16 +1,18 @@
-import os
+from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
 
 from rag.config.component_configs import (
     CacheConfig,
     ChunkingConfig,
+    ConversationConfig,
     EmbeddingConfig,
     GenerationConfig,
     PineconeConfig,
     PineconeEmbeddingConfig,
     PineconeRerankConfig,
+    PromptConfig,
     RetrievalConfig,
+    ScopeConfig,
     SmallTalkConfig,
 )
 
@@ -26,12 +28,6 @@ class Settings:
     # Optional: enables the Groq-backed generation models. Left empty, those
     # models are simply not offered rather than the app failing to start.
     groq_api_key: str = ""
-
-    # ------------------------------------------------------------------
-    # Storage
-    # ------------------------------------------------------------------
-    storage_path: Path = Path("storage")
-    bm25_corpus_path: Path = Path("storage") / "bm25_corpus.json"
 
     # ------------------------------------------------------------------
     # Chunking
@@ -57,14 +53,20 @@ class Settings:
     hosted_embedding_dimension: int = 1024
     hosted_rerank_model: str = "bge-reranker-v2-m3"
 
+    pinecone_cloud: str = "aws"
+    pinecone_region: str = "us-east-1"
+
     # ------------------------------------------------------------------
     # Retrieval
     # ------------------------------------------------------------------
-    candidate_k: int = 20
-    dense_top_k: int = 20
-    reranking_k: int = 8
-    final_context_k: int = 5
-    similarity_threshold: float = 0.7
+    candidate_k: int = 30
+    rrf_k: int = 60
+
+    # ------------------------------------------------------------------
+    # Conversation
+    # ------------------------------------------------------------------
+    summary_trigger: int = 12
+    max_recent_messages: int = 6
 
     # ------------------------------------------------------------------
     # Generation
@@ -97,12 +99,42 @@ class Settings:
     assistant_description: str = "study assistant for the class library"
 
     # ------------------------------------------------------------------
+    # Prompt
+    #
+    # What the documents are, as a noun phrase completing "questions
+    # about ...". The engine itself is domain-free.
+    # ------------------------------------------------------------------
+    corpus_description: str = "the course material in the class library"
+
+    # ------------------------------------------------------------------
+    # Scope
+    #
+    # Questions clearly unrelated to the subject are declined before any
+    # retrieval, with a reply saying what the assistant is for.
+    # ------------------------------------------------------------------
+    scope_guard_enabled: bool = True
+    scope_subject: str = "medicine and the health sciences"
+    scope_examples: str = (
+        "anatomy, physiology, biochemistry, pathology, microbiology, "
+        "pharmacology, clinical medicine and surgery, public health, "
+        "medical ethics and research methods"
+    )
+    scope_refusal: str = (
+        "I'm a study assistant for medicine and the health sciences, so I "
+        "can't help with that question. Try asking about something from your "
+        "course - a condition, a drug, a mechanism, or a topic from your "
+        "lecture notes - and I'll answer from the class library."
+    )
+
+    # ------------------------------------------------------------------
     # Component Configurations
     # ------------------------------------------------------------------
     def pinecone_config(self) -> PineconeConfig:
         return PineconeConfig(
             api_key=self.pinecone_api_key,
             index_name=self.pinecone_index_name,
+            cloud=self.pinecone_cloud,
+            region=self.pinecone_region,
         )
 
     def embedding_config(self) -> EmbeddingConfig:
@@ -153,18 +185,32 @@ class Settings:
             corpus_description=self.assistant_description,
         )
 
+    def prompt_config(self) -> PromptConfig:
+        return PromptConfig(corpus_description=self.corpus_description)
+
+    def scope_config(self) -> ScopeConfig:
+        return ScopeConfig(
+            enabled=self.scope_guard_enabled,
+            subject=self.scope_subject,
+            in_scope_examples=self.scope_examples,
+            refusal_text=self.scope_refusal,
+        )
+
     def retrieval_config(self) -> RetrievalConfig:
         return RetrievalConfig(
             candidate_k=self.candidate_k,
-            dense_top_k=self.dense_top_k,
-            reranking_k=self.reranking_k,
-            final_context_k=self.final_context_k,
-            similarity_threshold=self.similarity_threshold,
+            rrf_k=self.rrf_k,
+        )
+
+    def conversation_config(self) -> ConversationConfig:
+        return ConversationConfig(
+            summary_trigger=self.summary_trigger,
+            max_recent_messages=self.max_recent_messages,
         )
 
 
-def _env_bool(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
+def _bool(values: Mapping[str, str], name: str, default: bool) -> bool:
+    raw = values.get(name)
 
     if raw is None:
         return default
@@ -172,76 +218,93 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def load_settings() -> Settings:
-    pinecone_api_key = os.getenv("PINECONE_API_KEY")
-    pinecone_index_name = os.getenv("PINECONE_INDEX_NAME")
-    gemini_api_key = os.getenv("GEMINI_API_KEY")
-    groq_api_key = os.getenv("GROQ_API_KEY", "")
+def settings_from_mapping(values: Mapping[str, str]) -> Settings:
+    """
+    Build Settings from a mapping of configuration names to strings.
+
+    The engine never reads the process environment itself: where
+    configuration comes from is the application's decision. The backend
+    passes os.environ; a test passes a dict.
+    """
+
+    pinecone_api_key = values.get("PINECONE_API_KEY")
+    pinecone_index_name = values.get("PINECONE_INDEX_NAME")
+    gemini_api_key = values.get("GEMINI_API_KEY")
+    groq_api_key = values.get("GROQ_API_KEY", "")
 
     if not pinecone_api_key:
-        raise ValueError("PINECONE_API_KEY environment variable is not set.")
+        raise ValueError("PINECONE_API_KEY is not set.")
 
     if not pinecone_index_name:
-        raise ValueError("PINECONE_INDEX_NAME environment variable is not set.")
+        raise ValueError("PINECONE_INDEX_NAME is not set.")
 
     if not gemini_api_key:
-        raise ValueError("GEMINI_API_KEY environment variable is not set.")
-
-    storage_path = Path(os.getenv("STORAGE_PATH", "storage"))
+        raise ValueError("GEMINI_API_KEY is not set.")
 
     return Settings(
         pinecone_api_key=pinecone_api_key,
         pinecone_index_name=pinecone_index_name,
         gemini_api_key=gemini_api_key,
         groq_api_key=groq_api_key,
-        storage_path=storage_path,
-        bm25_corpus_path=storage_path / "bm25_corpus.json",
-        chunk_size=int(os.getenv("CHUNK_SIZE", "500")),
-        chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "50")),
-        embedding_batch_size=int(os.getenv("EMBEDDING_BATCH_SIZE", "32")),
-        candidate_k=int(os.getenv("CANDIDATE_K", "20")),
-        dense_top_k=int(os.getenv("DENSE_TOP_K", "20")),
-        reranking_k=int(os.getenv("RERANKING_K", "8")),
-        final_context_k=int(os.getenv("FINAL_CONTEXT_K", "5")),
-        similarity_threshold=float(os.getenv("SIMILARITY_THRESHOLD", "0.7")),
-        embedding_model_name=os.getenv(
+        chunk_size=int(values.get("CHUNK_SIZE", "500")),
+        chunk_overlap=int(values.get("CHUNK_OVERLAP", "50")),
+        embedding_batch_size=int(values.get("EMBEDDING_BATCH_SIZE", "32")),
+        pinecone_cloud=values.get("PINECONE_CLOUD", "aws"),
+        pinecone_region=values.get("PINECONE_REGION", "us-east-1"),
+        candidate_k=int(values.get("CANDIDATE_K", "30")),
+        rrf_k=int(values.get("RRF_K", "60")),
+        summary_trigger=int(values.get("SUMMARY_TRIGGER", "12")),
+        max_recent_messages=int(values.get("MAX_RECENT_MESSAGES", "6")),
+        embedding_model_name=values.get(
             "EMBEDDING_MODEL_NAME",
             "sentence-transformers/all-MiniLM-L6-v2",
         ),
-        generation_model_name=os.getenv(
+        generation_model_name=values.get(
             "GENERATION_MODEL_NAME",
             "gemini-3.1-flash-lite",
         ),
-        use_hosted_inference=_env_bool("USE_HOSTED_INFERENCE", True),
-        hosted_embedding_model=os.getenv(
+        use_hosted_inference=_bool(values, "USE_HOSTED_INFERENCE", True),
+        hosted_embedding_model=values.get(
             "HOSTED_EMBEDDING_MODEL",
             "llama-text-embed-v2",
         ),
-        hosted_embedding_dimension=int(os.getenv("HOSTED_EMBEDDING_DIMENSION", "1024")),
-        hosted_rerank_model=os.getenv(
+        hosted_embedding_dimension=int(
+            values.get("HOSTED_EMBEDDING_DIMENSION", "1024")
+        ),
+        hosted_rerank_model=values.get(
             "HOSTED_RERANK_MODEL",
             "bge-reranker-v2-m3",
         ),
-        response_cache_enabled=_env_bool("RESPONSE_CACHE_ENABLED", True),
-        response_cache_semantic_enabled=_env_bool(
+        response_cache_enabled=_bool(values, "RESPONSE_CACHE_ENABLED", True),
+        response_cache_semantic_enabled=_bool(
+            values,
             "RESPONSE_CACHE_SEMANTIC_ENABLED",
             True,
         ),
-        response_cache_max_entries=int(os.getenv("RESPONSE_CACHE_MAX_ENTRIES", "512")),
+        response_cache_max_entries=int(values.get("RESPONSE_CACHE_MAX_ENTRIES", "512")),
         response_cache_ttl_seconds=int(
-            os.getenv("RESPONSE_CACHE_TTL_SECONDS", "86400")
+            values.get("RESPONSE_CACHE_TTL_SECONDS", "86400")
         ),
         response_cache_similarity_threshold=float(
-            os.getenv("RESPONSE_CACHE_SIMILARITY_THRESHOLD", "0.95")
+            values.get("RESPONSE_CACHE_SIMILARITY_THRESHOLD", "0.95")
         ),
-        response_cache_store_context_free_only=_env_bool(
+        response_cache_store_context_free_only=_bool(
+            values,
             "RESPONSE_CACHE_STORE_CONTEXT_FREE_ONLY",
             True,
         ),
-        small_talk_enabled=_env_bool("SMALL_TALK_ENABLED", True),
-        assistant_name=os.getenv("ASSISTANT_NAME", "Anamnesis"),
-        assistant_description=os.getenv(
+        small_talk_enabled=_bool(values, "SMALL_TALK_ENABLED", True),
+        assistant_name=values.get("ASSISTANT_NAME", "Anamnesis"),
+        assistant_description=values.get(
             "ASSISTANT_DESCRIPTION",
             "study assistant for the class library",
         ),
+        corpus_description=values.get(
+            "CORPUS_DESCRIPTION",
+            "the course material in the class library",
+        ),
+        scope_guard_enabled=_bool(values, "SCOPE_GUARD_ENABLED", True),
+        scope_subject=values.get("SCOPE_SUBJECT", Settings.scope_subject),
+        scope_examples=values.get("SCOPE_EXAMPLES", Settings.scope_examples),
+        scope_refusal=values.get("SCOPE_REFUSAL", Settings.scope_refusal),
     )

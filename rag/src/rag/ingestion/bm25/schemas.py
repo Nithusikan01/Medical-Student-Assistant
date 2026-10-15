@@ -4,7 +4,7 @@ Schemas for the BM25 corpus.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from rag.ingestion.schemas import DocumentChunk
 
@@ -15,16 +15,11 @@ class BM25Metadata(BaseModel):
     source_path: str
     chunk_index: int
     page_number: int | None = None
-    section_title: str | None = None
-    heading_level: int | None = None
+    end_page_number: int | None = None
     start_char: int | None = None
     end_char: int | None = None
     chunk_size: int = 0
     overlap_size: int = 0
-    element_id: str | None = None
-    element_type: str | None = None
-    language: str = "en"
-    tags: list[str] = Field(default_factory=list)
 
 
 class BM25CorpusRecord(BaseModel):
@@ -51,15 +46,10 @@ class BM25CorpusRecord(BaseModel):
                 source_path=metadata.source_path,
                 chunk_index=chunk.chunk_index,
                 page_number=metadata.page_number,
-                section_title=metadata.section_title,
-                heading_level=metadata.heading_level,
+                end_page_number=metadata.end_page_number,
                 start_char=metadata.start_char,
                 end_char=metadata.end_char,
                 chunk_size=metadata.chunk_size,
                 overlap_size=metadata.overlap_size,
-                element_id=metadata.element_id,
-                element_type=metadata.element_type,
-                language=metadata.language,
-                tags=metadata.tags,
             ),
         )
